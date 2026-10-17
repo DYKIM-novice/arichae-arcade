@@ -1,0 +1,14 @@
+# Render 배포 설정 — 저장소를 Render에 연결하면 이 파일대로 서버가 만들어져요.
+services:
+  - type: web
+    name: arichae-arcade
+    runtime: python
+    plan: 0.5c-512mb        # 월 7달러, 항상 켜져 있음 (무료로 하려면 free)
+    region: singapore       # 한국에서 가장 가까운 지역
+    buildCommand: echo "추가로 설치할 부품 없음"
+    startCommand: python server.py
+    healthCheckPath: /
+    autoDeploy: true        # GitHub에 새 버전을 올리면 자동으로 다시 배포
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
