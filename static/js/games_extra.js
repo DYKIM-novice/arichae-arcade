@@ -1562,7 +1562,7 @@
   const dino = {
     id: 'dino', title: '공룡 발걸음', cat: '박자', catColor: 'y', dur: 30,
     buttons: ['r', 'b'], music: false, pressSound: false,
-    rules: ['쿵! 박자에 맞춰 왼발(빨강)·오른발(파랑)', '동그라미 색이 눌러야 할 버튼이에요', '점점 빨라져요!'],
+    rules: ['동그라미 색이 눌러야 할 발(빨강·파랑)이에요', '동그라미가 가운데 노란 PERFECT 칸에 왔을 때 쿵!', '점점 빨라져요!'],
     illus() {
       return `<div class="il-row il-race"><div style="width:90px">${DINO_SVG}</div>${ilBtn('r', '왼발')}${ilBtn('b', '오른발')}</div>`;
     },
@@ -1589,7 +1589,7 @@
 
       ctx.stage.innerHTML = '';
       const wrap = el(`<div class="dn-wrap"><div class="dn-msg disp"></div>
-        <div class="dn-track"><div class="dn-center"></div><div class="dn-dots"></div></div>
+        <div class="dn-track"><div class="dn-zone ok"></div><div class="dn-zone good"></div><div class="dn-zone perf"><span>PERFECT</span></div><div class="dn-center"></div><div class="dn-dots"></div></div>
         <div class="dn-next"></div>
         <div class="dn-world"><div class="dn-hills"></div><div class="dn-ground"></div><div class="dn-dino">${DINO_SVG}</div></div>
         <div class="dn-info"><b class="disp">0.0m</b></div></div>`);
@@ -1603,6 +1603,8 @@
       const infoB = wrap.querySelector('.dn-info b');
       const nextEl = wrap.querySelector('.dn-next');
       const centerEl = wrap.querySelector('.dn-center');
+      const zones = { perf: wrap.querySelector('.dn-zone.perf'), good: wrap.querySelector('.dn-zone.good'), ok: wrap.querySelector('.dn-zone.ok') };
+      let lastW = 0;
       const dotEls = [];
 
       function nextFootLabel() {
@@ -1639,11 +1641,19 @@
           // 다가오는 박자 점
           const W = track.clientWidth;
           const cx = W / 2;
-          const pxPerMs = (W / 2 - 14) / 1500;
+          const VIEW = 1000;   // 1초 앞의 박자까지 보여줘요 (판정 구역이 넓게 보이도록)
+          const pxPerMs = (W / 2 - 14) / VIEW;
+          // 판정 구역: PERFECT ±70ms, GOOD ±140ms, OK ±200ms
+          if (W !== lastW) {
+            lastW = W;
+            zones.perf.style.width = (140 * pxPerMs) + 'px';
+            zones.good.style.width = (280 * pxPerMs) + 'px';
+            zones.ok.style.width = (400 * pxPerMs) + 'px';
+          }
           let n = 0;
           // 아직 안 밟은 박자는 번갈아 나올 발 색으로 미리 보여줘요 (다음 발 = 마지막 발의 반대)
           let expect = lastFoot === 'r' ? 'b' : 'r';
-          for (let i = Math.max(0, checkIdx - 1); i < beats.length && beats[i] - e < 1500; i++) {
+          for (let i = Math.max(0, checkIdx - 1); i < beats.length && beats[i] - e < VIEW; i++) {
             if (!dotEls[n]) { dotEls[n] = el('<i></i>'); dots.appendChild(dotEls[n]); }
             const d = dotEls[n];
             const off = (beats[i] - e) * pxPerMs;
