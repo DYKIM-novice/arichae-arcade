@@ -1174,12 +1174,13 @@
   }
   // 모두 저작권이 끝난 옛 동요·클래식 (우리 박자로 직접 옮겨 적음)
   const SONGS = [
-    { name: '반짝반짝 작은 별', bpm: 108, notes: 'C5 C5 G5 G5 A5 A5 G5:2 F5 F5 E5 E5 D5 D5 C5:2 G5 G5 F5 F5 E5 E5 D5:2' },
-    { name: '떴다 떴다 비행기', bpm: 116, notes: 'E5 D5 C5 D5 E5 E5 E5:2 D5 D5 D5:2 E5 G5 G5:2 E5 D5 C5 D5 E5 E5 E5:2 D5 D5 E5 D5 C5:2' },
-    { name: '나비야', bpm: 96, notes: 'G5:.5 E5:.5 E5 F5:.5 D5:.5 D5 C5:.5 D5:.5 E5:.5 F5:.5 G5:.5 G5:.5 G5 G5:.5 E5:.5 E5 F5:.5 D5:.5 D5 C5:.5 E5:.5 G5:.5 G5:.5 C5:2' },
-    { name: '환희의 송가', bpm: 120, notes: 'E5 E5 F5 G5 G5 F5 E5 D5 C5 C5 D5 E5 E5:1.5 D5:.5 D5:2 E5 E5 F5 G5 G5 F5 E5 D5 C5 C5 D5 E5 D5:1.5 C5:.5 C5:2' },
-    { name: '징글벨', bpm: 126, notes: 'E5 E5 E5:2 E5 E5 E5:2 E5 G5 C5:1.5 D5:.5 E5:2 F5 F5 F5:1.5 F5:.5 F5 E5 E5 E5:.5 E5:.5 G5 G5 F5 D5 C5:2' },
-    { name: '엘리제를 위하여', bpm: 66, notes: 'E6:.5 D#6:.5 E6:.5 D#6:.5 E6:.5 B5:.5 D6:.5 C6:.5 A5:1.5 C5:.5 E5:.5 A5:.5 B5:1.5 E5:.5 G#5:.5 B5:.5 C6:1.5' }
+    { name: '작은 별 변주곡 · 모차르트', bpm: 104, notes: 'C5 C5 G5 G5 A5 A5 G5:2 F5 F5 E5 E5 D5 D5 C5:2 G5 G5 F5 F5 E5 E5 D5:2' },
+    { name: '환희의 송가 · 베토벤', bpm: 116, notes: 'E5 E5 F5 G5 G5 F5 E5 D5 C5 C5 D5 E5 E5:1.5 D5:.5 D5:2 E5 E5 F5 G5 G5 F5 E5 D5 C5 C5 D5 E5 D5:1.5 C5:.5 C5:2' },
+    { name: '엘리제를 위하여 · 베토벤', bpm: 64, notes: 'E6:.5 D#6:.5 E6:.5 D#6:.5 E6:.5 B5:.5 D6:.5 C6:.5 A5:1.5 C5:.5 E5:.5 A5:.5 B5:1.5 E5:.5 G#5:.5 B5:.5 C6:1.5' },
+    { name: '미뉴에트 G장조 · 바흐', bpm: 100, notes: 'D6 G5:.5 A5:.5 B5:.5 C6:.5 D6 G5 G5 E6 C6:.5 D6:.5 E6:.5 F#6:.5 G6 G5 G5 C6 D6:.5 C6:.5 B5:.5 A5:.5 B5 C6:.5 B5:.5 A5:.5 G5:.5 F#5 G5:.5 A5:.5 B5:.5 G5:.5 A5:3' },
+    { name: '자장가 · 브람스', bpm: 84, notes: 'E5:.5 E5:.5 G5:2 E5:.5 E5:.5 G5:2 E5:.5 G5:.5 C6 B5:1.5 A5:.5 A5 G5 D5:.5 E5:.5 F5 D5 D5:.5 E5:.5 F5:2 D5:.5 F5:.5 B5:.5 A5:.5 G5 B5 C6:3' },
+    { name: '터키 행진곡 · 모차르트', bpm: 54, notes: 'B5:.25 A5:.25 G#5:.25 A5:.25 C6 D6:.25 C6:.25 B5:.25 C6:.25 E6 F6:.25 E6:.25 D#6:.25 E6:.25 B6:.25 A6:.25 G#6:.25 A6:.25 B6:.25 A6:.25 G#6:.25 A6:.25 C7:2' },
+    { name: '캐논 · 파헬벨', bpm: 92, notes: 'F#6:2 E6:2 D6:2 C#6:2 B5:2 A5:2 B5:2 C#6:2 D6 C#6 B5 A5 G5 F#5 G5 E5' }
   ].map((s) => {
     const notes = parseTune(s.notes);
     const uniq = Array.from(new Set(notes.map((n) => n.midi))).sort((a, b) => a - b);
@@ -1191,10 +1192,10 @@
   const rhythm = {
     id: 'rhythm', title: '오르골 리듬', cat: '리듬', catColor: 'b', dur: 40,
     buttons: ['r', 'g', 'b'], music: false, pressSound: false,
-    rules: ['음표가 선에 닿을 때 같은 줄 버튼!', '잘 맞히면 오르골 소리로 노래가 연주돼요', '낮은 음은 왼쪽, 높은 음은 오른쪽이에요'],
+    rules: ['음표가 선에 닿을 때 같은 줄 버튼!', '잘 맞히면 오르골 소리로 클래식이 연주돼요', '낮은 음은 왼쪽, 높은 음은 오른쪽이에요'],
     illus() {
       return `<div class="il-row" style="gap:14px"><div class="il-rhythm">${COLS.map((c, i) => `<div class="ir-lane"><i style="background:${HEX[c]};top:${20 + i * 22}%"></i><b style="border-color:${HEX[c]}"></b></div>`).join('')}</div>
-        <div class="il-cap" style="text-align:left">♪ 반짝반짝 작은 별<br>♪ 환희의 송가<br>♪ 징글벨 …</div></div>`;
+        <div class="il-cap" style="text-align:left">♪ 환희의 송가<br>♪ 엘리제를 위하여<br>♪ 터키 행진곡 …</div></div>`;
     },
     create(ctx) {
       const R = rng(ctx.seed);
@@ -1554,7 +1555,7 @@
   const dino = {
     id: 'dino', title: '공룡 발걸음', cat: '박자', catColor: 'y', dur: 30,
     buttons: ['r', 'b'], music: false, pressSound: false,
-    rules: ['쿵! 박자에 맞춰 왼발(빨강)·오른발(파랑)', '번갈아 정확히 밟을수록 멀리 가요', '점점 빨라져요!'],
+    rules: ['쿵! 박자에 맞춰 왼발(빨강)·오른발(파랑)', '번갈아 정확히 밟을수록 멀리 가요', '조금씩 빨라져요!'],
     illus() {
       return `<div class="il-row il-race"><div style="width:90px">${DINO_SVG}</div>${ilBtn('r', '왼발')}${ilBtn('b', '오른발')}</div>`;
     },
@@ -1565,7 +1566,7 @@
       let k = 0;
       while (bt < D - 300) {
         beats.push(bt);
-        bt += Math.max(360, 640 - k * 8);
+        bt += Math.max(560, 820 - k * 5);   // 처음 0.82초 간격 → 천천히 빨라져서 최소 0.56초
         k++;
       }
       const used = new Set();
