@@ -1455,8 +1455,38 @@
     }
   };
 
-  Object.assign(G.ALL, { light, paint, history, fishing, space, tree, periodic });
-  G.EDU = ['light', 'paint', 'history', 'fishing', 'space', 'tree', 'periodic'];
+
+  /* ================================================================
+     8. 오르골 연주회 (음악관) — 초·중 (오락실의 오르골 리듬과 같은 게임)
+     ================================================================ */
+  const music = {
+    id: 'music', edu: true,
+    icon: `<svg viewBox="0 0 40 40" aria-hidden="true"><rect x="5" y="16" width="30" height="19" rx="3" fill="#C98B4F"/><rect x="5" y="16" width="30" height="5" fill="#A86B35"/><path d="M7 16 L11 6 L33 6 L33 16" fill="#E0A868"/><circle cx="20" cy="27" r="3.4" fill="#FFE27A"/><path d="M35 24 h3 v5 h-3" fill="none" stroke="#FFE27A" stroke-width="2"/><path d="M14 4 v-2 M20 4 v-3 M26 4 v-2" stroke="#FFE7B0" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+    hall: '음악관', title: '오르골 연주회', cat: '클래식 리듬', catColor: 'y', dur: 40,
+    levels: ['e', 'm'],
+    buttons: ['r', 'g', 'b'], music: false, pressSound: false,
+    rules(lv) {
+      return lv === 'e'
+        ? ['음표가 선에 닿을 때 같은 줄 버튼!', '맞히면 오르골 소리로 클래식이 연주돼요', '초등은 조금 느린 빠르기로 연주해요']
+        : ['음표가 선에 닿을 때 같은 줄 버튼!', '곡이 바뀔수록 조금씩 빨라져요', '낮은 음은 왼쪽, 높은 음은 오른쪽'];
+    },
+    illus() {
+      return `<div class="il-row" style="gap:16px"><div style="width:84px;height:84px">${music.icon}</div>
+        <div class="il-cap" style="text-align:left">♪ 환희의 송가 · 베토벤<br>♪ 터키 행진곡 · 모차르트<br>♪ 미뉴에트 · 바흐 …</div></div>`;
+    },
+    learn(lv) {
+      return lv === 'e'
+        ? '오르골은 작은 쇠빗을 핀이 하나씩 튕겨서 소리를 내요. 낮은 음은 긴 빗살, 높은 음은 짧은 빗살! 오늘 연주한 곡들은 200~300년 전에 만들어진 클래식이에요.'
+        : '베토벤은 귀가 거의 들리지 않게 된 뒤에 "환희의 송가"가 나오는 교향곡 9번을 완성했어요. 바흐는 "음악의 아버지", 모차르트는 다섯 살 때부터 작곡을 한 천재로 불려요.';
+    },
+    create(ctx) {
+      const base = G.ALL.rhythm;
+      return base.createWith(ctx, { speed: ctx.level === 'e' ? 0.82 : 1 });
+    }
+  };
+
+  Object.assign(G.ALL, { light, paint, history, fishing, space, tree, music, periodic });
+  G.EDU = ['light', 'paint', 'history', 'fishing', 'space', 'tree', 'music', 'periodic'];
   G.LEVEL_NAME = { e: '초등', m: '중등', h: '고등' };
   // 고른 난이도가 없는 게임은 가장 가까운 단계로
   G.effLevel = function (def, lv) {

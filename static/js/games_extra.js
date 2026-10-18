@@ -587,7 +587,7 @@
   const tug = {
     id: 'tug', title: '줄다리기', cat: '팀 연타', catColor: 'r', dur: 25,
     buttons: ['r', 'b'], pressSound: false,
-    rules: ['빨강팀과 파랑팀으로 자동으로 나뉘어요', '내 팀 색 버튼을 미친 듯이 연타!', '이긴 팀은 모두 +300 보너스'],
+    rules: ['빨강팀과 파랑팀으로 자동으로 나뉘어요', '팀 힘 = 팀원 평균 연타 수 (2대1이어도 공평)', '이긴 팀은 모두 +300 보너스'],
     illus() {
       return `<div class="il-row">${ilBtn('r', '빨강팀')}<div class="il-rope"></div>${ilBtn('b', '파랑팀')}</div>`;
     },
@@ -622,15 +622,23 @@
       const stateEl = wrap.querySelector('.tg-state');
       const rateEl = wrap.querySelector('.tg-me em');
 
+      // 팀 힘 = 실제로 하고 있는 팀원(접속 중이거나 한 번이라도 당긴 사람)의 평균 당김 수
+      // → 인원이 달라도(2대1) 공평하고, 접속이 끊긴 팀원 때문에 지지 않아요
       function teamPower(list, t) {
         const live = ctx.live();
         let sum = 0;
+        let n = 0;
         list.forEach((p) => {
-          if (p.pid === ctx.myPid) sum += taps;
-          else if (p.pid === '__cpu') sum += Math.max(0, (t - t0) / 1000) * 6.3;
-          else sum += live[p.pid] ? live[p.pid][1] : 0;
+          let v;
+          if (p.pid === ctx.myPid) v = taps;
+          else if (p.pid === '__cpu') v = Math.max(0, (t - t0) / 1000) * 6.3;
+          else v = live[p.pid] ? live[p.pid][1] : 0;
+          if (p.pid === ctx.myPid || p.pid === '__cpu' || p.connected !== false || v > 0) {
+            sum += v;
+            n++;
+          }
         });
-        return sum / list.length;
+        return n ? sum / n : 0;
       }
 
       return {
@@ -670,10 +678,11 @@
           const t = lastTick || t0;
           const diff = teamPower(teamA, t) - teamPower(teamB, t);
           const mine = myTeam === 'A' ? diff > 0 : diff < 0;
-          if (mine) bonus = 300;
-          stateEl.textContent = Math.abs(diff) < 0.5 ? '무승부!' : diff > 0 ? '빨강팀 승리!' : '파랑팀 승리!';
+          if (mine && Math.abs(diff) >= 0.5) bonus = 300;
+          stateEl.textContent = Math.abs(diff) < 1.5 ? '아슬아슬! 결과 발표에서 확인' : diff > 0 ? '빨강팀 승리!' : '파랑팀 승리!';
         },
-        score: () => taps * 10 + bonus,
+        // 이긴 팀 보너스(+300)는 서버가 모두 같은 기준으로 판정해서 더해요
+        score: () => taps * 10,
         value: () => taps,
         summary: () => `${taps}회 당김${bonus ? ' · 팀 승리 +300' : ''}`
       };
@@ -822,7 +831,7 @@
   const crane = {
     id: 'crane', title: '크레인 낙하', cat: '타이밍', catColor: 'y', dur: 35,
     buttons: ['r', 'g', 'b'],
-    rules: ['좌우로 움직이는 블록을 아무 버튼으로 떨어뜨려요', '아래 블록과 겹친 부분만 남아요', '딱 맞추면 퍼펙트! 크기 그대로'],
+    rules: ['좌우로 움직이는 블록을 아무 버튼으로 떨어뜨려요', '아래 블록과 겹친 부분만 남아요', '속도는 그대로! 딱 맞추면 퍼펙트'],
     illus() {
       return `<div class="il-crane"><div class="ic-hook"></div><div class="ic-b top"></div><div class="ic-b" style="width:70%"></div><div class="ic-b" style="width:80%"></div><div class="ic-b" style="width:86%"></div></div>`;
     },
@@ -899,7 +908,7 @@
           x: fromLeft ? 0 : W - w,
           w,
           dir: fromLeft ? 1 : -1,
-          speed: Math.min(W * 1.25, W * (0.42 + level * 0.045)),
+          speed: W * 0.5,   // 속도는 끝까지 그대로 (정확도 게임)
           color: PAL[(tower.length) % PAL.length],
           y: craneY
         };
@@ -1197,7 +1206,9 @@
       return `<div class="il-row" style="gap:14px"><div class="il-rhythm">${COLS.map((c, i) => `<div class="ir-lane"><i style="background:${HEX[c]};top:${20 + i * 22}%"></i><b style="border-color:${HEX[c]}"></b></div>`).join('')}</div>
         <div class="il-cap" style="text-align:left">♪ 환희의 송가<br>♪ 엘리제를 위하여<br>♪ 터키 행진곡 …</div></div>`;
     },
-    create(ctx) {
+    create(ctx) { return rhythm.createWith(ctx, {}); },
+    // 음악관(과학관 모드)에서도 같은 게임을 빠르기만 바꿔서 써요
+    createWith(ctx, opts) {
       const R = rng(ctx.seed);
       const D = durOf(ctx);
       const LEAD = 2200;
@@ -1212,7 +1223,7 @@
       const titles = [];
       const beats = [];
       let at = LEAD;
-      let speed = 1;
+      let speed = (opts && opts.speed) || 1;
       for (let k = 0; at < D - 3000; k++) {
         const song = order[k % order.length];
         const beatMs = 60000 / (song.bpm * speed);

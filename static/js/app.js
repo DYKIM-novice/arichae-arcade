@@ -1008,7 +1008,7 @@
       return;
     }
 
-    const players = activePlayers().map((p) => ({ pid: p.pid, name: p.name, animal: p.animal }));
+    const players = activePlayers().map((p) => ({ pid: p.pid, name: p.name, animal: p.animal, connected: p.connected }));
     const ctx = {
       seed: cur.seed,
       level: lv,

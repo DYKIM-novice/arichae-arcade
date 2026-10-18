@@ -452,7 +452,7 @@
     catColor: 'g',
     dur: 30,
     buttons: ['r', 'g', 'b'],
-    rules: ['불이 켜지면 같은 색 버튼을 빨리!', '회색 X 불은 함정, 참으면 +20', '불 켜지기 전에 누르면 반칙 -20'],
+    rules: ['불이 켜지면 같은 색 버튼을 빨리!', '갈수록 빨라지고 점수도 1.5배 → 2배!', '회색 X 불은 참기, 미리 누르면 반칙'],
     illus() {
       return `<div class="il-row il-lamps">
         <div class="il-lamp" style="background:${HEX.g};box-shadow:0 0 24px ${HEX.g}">${shape('g', 30)}</div>
@@ -470,6 +470,16 @@
       let score = 0;
       let best = 0;
       let times = [];
+      let t0 = 0;
+      let stage = 1;
+      const D = Math.max(5000, ctx.endAt - ctx.startAt);
+      // 3단계: 뒤로 갈수록 빨라지고 점수 배율이 올라가요
+      const STAGES = {
+        1: { mult: 1, delay: 1, late: 1500 },
+        2: { mult: 1.5, delay: 0.72, late: 1200 },
+        3: { mult: 2, delay: 0.5, late: 950 }
+      };
+      const st = () => STAGES[stage];
 
       ctx.stage.innerHTML = '';
       const wrap = el(`<div class="sg-wrap">
@@ -486,7 +496,7 @@
       const hist = wrap.querySelector('.sg-hist');
 
       function schedule(t, gap) {
-        const delay = 700 + R() * 1300;
+        const delay = (700 + R() * 1300) * st().delay;
         trap = R() < 0.2;
         color = COLS[Math.floor(R() * 3)];
         state = 'wait';
@@ -518,8 +528,17 @@
       }
 
       return {
-        start(t) { schedule(t, 300); say('불이 켜지면 눌러요', '#C9C3E6'); },
+        start(t) { t0 = t; schedule(t, 300); say('불이 켜지면 눌러요', '#C9C3E6'); ctx.setBadge('x1', 'g'); },
         tick(t) {
+          const ns = Math.min(3, 1 + Math.floor(((t - t0) / D) * 3));
+          if (ns !== stage) {
+            stage = ns;
+            ctx.setBadge('x' + st().mult, 'g');
+            const pt = center(ctx, lamp);
+            ctx.fx.float(`빨라져요! 점수 x${st().mult}`, pt.x, pt.y - 90, '#FFD23F', 26);
+            ctx.sfx.fanfare();
+            ctx.vibrate([20, 30, 20]);
+          }
           if (state === 'wait' && t >= nextAt) {
             state = trap ? 'trap' : 'on';
             onAt = t;
@@ -535,15 +554,16 @@
               say(KNAME[color] + '!', LIGHT[color]);
               ctx.sfx.lamp();
             }
-          } else if (state === 'on' && t - onAt > 1500) {
+          } else if (state === 'on' && t - onAt > st().late) {
             say('늦었어요', '#FF8B95');
             chip('늦음', 'miss');
             schedule(t, 400);
           } else if (state === 'trap' && t - onAt > 1200) {
-            score += 20;
+            const tg = Math.round(20 * st().mult);
+            score += tg;
             ctx.setScore(score);
-            say('잘 참았어요 +20', '#7DF0AE');
-            chip('+20', 'good');
+            say('잘 참았어요 +' + tg, '#7DF0AE');
+            chip('+' + tg, 'good');
             ctx.sfx.good();
             schedule(t, 300);
           } else if (state === 'show' && t >= nextAt) {
@@ -577,7 +597,7 @@
           } else if (state === 'on') {
             if (c === color) {
               const rt = Math.round(t - onAt);
-              const gain = Math.max(10, 100 - Math.floor(Math.max(0, rt - 150) / 8));
+              const gain = Math.round(Math.max(10, 100 - Math.floor(Math.max(0, rt - 150) / 8)) * st().mult);
               score += gain;
               times.push(rt);
               best = best ? Math.min(best, rt) : rt;

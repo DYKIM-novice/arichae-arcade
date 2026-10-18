@@ -40,6 +40,7 @@ PUBLIC_URL = os.environ.get("ARICHAE_PUBLIC_URL", "").strip().rstrip("/")
 TIME_SCALE = float(os.environ.get("ARICHAE_TIME_SCALE", "1") or "1")
 
 MAX_PLAYERS = 8
+TUG_BONUS = 300          # 줄다리기 이긴 팀 보너스
 INTRO_MS = 6000          # 미니게임 설명 + 3초 카운트다운
 RESULT_MS = 8000         # 결과 발표 화면
 GRACE_MS = 1500          # 플레이 종료 후 최종 점수 수신 대기
@@ -78,6 +79,7 @@ EDU_GAMES: Dict[str, int] = {
     "fishing": 35,   # 바다 낚시
     "space": 35,     # 행성 찾기 (우주관)
     "tree": 35,      # 진화 나무 오르기 (생명의 나무)
+    "music": 40,     # 오르골 연주회 (음악관)
     "periodic": 35,  # 주기율표 빨리 고르기
 }
 ALL_GAMES: Dict[str, int] = {**GAMES, **EDU_GAMES}
@@ -485,9 +487,35 @@ class Room:
         vals = {p.pid: [p.game_score, p.live_value] for p in self.active_players()}
         await self.broadcast({"t": "live", "g": self.index, "vals": vals, "now": now_ms()})
 
+    def apply_tug_bonus(self, active: List[Player]) -> None:
+        """줄다리기: 팀은 순서대로 번갈아 나누고, 팀 힘은 '실제로 하고 있는 사람'의 평균 당김 수.
+        이긴 팀 모두 +300 (모든 기기에서 같은 결과가 나오게 서버가 판정)."""
+        order = sorted(active, key=lambda p: p.order)
+        team_a = order[0::2]
+        team_b = order[1::2]
+
+        def power(team: List[Player]) -> float:
+            members = [p for p in team if p.connected or p.live_value > 0]
+            if not members:
+                return 0.0
+            return sum(p.live_value for p in members) / len(members)
+
+        a = power(team_a)
+        if team_b:
+            b = power(team_b)
+        else:
+            b = 6.3 * ALL_GAMES["tug"] * TIME_SCALE  # 혼자일 때는 로봇과 겨뤄요
+        if abs(a - b) < 0.5:
+            return
+        for p in team_a if a > b else team_b:
+            p.game_score += TUG_BONUS
+            p.played = True
+
     def compute_result(self) -> None:
         active = self.active_players()
         prev_rank = {s["pid"]: s["rank"] for s in self.standings}
+        if self.sequence[self.index] == "tug":
+            self.apply_tug_bonus(active)
 
         ordered = sorted(active, key=lambda p: (-p.game_score, p.order))
         rows = []
