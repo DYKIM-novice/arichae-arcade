@@ -1033,8 +1033,6 @@
     S.inst = S.def.create(ctx);
     S.started = true;
     S.inst.start(t);
-    fitStage(true);
-    requestAnimationFrame(() => fitStage(true));
     requestAnimationFrame(fitStage);
     showGo();
     SND.SFX.go();
@@ -1170,28 +1168,8 @@
         send({ t: 'prog', g: S.playIndex, score: sc, v: S.inst.value() });
       }
       if (t >= cur.endAt) finishPlay();
-      if (pn - (S.lastFit || 0) > 400) { S.lastFit = pn; fitStage(false); }
     }
     renderRivals(false);
-  }
-
-  /* 화면이 작은 폰(카톡 안 브라우저 등)에서 게임 내용이 잘리면 자동으로 줄여서 다 보이게 */
-  function fitStage(reset) {
-    const wrap = $('#stage').firstElementChild;
-    if (!wrap) return;
-    const kids = Array.from(wrap.children).filter((k) => {
-      const pos = getComputedStyle(k).position;
-      return pos !== 'absolute' && pos !== 'fixed';
-    });
-    if (!kids.length) return;
-    if (reset) kids.forEach((k) => { k.style.zoom = ''; });
-    const have = wrap.clientHeight;
-    const need = wrap.scrollHeight;
-    if (need > have + 2) {
-      const cur = parseFloat(kids[0].style.zoom) || 1;
-      const f = Math.max(0.55, cur * (have / need) * 0.98);
-      kids.forEach((k) => { k.style.zoom = String(f); });
-    }
   }
 
   /* ---------- 효과 ---------- */
