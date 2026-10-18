@@ -1024,7 +1024,7 @@
   const count = {
     id: 'count', title: '숫자 세기', cat: '관찰', catColor: 'g', dur: 40,
     buttons: ['r', 'g', 'b'],
-    rules: ['여러 도형이 화면을 지나가요', '물어보는 도형이 몇 개였는지 세요', '정답이 적힌 버튼을 눌러요'],
+    rules: ['여러 도형이 화면을 지나가요', '물어보는 도형이 몇 개였는지 세요', '처음엔 조금, 갈수록 많아져요'],
     illus() {
       return `<div class="il-row" style="flex-wrap:wrap;gap:8px;max-width:260px">${['r', 'b', 'r', 'g', 'b', 'r', 'g'].map((c) => `<div style="width:30px;height:30px">${FILLED[c](HEX[c])}</div>`).join('')}
         <div class="il-cap" style="width:100%">빨강 동그라미는 몇 개?</div></div>`;
@@ -1059,7 +1059,8 @@
       function newRound(t) {
         round++;
         roundEl.textContent = round;
-        const n = Math.min(18, 7 + round * 2) + Math.floor(R() * 3);
+        // 처음엔 4~5개로 시작해서 문제마다 2개씩 늘어나요 (최대 15개)
+        const n = Math.min(14, 2 + round * 2) + Math.floor(R() * 2);
         objs = [];
         field.innerHTML = '';
         for (let i = 0; i < n; i++) {
@@ -1213,21 +1214,17 @@
       const D = durOf(ctx);
       const LEAD = 2200;
       const FALL = 1500;
-      // 노래 순서를 섞고, 시간이 될 때까지 이어서 연주 (갈수록 조금씩 빨라짐)
-      const order = SONGS.slice();
-      for (let i = order.length - 1; i > 0; i--) {
-        const j = Math.floor(R() * (i + 1));
-        [order[i], order[j]] = [order[j], order[i]];
-      }
+      // 랜덤으로 한 곡만 골라서, 시간이 될 때까지 그 곡을 반복 연주해요
+      const theSong = SONGS[Math.floor(R() * SONGS.length)];
       const notes = [];
       const titles = [];
       const beats = [];
       let at = LEAD;
       let speed = (opts && opts.speed) || 1;
       for (let k = 0; at < D - 3000; k++) {
-        const song = order[k % order.length];
+        const song = theSong;
         const beatMs = 60000 / (song.bpm * speed);
-        titles.push({ at: at - beatMs * 2, name: song.name });
+        if (k === 0) titles.push({ at: at - beatMs * 2, name: song.name });
         let t = at;
         let b = 0;
         song.tune.forEach((n) => {
@@ -1235,8 +1232,7 @@
           t += n.beats * beatMs;
         });
         for (let x = at; x < t && x < D - 1200; x += beatMs) beats.push({ at: x, accent: b++ % 4 === 0 });
-        at = t + beatMs * 2.5;
-        speed *= 1.07;
+        at = t + beatMs * 2;
       }
       notes.forEach((n) => { n.state = 'wait'; n.el = null; });
       let t0 = 0;
@@ -1566,7 +1562,7 @@
   const dino = {
     id: 'dino', title: '공룡 발걸음', cat: '박자', catColor: 'y', dur: 30,
     buttons: ['r', 'b'], music: false, pressSound: false,
-    rules: ['쿵! 박자에 맞춰 왼발(빨강)·오른발(파랑)', '번갈아 정확히 밟을수록 멀리 가요', '조금씩 빨라져요!'],
+    rules: ['쿵! 박자에 맞춰 왼발(빨강)·오른발(파랑)', '동그라미 색이 눌러야 할 버튼이에요', '점점 빨라져요!'],
     illus() {
       return `<div class="il-row il-race"><div style="width:90px">${DINO_SVG}</div>${ilBtn('r', '왼발')}${ilBtn('b', '오른발')}</div>`;
     },
@@ -1577,10 +1573,11 @@
       let k = 0;
       while (bt < D - 300) {
         beats.push(bt);
-        bt += Math.max(560, 820 - k * 5);   // 처음 0.82초 간격 → 천천히 빨라져서 최소 0.56초
+        bt += Math.max(360, 640 - k * 8);
         k++;
       }
       const used = new Set();
+      const usedFoot = {};
       let t0 = 0;
       let lastFoot = null;
       let dist = 0;
@@ -1605,6 +1602,7 @@
       const dinoEl = wrap.querySelector('.dn-dino');
       const infoB = wrap.querySelector('.dn-info b');
       const nextEl = wrap.querySelector('.dn-next');
+      const centerEl = wrap.querySelector('.dn-center');
       const dotEls = [];
 
       function nextFootLabel() {
@@ -1643,15 +1641,22 @@
           const cx = W / 2;
           const pxPerMs = (W / 2 - 14) / 1500;
           let n = 0;
+          // 아직 안 밟은 박자는 번갈아 나올 발 색으로 미리 보여줘요 (다음 발 = 마지막 발의 반대)
+          let expect = lastFoot === 'r' ? 'b' : 'r';
           for (let i = Math.max(0, checkIdx - 1); i < beats.length && beats[i] - e < 1500; i++) {
             if (!dotEls[n]) { dotEls[n] = el('<i></i>'); dots.appendChild(dotEls[n]); }
             const d = dotEls[n];
             const off = (beats[i] - e) * pxPerMs;
             d.style.transform = `translateX(${cx + off}px)`;
-            d.className = used.has(i) ? 'done' : (i % 4 === 0 ? 'acc' : '');
+            let foot;
+            if (used.has(i)) foot = usedFoot[i];
+            else if (beats[i] < e - 200) foot = null;
+            else { foot = expect; expect = expect === 'r' ? 'b' : 'r'; }
+            d.className = (used.has(i) ? 'done ' : '') + (i % 4 === 0 ? 'acc ' : '') + (foot ? 'f-' + foot : 'gone');
             d.style.display = '';
             n++;
           }
+          centerEl.className = 'dn-center f-' + (lastFoot === 'r' ? 'b' : 'r');
           for (let j = n; j < dotEls.length; j++) dotEls[j].style.display = 'none';
           ground.style.backgroundPositionX = (-scroll) + 'px';
           hills.style.backgroundPositionX = (-scroll * 0.3) + 'px';
@@ -1673,6 +1678,7 @@
             return;
           }
           used.add(bi);
+          usedFoot[bi] = c;
           if (c === lastFoot) {
             combo = 0;
             step(0.5, c);
