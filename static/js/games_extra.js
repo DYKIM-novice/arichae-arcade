@@ -1197,8 +1197,16 @@
     const notes = parseTune(s.notes);
     const uniq = Array.from(new Set(notes.map((n) => n.midi))).sort((a, b) => a - b);
     // 낮은 음 = 왼쪽(빨강), 가운데 음 = 가운데(초록), 높은 음 = 오른쪽(파랑)
-    notes.forEach((n) => { n.lane = Math.min(2, Math.floor((uniq.indexOf(n.midi) * 3) / uniq.length)); });
-    return Object.assign({}, s, { tune: notes });
+    const laneOf = (n) => { n.lane = Math.min(2, Math.floor((uniq.indexOf(n.midi) * 3) / uniq.length)); };
+    notes.forEach(laneOf);
+    const out = Object.assign({}, s, { tune: notes });
+    if (s.hard) {
+      // 원곡 리듬 악보: 쉬운 악보에 없는 음이 있어도 높낮이 순서대로 줄을 나눠요
+      out.hardTune = parseTune(s.hard);
+      const all = Array.from(new Set(out.hardTune.map((n) => n.midi).concat(uniq))).sort((a, b) => a - b);
+      out.hardTune.forEach((n) => { n.lane = Math.min(2, Math.floor((all.indexOf(n.midi) * 3) / all.length)); });
+    }
+    return out;
   }
 
   // 음악관용 긴 버전: 악보의 도돌이표·형식대로 한 곡을 끝까지 (약 45~55초)
@@ -1214,6 +1222,16 @@
   const EL_T2 = 'E6:.5 D#6:.5 E6:.5 D#6:.5 E6:.5 B5:.5 D6:.5 C6:.5 A5:1.5 C5:.5 E5:.5 A5:.5 B5:1.5 E5:.5 C6:.5 B5:.5 A5:1.5';
   const EL_M = 'B5:.5 C6:.5 D6:.5 E6:1.5 G5:.5 F6:.5 E6:.5 D6:1.5 F5:.5 E6:.5 D6:.5 C6:1.5 E5:.5 D6:.5 C6:.5 B5:1.5 E5:.5';
   const BR_A = 'E5:.5 E5:.5 G5:2 E5:.5 E5:.5 G5:2 E5:.5 G5:.5 C6 B5:1.5 A5:.5 A5 G5 D5:.5 E5:.5 F5 D5 D5:.5 E5:.5 F5:2 D5:.5 F5:.5 B5:.5 A5:.5 G5 B5 C6:3';
+  // 비발디 「사계」: Mutopia Project 공개 악보(퍼블릭 도메인)의 바이올린 선율을 그대로 옮겼어요.
+  // VV_* = 16분음표를 8분음표로 줄인 쉬운 악보, VV_*_X = 원곡 리듬 그대로 (특상)
+  const VV_SPRING = 'E5:.5 G#5:.5 G#5:.5 G#5:.5 F#5:.5 B5:1.5 A5:.5 G#5:.5 G#5:.5 G#5:.5 F#5:.5 B5:1.5 A5:.5 G#5:.5 B5:.5 A5:.5 G#5:.5 F#5:.5 D#5:.5 B4:.5 E5:.5 G#5:.5 G#5:.5 G#5:.5 F#5:.5 B5:1.5 A5:.5 G#5:.5 G#5:.5 G#5:.5 F#5:.5 B5:1.5 A5:.5 G#5:.5 B5:.5 A5:.5 G#5:.5 F#5:1.5 E5:.5 B5:.5 G#5:.5 A5:.5 B5:.5 C#6:.5 B5 E5:.5 B5:.5 G#5:.5 A5:.5 B5:.5 C#6:.5 B5 E5:.5 C#6:.5 B5 A5:.5 G#5:.5 E5:.5 F#5 E5:1.5 E5:.5 B5:.5 G#5:.5 A5:.5 B5:.5 C#6:.5 B5 E5:.5 B5:.5 G#5:.5 A5:.5 B5:.5 C#6:.5 B5 E5:.5 C#6:.5 B5 A5:.5 G#5:.5 E5:.5 F#5 E5:2 G#5:.5 B5:.5 A5:.5 G#5:.5 F#5:1.5 E5:.5 B5:.5 G#5:.5 A5:.5 B5:.5 C#6:.5 B5 E5:.5 B5:.5 G#5:.5 A5:.5 B5:.5 C#6:.5 B5 E5:.5 C#6:.5 B5 A5:.5 G#5:.5 E5:.5 F#5 E5:1.5 E5:.5 B5:.5 G#5:.5 A5:.5 B5:.5 C#6:.5 B5 E5:.5 B5:.5 G#5:.5 A5:.5 B5:.5 C#6:.5 B5 E5:.5 C#6:.5 B5 A5:.5 G#5:.5 E5:.5 F#5 E5:2';
+  const VV_SPRING_X = 'E5:.5 G#5:.5 G#5:.5 G#5:.5 F#5:.25 E5:.25 B5:1.5 B5:.25 A5:.25 G#5:.5 G#5:.5 G#5:.5 F#5:.25 E5:.25 B5:1.5 B5:.25 A5:.25 G#5:.5 A5:.25 B5:.25 A5:.5 G#5:.5 F#5:.5 D#5:.5 B4:.5 E5:.5 G#5:.5 G#5:.5 G#5:.5 F#5:.25 E5:.25 B5:1.5 B5:.25 A5:.25 G#5:.5 G#5:.5 G#5:.5 F#5:.25 E5:.25 B5:1.5 B5:.25 A5:.25 G#5:.5 A5:.25 B5:.25 A5:.5 G#5:.5 F#5:1.5 E5:.5 B5:.5 A5:.25 G#5:.25 A5:.5 B5:.5 C#6:.5 B5 E5:.5 B5:.5 A5:.25 G#5:.25 A5:.5 B5:.5 C#6:.5 B5 E5:.5 C#6:.5 B5 A5:.5 G#5:.5 F#5:.25 E5:.25 F#5 E5:1.5 E5:.5 B5:.5 A5:.25 G#5:.25 A5:.5 B5:.5 C#6:.5 B5 E5:.5 B5:.5 A5:.25 G#5:.25 A5:.5 B5:.5 C#6:.5 B5 E5:.5 C#6:.5 B5 A5:.5 G#5:.5 F#5:.25 E5:.25 F#5 E5:2 G#5:.5 A5:.25 B5:.25 A5:.5 G#5:.5 F#5:1.5 E5:.5 B5:.5 A5:.25 G#5:.25 A5:.5 B5:.5 C#6:.5 B5 E5:.5 B5:.5 A5:.25 G#5:.25 A5:.5 B5:.5 C#6:.5 B5 E5:.5 C#6:.5 B5 A5:.5 G#5:.5 F#5:.25 E5:.25 F#5 E5:1.5 E5:.5 B5:.5 A5:.25 G#5:.25 A5:.5 B5:.5 C#6:.5 B5 E5:.5 B5:.5 A5:.25 G#5:.25 A5:.5 B5:.5 C#6:.5 B5 E5:.5 C#6:.5 B5 A5:.5 G#5:.5 F#5:.25 E5:.25 F#5 E5:2';
+  const VV_SUMMER = 'G4:.5 G3:.5 G3 G3 F4:.5 G3:.5 G3 G3 D#4:.5 G3:.5 G3 G3 D4:.5 G3:.5 G3 G3 D5:.5 D4:.5 D4 D4 C5:.5 D4:.5 D4 D4 A#4:.5 D4:.5 D4 D4 A4:.5 D4:.5 D4 D4 D5:.5 C5:.5 A4:.5 F#4:.5 D4:.5 A#3:.5 G3 G3 G3 G5:.5 F5:.5 D5:.5 A#4:.5 G4:.5 D#4:.5 C4 C4 C4 A#5:.5 A5:.5 F5:.5 D5:.5 A#4:.5 G4:.5 D#4 D#4 D#4 D6:.5 C6:.5 A5:.5 F#5:.5 D5:.5 A#4:.5 G4 G4 G4 D6:.5 C6:.5 A5:.5 F#5:.5 D5:.5 A#4:.5 G4 G4 G4 D5:.5 G4:.5 D5:.5 G4:.5 D5:.5 G4:.5 D4:.5 A#4:.5 D5:.5 F#5:.5 A5 A4:.5 A#4:.5 D5:.5 F#5:.5 A5 A#4:.5 C5:.5 D#5:.5 G5:.5 A#5 D5:.5 E5:.5 G5:.5 A#5:.5 D6 D5:.5 E5:.5 G5:.5 A#5:.5 D6 A4:.5 A#4:.5 D5:.5 F#5:.5 A5 A#4:.5 C5:.5 D#5:.5 G5:.5 A#5 D5:.5 E5:.5 G5:.5 A#5:.5 D6 A#5:.5 D5:.5 A#5:.5 D5:.5 A#5:.5 A#4:.5 D5:.5 G4:.5 D5:.5 G4:.5 D5:.5 D4:.5 G4:.5 A#3:.5 G4:.5 A#3:.5 G4:.5 G3:2.25';
+  const VV_SUMMER_X = 'G4:.5 G3:.5 G3:.5 G3:.5 G3:.5 G3:.5 F4:.5 G3:.5 G3:.5 G3:.5 G3:.5 G3:.5 D#4:.5 G3:.5 G3:.5 G3:.5 G3:.5 G3:.5 D4:.5 G3:.5 G3:.5 G3:.5 G3 D5:.5 D4:.5 D4:.5 D4:.5 D4:.5 D4:.5 C5:.5 D4:.5 D4:.5 D4:.5 D4:.5 D4:.5 A#4:.5 D4:.5 D4:.5 D4:.5 D4:.5 D4:.5 A4:.5 D4:.5 D4:.5 D4:.5 D4 D5:.5 C5:.5 A4:.5 F#4:.5 D4:.5 A#3:.5 G3:.5 G3:.5 G3:.5 G3:.5 G3:.5 G3:.5 G5:.5 F5:.5 D5:.5 A#4:.5 G4:.5 D#4:.5 C4:.5 C4:.5 C4:.5 C4:.5 C4:.5 C4:.5 A#5:.5 A5:.5 F5:.5 D5:.5 A#4:.5 G4:.5 D#4:.5 D#4:.5 D#4:.5 D#4:.5 D#4:.5 D#4:.5 D6:.5 C6:.5 A5:.5 F#5:.5 D5:.5 A#4:.5 G4:.5 G4:.5 G4:.5 G4:.5 G4:.5 G4:.5 D6:.5 C6:.5 A5:.5 F#5:.5 D5:.5 A#4:.5 G4:.5 G4:.5 G4:.5 G4:.5 G4:.5 G4:.5 D5:.5 G4:.5 D5:.5 G4:.5 D5:.5 G4:.5 D4:.5 A#4:.5 D5:.5 F#5:.5 A5 A4:.5 A#4:.5 D5:.5 F#5:.5 A5 A#4:.5 C5:.5 D#5:.5 G5:.5 A#5 D5:.5 E5:.5 G5:.5 A#5:.5 D6 D5:.5 E5:.5 G5:.5 A#5:.5 D6 A4:.5 A#4:.5 D5:.5 F#5:.5 A5 A#4:.5 C5:.5 D#5:.5 G5:.5 A#5 D5:.5 E5:.5 G5:.5 A#5:.5 D6 A#5:.5 D5:.5 A#5:.5 D5:.5 A#5:.5 A#4:.5 D5:.5 G4:.5 D5:.5 G4:.5 D5:.5 D4:.5 G4:.5 A#3:.5 G4:.5 A#3:.5 G4:.5 G3:2.25';
+  const VV_AUTUMN = 'A5:.5 A5:.5 A5:.5 A#5:.5 A5 A5:.5 A#5:.5 A5:.5 A5:.5 A5:.5 A5:.5 A#5 A5:.5 A#5:.5 A5:.5 G5:.5 A#5:.5 A5:.5 G5:2 A4:.5 A4:.5 A4:.5 A#4:.5 A4 A4:.5 A#4:.5 A4:.5 A4:.5 A4:.5 A#4:.5 A4 A4:.5 A#4:.5 A4:.5 G4:.5 A#4:.5 A4:.5 G4:2 A5:.5 A5:.5 A5:.5 C6:.5 D5 D5:.5 D5:.5 G5:.5 G5:.5 G5:.5 A#5:.5 C5 C5:.5 F5:.5 A5:.5 A5:.5 A5:.5 A#5:.5 A5:.5 A5:.5 A5:.5 A#5:.5 A5:.5 A5:.5 A5:.5 A#5:.5 A5:.5 G5:.5 A#5:.5 G5:.5 A5:2 A4:.5 A4:.5 A4:.5 A#4:.5 A4:.5 A4:.5 A4:.5 A#4:.5 A4:.5 A4:.5 A4:.5 A#4:.5 A4:.5 G4:.5 A#4:.5 G4:.5 F4:2 A5:.5 A5:.5 A5:.5 C6:.5 D5 D5:.5 D5:.5 G5:.5 G5:.5 G5:.5 A#5:.5 C5 C5:.5 F5:.5 A5:.5 A5:.5 A5:.5 A#5:.5 A5:.5 A5:.5 A5:.5 A#5:.5 A5:.5 A5:.5 A5:.5 A#5:.5 A5:.5 G5:.5 A#5:.5 G5:.5 A5:2 A4:.5 A4:.5 A4:.5 A#4:.5 A4:.5 A4:.5 A4:.5 A#4:.5 A4:.5 A4:.5 A4:.5 A#4:.5 A4:.5 G4:.5 A#4:.5 G4:.5 F4:2';
+  const VV_AUTUMN_X = 'A5:.5 A5:.5 A5:.5 A#5:.5 A5 A5:.5 A#5:.5 A5:.5 A5:.5 A5:.5 A5:.5 A#5 A5:.5 A#5:.5 A5:.5 G5:.25 A5:.25 A#5:.5 A5:.5 G5:2 A4:.5 A4:.5 A4:.5 A#4:.5 A4 A4:.5 A#4:.5 A4:.5 A4:.5 A4:.5 A#4:.5 A4 A4:.5 A#4:.5 A4:.5 G4:.25 A4:.25 A#4:.5 A4:.5 G4:2 A5:.5 A5:.5 A5:.5 C6:.5 D5 D5:.5 D5:.5 G5:.5 G5:.5 G5:.5 A#5:.5 C5 C5:.5 F5:.5 A5:.5 A5:.5 A5:.5 A#5:.5 A5:.5 A5:.5 A5:.5 A#5:.5 A5:.5 A5:.5 A5:.5 A#5:.5 A5:.5 G5:.25 A5:.25 A#5:.5 G5:.5 A5:2 A4:.5 A4:.5 A4:.5 A#4:.5 A4:.5 A4:.5 A4:.5 A#4:.5 A4:.5 A4:.5 A4:.5 A#4:.5 A4:.5 G4:.25 A4:.25 A#4:.5 G4:.5 F4:2 A5:.5 A5:.5 A5:.5 C6:.5 D5 D5:.5 D5:.5 G5:.5 G5:.5 G5:.5 A#5:.5 C5 C5:.5 F5:.5 A5:.5 A5:.5 A5:.5 A#5:.5 A5:.5 A5:.5 A5:.5 A#5:.5 A5:.5 A5:.5 A5:.5 A#5:.5 A5:.5 G5:.25 A5:.25 A#5:.5 G5:.5 A5:2 A4:.5 A4:.5 A4:.5 A#4:.5 A4:.5 A4:.5 A4:.5 A#4:.5 A4:.5 A4:.5 A4:.5 A#4:.5 A4:.5 G4:.25 A4:.25 A#4:.5 G4:.5 F4:2';
+  const VV_WINTER = 'D#5:.5 A#5:.5 G5:.5 D#5:.5 F5:.5 A#4 A#4:.5 G#5:.5 F5:.5 D5:.5 G#5:.5 G#5:.5 G5 G5:.5 F5:.5 G5:.5 A#5:.5 C6:.5 D#5:.5 F5:.5 G#5:.5 A#5:.5 D5:.5 D#5:.5 G5:.5 G#5:.5 C5:.5 D5:.5 F5:.5 G5:.5 D5 A#4:.5 A4:.5 F5 A#4:.5 A4:.5 G5 A#4:.5 A4:.5 A5 F5:.5 D#5:.5 A#5:.5 A#4 A#5:.5 G#5:.5 G5:.5 D#5:.5 A#4:.5 C5:1.5 A#4:.5 A#4:2 A#4:.5 F5:.5 D5:.5 A#4:.5 C5:.5 F4 F4:.5 D#5:.5 C5:.5 A4:.5 D#5:.5 D#5:.5 D5 A#4:.5 G#5:.5 F5:.5 D5:.5 G#5:.5 G#5:.5 G5 G5:.5 C5:.5 D5:.5 F5:.5 G5:.5 D5:.5 D#5:.5 G5:.5 G#5:.5 D#5:.5 F5:.5 G#5:.5 A#5:.5 D5:1.5 D#5:.5 F5:.5 C5:.5 G5:.5 A#5:.5 F5:.5 A#4 D5:.5 F5:.5 C5:.5 G5:.5 A#5:.5 F5:.5 A#4 F5:.5 G5:.5 F5:.5 D5:.5 D#5:.5 D#5:2';
+  const VV_WINTER_X = 'D#5:.5 A#5:.25 G#5:.25 G5:.5 F5:.25 D#5:.25 F5:.5 A#4 A#4:.5 G#5:.25 G5:.25 F5:.25 D#5:.25 D5:.5 G#5:.5 G#5:.5 G5 G5:.5 F5:.5 G5:.25 G#5:.25 A#5:.5 C6:.25 D6:.25 D#5:.5 F5:.25 G5:.25 G#5:.5 A#5:.25 C6:.25 D5:.5 D#5:.25 F5:.25 G5:.5 G#5:.25 A#5:.25 C5:.5 D5:.25 D#5:.25 F5:.5 G5:.25 D#5:.25 D5:1.25 A#4:.25 A4:.25 A#4:.25 F5:1.25 A#4:.25 A4:.25 A#4:.25 G5:1.25 A#4:.25 A4:.25 A#4:.25 A5:1.25 F5:.25 D#5:.25 F5:.25 A#5:.5 A#4 A#5:.5 A#5:.25 G#5:.25 G5:.25 F5:.25 D#5:.25 D5:.25 C5:.25 A#4:.25 C5:1.5 A#4:.5 A#4:2 A#4:.5 F5:.25 D#5:.25 D5:.5 C5:.25 A#4:.25 C5:.5 F4 F4:.5 D#5:.25 D5:.25 C5:.25 A#4:.25 A4:.5 D#5:.5 D#5:.5 D5 A#4:.5 G#5:.25 G5:.25 F5:.25 D#5:.25 D5:.5 G#5:.5 G#5:.5 G5 G5:.5 C5:.5 D5:.25 D#5:.25 F5:.5 G5:.25 G#5:.25 D5:.5 D#5:.25 F5:.25 G5:.5 G#5:.25 A#5:.25 D#5:.5 F5:.25 G5:.25 G#5:.5 A#5:.25 C6:.25 D5:1.5 D5:.25 D#5:.25 F5:.25 D5:.25 C5:.25 A#4:.25 G5:.25 G#5:.25 A#5:.25 G5:.25 F5:.5 A#4 D5:.25 D#5:.25 F5:.25 D5:.25 C5:.25 A#4:.25 G5:.25 G#5:.25 A#5:.25 G5:.25 F5:.5 A#4 F5:.25 A#5:.25 G5:.5 F5:.25 D#5:.25 D5:.75 D#5:.25 D#5:2';
   const LONG_SONGS = [
     { id: 'twinkle', title: '작은 별 변주곡', composer: '모차르트', name: '작은 별 변주곡 · 모차르트', bpm: 108, notes: [TW_A, TW_A, TW_B, TW_A, TW_B, TW_A].join(' '),
       fact: '모차르트는 프랑스 동요 "아, 어머니께 말씀드릴게요"의 선율로 12개의 변주곡을 만들었어요. 우리가 아는 "반짝반짝 작은 별"과 같은 멜로디예요.' },
@@ -1224,7 +1242,15 @@
     { id: 'elise', title: '엘리제를 위하여', composer: '베토벤', name: '엘리제를 위하여 · 베토벤', bpm: 62, meter: 3, pickup: 1, notes: [EL_T1, EL_T2, EL_M, EL_T1, EL_T2].join(' '),
       fact: '베토벤이 1810년쯤 쓴 피아노 소품이에요. "엘리제"가 누구인지는 지금도 정확히 몰라요.' },
     { id: 'lullaby', title: '자장가', composer: '브람스', name: '자장가 · 브람스', bpm: 66, meter: 3, pickup: 1, notes: [BR_A, BR_A].join(' '),
-      fact: '브람스가 친구의 아기가 태어난 것을 축하하며 선물한 노래예요. 세계에서 가장 유명한 자장가 중 하나예요.' }
+      fact: '브람스가 친구의 아기가 태어난 것을 축하하며 선물한 노래예요. 세계에서 가장 유명한 자장가 중 하나예요.' },
+    { id: 'spring', title: '사계 · 봄 1악장', composer: '비발디', name: '사계 「봄」 1악장 · 비발디', bpm: 84, meter: 4, pickup: 0.5, notes: VV_SPRING, hard: VV_SPRING_X,
+      fact: '비발디는 「사계」의 악보마다 짧은 시(소네트)를 붙였어요. 봄 1악장에는 "새들의 노래", "흐르는 시냇물", "천둥"이 차례로 나와서 바이올린이 새소리와 천둥을 흉내 내요.' },
+    { id: 'summer', title: '사계 · 여름 3악장', composer: '비발디', name: '사계 「여름」 3악장 · 비발디', bpm: 100, meter: 3, pickup: 0, notes: VV_SUMMER, hard: VV_SUMMER_X,
+      fact: '여름 3악장은 여름날의 폭풍이에요. 같은 음을 아주 빠르게 되풀이하고 음계를 위에서 아래로 쏟아붓듯 연주해서 천둥·번개와 우박을 그려요.' },
+    { id: 'autumn', title: '사계 · 가을 1악장', composer: '비발디', name: '사계 「가을」 1악장 · 비발디', bpm: 88, meter: 4, pickup: 0, notes: VV_AUTUMN, hard: VV_AUTUMN_X,
+      fact: '가을 1악장 악보에는 "마을 사람들의 춤과 노래"라고 적혀 있어요. 추수를 끝낸 농부들이 풍년을 축하하며 춤추는 모습이에요. 크게(포르테) 한 번, 작게(피아노) 메아리처럼 한 번 되풀이해요.' },
+    { id: 'winter', title: '사계 · 겨울 2악장', composer: '비발디', name: '사계 「겨울」 2악장 · 비발디', bpm: 62, meter: 4, pickup: 0, notes: VV_WINTER, hard: VV_WINTER_X,
+      fact: '겨울 2악장(라르고)은 밖에 차가운 비가 내리는 날, 따뜻한 난롯가에서 쉬는 장면이에요. 뒤에서 현을 손가락으로 톡톡 튕기는 소리가 빗방울을 나타내요. 비발디는 머리가 붉어서 "빨간 머리 신부님"이라고 불렸어요.' }
   ].map(prepareSong);
   LONG_SONGS.forEach((s) => { s.sec = Math.round((s.tune.reduce((a, n) => a + n.beats, 0) * 60) / s.bpm); });
   G.MUSIC_SONGS = LONG_SONGS;
@@ -1243,7 +1269,7 @@
       const R = rng(ctx.seed);
       const D = durOf(ctx);
       const LEAD = 2200;
-      const FALL = 1500;
+      const FALL = opts && opts.long && opts.level === 'x' ? 1250 : 1500;
       // 랜덤으로 한 곡만 골라서 연주해요
       // 오락실: 짧은 곡을 시간이 될 때까지 반복 / 음악관(long): 긴 곡을 처음부터 끝까지 한 번
       const isLong = !!(opts && opts.long);
@@ -1279,16 +1305,31 @@
         const H = halfOf(T);
         // 하: 주제 + 음표 두 배 변주 / 중: 조금 빠르게, 높은 소리로 두 배 변주
         // 상: 처음부터 음표 두 배 + 마디 첫 박마다 두 줄을 같이 누르는 화음 음표
-        const sections = lv === 'e'
+        // 특상: 원곡 리듬(있으면) + 화음이 마디마다 두 번 + 더 빠르게, 음표도 빨리 떨어져요
+        const sections = lv === 'x'
+          ? [{ name: theSong.hardTune ? '주제 · 원곡 리듬 + 화음' : '주제 · 음표 두 배 + 화음', tune: theSong.hardTune || dbl(T), mul: 1, chord: 2 },
+            { name: '변주 · 높은 소리 + 화음', tune: up(dbl(H)), mul: 1.1, chord: 2 }]
+          : lv === 'e'
           ? [{ name: '주제', tune: T, mul: 1 }, { name: '변주 · 음표가 두 배로', tune: dbl(H), mul: 1 }]
           : lv === 'h'
             ? [{ name: '주제 · 음표 두 배', tune: dbl(T), mul: 1, chord: true }, { name: '변주 · 높은 소리 + 화음', tune: up(dbl(H)), mul: 1.08, chord: true }]
             : [{ name: '주제', tune: T, mul: 1 }, { name: '변주 · 높은 소리로 음표 두 배', tune: up(dbl(H)), mul: 1.05 }];
         const beatsOf = (tune) => tune.reduce((a, n) => a + n.beats, 0);
-        const totalMs = sections.reduce((a, sec) => a + ((beatsOf(sec.tune) + 2) * 60000) / (theSong.bpm * sec.mul), 0);
+        const msOf = (secs) => secs.reduce((a, sec) => a + ((beatsOf(sec.tune) + 2) * 60000) / (theSong.bpm * sec.mul), 0);
+        const avail = Math.max(5000, D - LEAD - 2500);
+        const floor = lv === 'x' ? 1 : lv === 'h' ? 0.95 : 0.88;
+        // 빠른 난이도에서 곡이 일찍 끝나 버리면 '피날레'로 주제 앞부분을 한 번 더 (약 1분 30초를 채워요)
+        if (msOf(sections) / avail < speed * floor * 0.85) {
+          const first = sections[0];
+          const last = sections[sections.length - 1];
+          const half = halfOf(first.tune);
+          const coda = [half, halfOf(half)]
+            .map((tune) => ({ name: '피날레 · 주제를 한 번 더', tune, mul: last.mul, chord: first.chord }))
+            .find((c) => msOf(sections.concat([c])) / avail <= speed);
+          if (coda) sections.push(coda);
+        }
         // 게임 시간에 맞게 빠르기를 살짝 조절 (상은 너무 느려지지 않게)
-        const need = totalMs / Math.max(5000, D - LEAD - 2500);
-        const floor = lv === 'h' ? 0.95 : 0.88;
+        const need = msOf(sections) / avail;
         speed = Math.min(Math.max(speed * 1.2, Math.min(need, 1.15)), Math.max(speed * floor, need));
         sections.forEach((sec, si) => {
           const beatMs = 60000 / (theSong.bpm * speed * sec.mul);
@@ -1302,7 +1343,8 @@
               // 화음: 마디 첫 박마다 한 옥타브 아래 음을 다른 줄에 같이
               const meter = theSong.meter || 4;
               const bp = (((pos - (theSong.pickup || 0)) % meter) + meter) % meter;
-              if (sec.chord && (bp < 0.01 || meter - bp < 0.01)) notes.push({ at: t, lane: n.lane === 0 ? 2 : 0, midi: n.midi - 12, chord: true });
+              const onBeat = bp < 0.01 || meter - bp < 0.01 || (sec.chord === 2 && Math.abs(bp - 2) < 0.01);
+              if (sec.chord && onBeat) notes.push({ at: t, lane: n.lane === 0 ? 2 : 0, midi: n.midi - 12, chord: true });
             }
             t += n.beats * beatMs;
             pos += n.beats;

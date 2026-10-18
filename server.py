@@ -85,8 +85,8 @@ EDU_GAMES: Dict[str, int] = {
 ALL_GAMES: Dict[str, int] = {**GAMES, **EDU_GAMES}
 EDU_PICKABLE = [g for g in EDU_GAMES if g != "music"]   # 과학관에서 고를 수 있는 게임 (음악은 음악관으로)
 # 음악관: 방장이 곡을 골라 순서대로 오르골 연주회
-MUSIC_SONGS = ("twinkle", "ode", "minuet", "elise", "lullaby")
-LEVELS = ("e", "m", "h")          # 초·중·고
+MUSIC_SONGS = ("twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter")
+LEVELS = ("e", "m", "h", "x")     # 초·중·고 (+ 음악관 특상)
 MAX_PICKS = 10
 
 # 오락실 모드에서 최근에 한 게임을 기억 (서버가 켜져 있는 동안, 모든 방 공통)
@@ -760,6 +760,9 @@ async def ws_session(ws: WebSocketConn) -> None:
                     songs = [str(g) for g in msg["songs"] if str(g) in MUSIC_SONGS]
                     room.songs = songs[:MAX_PICKS]
                     changed = True
+                # 특상(x)은 음악관에만 있어요 → 다른 모드에서는 고등으로
+                if room.mode != "music" and room.level == "x":
+                    room.level = "h"
                 if changed:
                     await room.broadcast_state()
 

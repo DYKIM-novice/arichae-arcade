@@ -715,10 +715,10 @@
   function renderMusicPanel(isHost, lv) {
     const room = S.room;
     const dis = isHost ? '' : 'disabled';
-    const mlv = ['e', 'm', 'h'].includes(lv) ? lv : 'm';
-    const MNAME = { e: ['하', '보통 빠르기'], m: ['중', '빠르게·높은 소리'], h: ['상', '두 배 음표+화음'] };
+    const mlv = ['e', 'm', 'h', 'x'].includes(lv) ? lv : 'm';
+    const MNAME = { e: ['하', '보통 빠르기'], m: ['중', '빠르게·높은 소리'], h: ['상', '두 배 음표+화음'], x: ['특상', '더 빠르게+화음 두 번'] };
     const songs = room.songs || [];
-    $('#mlevels').innerHTML = ['e', 'm', 'h'].map((k) =>
+    $('#mlevels').innerHTML = ['e', 'm', 'h', 'x'].map((k) =>
       `<button type="button" data-lv="${k}" class="lv-${k}${mlv === k ? ' on' : ''}" ${dis} aria-pressed="${mlv === k}"><b class="disp">${MNAME[k][0]}</b><span>${MNAME[k][1]}</span></button>`).join('');
     $('#song-cards').innerHTML = (G.MUSIC_SONGS || []).map((sg) => {
       const n = songs.indexOf(sg.id) + 1;

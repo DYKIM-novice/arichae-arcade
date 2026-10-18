@@ -882,6 +882,10 @@ button { font-family: var(--body); color: inherit; }
 .levels button.lv-e.on { background: var(--green); color: #0B2A17; box-shadow: 0 4px 0 var(--greenS); }
 .levels button.lv-m.on { background: var(--blue); color: #fff; box-shadow: 0 4px 0 var(--blueS); }
 .levels button.lv-h.on { background: var(--red); color: #fff; box-shadow: 0 4px 0 var(--redS); }
+.levels.four { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.levels.four button { padding-left: 4px; padding-right: 4px; }
+.levels.four button span { font-size: 10px; line-height: 1.25; word-break: keep-all; }
+.levels button.lv-x.on { background: linear-gradient(135deg, #8B5CF6, #FF4757); color: #fff; box-shadow: 0 4px 0 #4C2A8C; }
 .edu-cards { display: flex; flex-direction: column; gap: 8px; }
 .edu-cards.nudge { animation: shake .4s; }
 .ec {
@@ -914,6 +918,7 @@ button { font-family: var(--body); color: inherit; }
 .lv-pill.lv-e { background: var(--green); color: #0B2A17; }
 .lv-pill.lv-m { background: var(--blue); }
 .lv-pill.lv-h { background: var(--red); }
+.lv-pill.lv-x { background: linear-gradient(135deg, #8B5CF6, #FF4757); }
 .pad.named { padding-bottom: 12px; }
 
 /* 오늘 배운 것 (다윈 노트 느낌) */
