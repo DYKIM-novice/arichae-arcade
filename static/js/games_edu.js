@@ -814,6 +814,15 @@
   ].map(([z, s, n, g, p, f]) => ({ z, s, n, g, p, f }));
   const EL = {};
   ELEMENTS.forEach((e) => { EL[e.s] = e; });
+  // 힌트용 영어 이름 (기호가 라틴어에서 온 원소는 라틴어 이름)
+  const EN = {
+    H: 'Hydrogen', He: 'Helium', Li: 'Lithium', Be: 'Beryllium', B: 'Boron', C: 'Carbon', N: 'Nitrogen', O: 'Oxygen',
+    F: 'Fluorine', Ne: 'Neon', Na: 'Natrium (라틴어)', Mg: 'Magnesium', Al: 'Aluminium', Si: 'Silicon', P: 'Phosphorus',
+    S: 'Sulfur', Cl: 'Chlorine', Ar: 'Argon', K: 'Kalium (라틴어)', Ca: 'Calcium', Fe: 'Ferrum (라틴어)', Cu: 'Cuprum (라틴어)',
+    Zn: 'Zinc', Ag: 'Argentum (라틴어)', I: 'Iodine', Au: 'Aurum (라틴어)', Hg: 'Hydrargyrum (라틴어)', Pb: 'Plumbum (라틴어)'
+  };
+  // 힌트가 나오기까지 걸리는 시간 (힌트 전에 맞히면 보너스)
+  const HINT_DELAY = { e: 0, m: 1200, h: 2500 };
   const POOL = {
     e: ['H', 'He', 'C', 'N', 'O', 'Ne', 'Na', 'Mg', 'Al', 'Si', 'S', 'Cl', 'K', 'Ca', 'Fe', 'Cu', 'Ag', 'Au', 'Li'],
     m: ELEMENTS.filter((e) => e.z <= 20).map((e) => e.s).concat(['Fe', 'Cu', 'Zn', 'Ag', 'Au', 'I']),
@@ -835,9 +844,9 @@
     levels: ['e', 'm', 'h'],
     buttons: ['r', 'g', 'b'],
     rules(lv) {
-      if (lv === 'e') return ['원소 이름이 나오면 맞는 기호를 골라요', '보기 3개 중 하나! 그 자리 버튼을 눌러요', '정답 뒤에 재미있는 원소 이야기가 나와요'];
-      if (lv === 'm') return ['이름 → 기호, 기호 → 이름 문제가 섞여 나와요', '빨리 맞힐수록 점수가 커요', '아래 주기율표에서 위치를 확인해요'];
-      return ['원자번호와 같은 족(세로줄) 문제도 나와요', '같은 족 원소는 성질이 비슷해요', '연속으로 맞히면 보너스!'];
+      if (lv === 'e') return ['원소 이름이 나오면 맞는 기호를 골라요', '힌트로 영어 이름이 바로 나와요 (첫 글자가 기호!)', '정답 뒤에 재미있는 원소 이야기가 나와요'];
+      if (lv === 'm') return ['이름 → 기호, 기호 → 이름 문제가 섞여 나와요', '1초 뒤에 힌트가 나와요', '힌트 전에 맞히면 보너스 +20'];
+      return ['원자번호와 같은 족(세로줄) 문제도 나와요', '조금 기다리면 힌트가 나와요', '힌트 전에 맞히면 보너스 +20'];
     },
     illus() {
       const t = (s, on) => `<div class="il-el${on ? ' on' : ''}"><small>${EL[s].z}</small><b>${s}</b><span>${EL[s].n}</span></div>`;
@@ -869,6 +878,7 @@
         <div class="pe-q"><span class="pe-type"></span><div class="pe-big disp"></div></div>
         <div class="pe-opts">${SLOTS.map((c) => `<div class="pe-opt"><div class="pe-main disp"></div><div class="pe-sub"></div>
           <span class="pe-tag" style="background:${G.HEX[c]}">${shape(c, 14)}</span></div>`).join('')}</div>
+        <div class="pe-hint"></div>
         <div class="pe-fact"></div>
         <div class="pe-table">${cells}</div>
       </div>`);
@@ -878,9 +888,14 @@
       const opts = Array.from(wrap.querySelectorAll('.pe-opt'));
       const fact = wrap.querySelector('.pe-fact');
       const table = wrap.querySelector('.pe-table');
+      const hintEl = wrap.querySelector('.pe-hint');
+      let hintShown = false;
+      let noHint = 0;
 
       function distractors(ans, from, n) {
         const cand = from.filter((e) => e.s !== ans.s);
+        // 초등은 헷갈리는 보기 대신 아무 원소나 섞어서 쉽게
+        if (lv === 'e') return shuffle(R, cand).slice(0, n);
         const scored = shuffle(R, cand).sort((a, b) => similar(ans, b) - similar(ans, a));
         const top = scored.slice(0, Math.min(5, scored.length));
         return shuffle(R, top).slice(0, n);
@@ -921,7 +936,34 @@
           o.querySelector('.pe-sub').textContent = type === 'z2e' || type === 'grp' ? e.n : '';
         });
         fact.innerHTML = '';
-        table.querySelectorAll('.pe-cell').forEach((c) => c.classList.remove('hl', 'hl2'));
+        hintEl.innerHTML = '';
+        hintEl.classList.remove('show');
+        hintShown = false;
+        table.querySelectorAll('.pe-cell').forEach((c) => c.classList.remove('hl', 'hl2', 'hint'));
+      }
+      function showHint() {
+        hintShown = true;
+        const { type, ans, anchor } = q;
+        let html = '';
+        if (type === 'n2s') {
+          const en = EN[ans.s] || '';
+          // 기호가 이름 앞부분과 같으면 그만큼(예: Ar-gon), 아니면 첫 글자만 표시
+          const k = en.toLowerCase().startsWith(ans.s.toLowerCase()) ? ans.s.length : 1;
+          html = `💡 영어 이름 <b><u>${esc(en.slice(0, k))}</u>${esc(en.slice(k))}</b> · 기호는 이 이름에서 따왔어요`;
+        } else if (type === 's2n') {
+          html = `💡 ${esc(ans.f)}`;
+        } else if (type === 'z2e') {
+          html = `💡 ${ans.p}주기(가로 ${ans.p}번째 줄)에 있어요 · ${esc(ans.f)}`;
+          const cell = table.querySelector(`.pe-cell[data-s="${ans.s}"]`);
+          if (cell) cell.classList.add('hint');
+        } else {
+          html = `💡 ${esc(anchor.n)}와(과) 같은 세로줄(${anchor.g}족)을 아래 표에서 찾아보세요`;
+          table.querySelectorAll('.pe-cell').forEach((c) => {
+            if (EL[c.dataset.s] && EL[c.dataset.s].g === anchor.g) c.classList.add('hint');
+          });
+        }
+        hintEl.innerHTML = html;
+        hintEl.classList.add('show');
       }
       function next(t) {
         q = makeQuestion();
@@ -953,21 +995,24 @@
             lockUntil = 0;
             next(t);
           }
+          if (!lockUntil && q && !hintShown && t - askAt >= HINT_DELAY[lv]) showHint();
         },
         onPress(c, t) {
           if (lockUntil) return;
           const i = IDX[c];
           const chosen = q.choices[i];
+          const beforeHint = !hintShown && HINT_DELAY[lv] > 0;
           const p = center(ctx, opts[i]);
           if (chosen === q.ans) {
             streak++;
             best = Math.max(best, streak);
             right++;
             const quick = Math.max(0, Math.round(30 * (1 - (t - askAt) / 4000)));
-            const gain = 40 + quick + Math.min(25, (streak - 1) * 5);
+            const gain = 40 + quick + Math.min(25, (streak - 1) * 5) + (beforeHint ? 20 : 0);
+            if (beforeHint) noHint++;
             score += gain;
             ctx.fx.burst(p.x, p.y, '#7DF0AE', 12);
-            ctx.fx.float('+' + gain, p.x, p.y - 40, '#FFD23F', 26);
+            ctx.fx.float(beforeHint ? `힌트 없이! +${gain}` : '+' + gain, p.x, p.y - 40, '#FFD23F', 26);
             if (quick > 20) ctx.sfx.perfect(); else ctx.sfx.good();
             ctx.vibrate(12);
             showAnswer(true);
@@ -1462,13 +1507,13 @@
   const music = {
     id: 'music', edu: true,
     icon: `<svg viewBox="0 0 40 40" aria-hidden="true"><rect x="5" y="16" width="30" height="19" rx="3" fill="#C98B4F"/><rect x="5" y="16" width="30" height="5" fill="#A86B35"/><path d="M7 16 L11 6 L33 6 L33 16" fill="#E0A868"/><circle cx="20" cy="27" r="3.4" fill="#FFE27A"/><path d="M35 24 h3 v5 h-3" fill="none" stroke="#FFE27A" stroke-width="2"/><path d="M14 4 v-2 M20 4 v-3 M26 4 v-2" stroke="#FFE7B0" stroke-width="1.6" stroke-linecap="round"/></svg>`,
-    hall: '음악관', title: '오르골 연주회', cat: '클래식 리듬', catColor: 'y', dur: 40,
+    hall: '음악관', title: '오르골 연주회', cat: '클래식 리듬', catColor: 'y', dur: 60,
     levels: ['e', 'm'],
     buttons: ['r', 'g', 'b'], music: false, pressSound: false,
     rules(lv) {
       return lv === 'e'
-        ? ['음표가 선에 닿을 때 같은 줄 버튼!', '맞히면 오르골 소리로 클래식이 연주돼요', '초등은 조금 느린 빠르기로 연주해요']
-        : ['음표가 선에 닿을 때 같은 줄 버튼!', '곡이 바뀔수록 조금씩 빨라져요', '낮은 음은 왼쪽, 높은 음은 오른쪽'];
+        ? ['음표가 선에 닿을 때 같은 줄 버튼!', '맞히면 오르골 소리로 클래식이 연주돼요', '한 곡을 처음부터 끝까지, 조금 느리게 연주해요']
+        : ['음표가 선에 닿을 때 같은 줄 버튼!', '한 곡을 처음부터 끝까지 연주해요', '낮은 음은 왼쪽, 높은 음은 오른쪽'];
     },
     illus() {
       return `<div class="il-row" style="gap:16px"><div style="width:84px;height:84px">${music.icon}</div>
@@ -1481,7 +1526,7 @@
     },
     create(ctx) {
       const base = G.ALL.rhythm;
-      return base.createWith(ctx, { speed: ctx.level === 'e' ? 0.82 : 1 });
+      return base.createWith(ctx, { speed: ctx.level === 'e' ? 0.85 : 1, long: true });
     }
   };
 

@@ -969,6 +969,8 @@
     S.hurry = false;
     S.lastSecond = -1;
     $('#stage').innerHTML = '';
+    S.fitScale = 1;
+    S.fitCheckAt = 0;
     $('#fx').innerHTML = '';
     $('#play-overlay').className = 'play-overlay';
     $('#pad').className = 'pad';
@@ -1031,6 +1033,9 @@
     S.inst = S.def.create(ctx);
     S.started = true;
     S.inst.start(t);
+    fitStage(true);
+    requestAnimationFrame(() => fitStage(true));
+    requestAnimationFrame(fitStage);
     showGo();
     SND.SFX.go();
     SND.vibrate(60);
@@ -1165,8 +1170,28 @@
         send({ t: 'prog', g: S.playIndex, score: sc, v: S.inst.value() });
       }
       if (t >= cur.endAt) finishPlay();
+      if (pn - (S.lastFit || 0) > 400) { S.lastFit = pn; fitStage(false); }
     }
     renderRivals(false);
+  }
+
+  /* 화면이 작은 폰(카톡 안 브라우저 등)에서 게임 내용이 잘리면 자동으로 줄여서 다 보이게 */
+  function fitStage(reset) {
+    const wrap = $('#stage').firstElementChild;
+    if (!wrap) return;
+    const kids = Array.from(wrap.children).filter((k) => {
+      const pos = getComputedStyle(k).position;
+      return pos !== 'absolute' && pos !== 'fixed';
+    });
+    if (!kids.length) return;
+    if (reset) kids.forEach((k) => { k.style.zoom = ''; });
+    const have = wrap.clientHeight;
+    const need = wrap.scrollHeight;
+    if (need > have + 2) {
+      const cur = parseFloat(kids[0].style.zoom) || 1;
+      const f = Math.max(0.55, cur * (have / need) * 0.98);
+      kids.forEach((k) => { k.style.zoom = String(f); });
+    }
   }
 
   /* ---------- 효과 ---------- */
@@ -1638,6 +1663,29 @@
   /* ================================================================
      메인 루프
      ================================================================ */
+  /* 화면이 작은 폰(카톡 안 브라우저 등)에서 과학관 게임 화면이 잘리지 않게,
+     내용이 무대보다 크면 무대 크기에 맞게 통째로 줄여요 (커지지는 않음) */
+  function fitStage() {
+    if (!S.def || !S.def.edu) return;
+    const st = $('#stage');
+    const w = st && st.firstElementChild;
+    if (!w) return;
+    const H = st.clientHeight;
+    const W = st.clientWidth;
+    if (!H || !W) return;
+    const cur = S.fitScale || 1;
+    const need = w.scrollHeight;
+    if (need <= H / cur + 2) return;
+    const s = Math.max(0.55, Math.min(cur, H / need));
+    if (s >= cur - 0.01) return;
+    S.fitScale = s;
+    Object.assign(w.style, {
+      right: 'auto', bottom: 'auto', left: '0', top: '0',
+      width: (W / s) + 'px', height: (H / s) + 'px',
+      transform: `scale(${s})`, transformOrigin: '0 0'
+    });
+  }
+
   function loop() {
     try {
       const room = S.room;
@@ -1648,6 +1696,8 @@
           else tickIntro(t);
         } else if (room.phase === 'play' && S.started) {
           tickPlay(t);
+          const pn = performance.now();
+          if (pn - (S.fitCheckAt || 0) > 400) { S.fitCheckAt = pn; fitStage(); }
         } else if (room.phase === 'result') {
           renderNextCard();
         }

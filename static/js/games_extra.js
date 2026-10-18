@@ -1191,13 +1191,36 @@
     { name: '자장가 · 브람스', bpm: 84, notes: 'E5:.5 E5:.5 G5:2 E5:.5 E5:.5 G5:2 E5:.5 G5:.5 C6 B5:1.5 A5:.5 A5 G5 D5:.5 E5:.5 F5 D5 D5:.5 E5:.5 F5:2 D5:.5 F5:.5 B5:.5 A5:.5 G5 B5 C6:3' },
     { name: '터키 행진곡 · 모차르트', bpm: 54, notes: 'B5:.25 A5:.25 G#5:.25 A5:.25 C6 D6:.25 C6:.25 B5:.25 C6:.25 E6 F6:.25 E6:.25 D#6:.25 E6:.25 B6:.25 A6:.25 G#6:.25 A6:.25 B6:.25 A6:.25 G#6:.25 A6:.25 C7:2' },
     { name: '캐논 · 파헬벨', bpm: 92, notes: 'F#6:2 E6:2 D6:2 C#6:2 B5:2 A5:2 B5:2 C#6:2 D6 C#6 B5 A5 G5 F#5 G5 E5' }
-  ].map((s) => {
+  ].map(prepareSong);
+
+  function prepareSong(s) {
     const notes = parseTune(s.notes);
     const uniq = Array.from(new Set(notes.map((n) => n.midi))).sort((a, b) => a - b);
     // 낮은 음 = 왼쪽(빨강), 가운데 음 = 가운데(초록), 높은 음 = 오른쪽(파랑)
     notes.forEach((n) => { n.lane = Math.min(2, Math.floor((uniq.indexOf(n.midi) * 3) / uniq.length)); });
     return Object.assign({}, s, { tune: notes });
-  });
+  }
+
+  // 음악관용 긴 버전: 악보의 도돌이표·형식대로 한 곡을 끝까지 (약 45~55초)
+  const TW_A = 'C5 C5 G5 G5 A5 A5 G5:2 F5 F5 E5 E5 D5 D5 C5:2';
+  const TW_B = 'G5 G5 F5 F5 E5 E5 D5:2 G5 G5 F5 F5 E5 E5 D5:2';
+  const OD_A = 'E5 E5 F5 G5 G5 F5 E5 D5 C5 C5 D5 E5 E5:1.5 D5:.5 D5:2';
+  const OD_A2 = 'E5 E5 F5 G5 G5 F5 E5 D5 C5 C5 D5 E5 D5:1.5 C5:.5 C5:2';
+  const OD_B = 'D5 D5 E5 C5 D5 E5:.5 F5:.5 E5 C5 D5 E5:.5 F5:.5 E5 D5 C5 D5 G4:2';
+  const MN_HEAD = 'D6 G5:.5 A5:.5 B5:.5 C6:.5 D6 G5 G5 E6 C6:.5 D6:.5 E6:.5 F#6:.5 G6 G5 G5 C6 D6:.5 C6:.5 B5:.5 A5:.5 B5 C6:.5 B5:.5 A5:.5 G5:.5';
+  const MN_1 = MN_HEAD + ' F#5 G5:.5 A5:.5 B5:.5 G5:.5 A5:3';
+  const MN_2 = MN_HEAD + ' A5 B5:.5 A5:.5 G5:.5 F#5:.5 G5:3';
+  const EL_T1 = 'E6:.5 D#6:.5 E6:.5 D#6:.5 E6:.5 B5:.5 D6:.5 C6:.5 A5:1.5 C5:.5 E5:.5 A5:.5 B5:1.5 E5:.5 G#5:.5 B5:.5 C6:1.5 E5:.5';
+  const EL_T2 = 'E6:.5 D#6:.5 E6:.5 D#6:.5 E6:.5 B5:.5 D6:.5 C6:.5 A5:1.5 C5:.5 E5:.5 A5:.5 B5:1.5 E5:.5 C6:.5 B5:.5 A5:1.5';
+  const EL_M = 'B5:.5 C6:.5 D6:.5 E6:1.5 G5:.5 F6:.5 E6:.5 D6:1.5 F5:.5 E6:.5 D6:.5 C6:1.5 E5:.5 D6:.5 C6:.5 B5:1.5 E5:.5';
+  const BR_A = 'E5:.5 E5:.5 G5:2 E5:.5 E5:.5 G5:2 E5:.5 G5:.5 C6 B5:1.5 A5:.5 A5 G5 D5:.5 E5:.5 F5 D5 D5:.5 E5:.5 F5:2 D5:.5 F5:.5 B5:.5 A5:.5 G5 B5 C6:3';
+  const LONG_SONGS = [
+    { name: '작은 별 변주곡 · 모차르트', bpm: 108, notes: [TW_A, TW_A, TW_B, TW_A, TW_B, TW_A].join(' ') },
+    { name: '환희의 송가 · 베토벤', bpm: 116, notes: [OD_A, OD_A2, OD_B, OD_A2, OD_B, OD_A2].join(' ') },
+    { name: '미뉴에트 G장조 · 바흐', bpm: 112, notes: [MN_1, MN_2, MN_1, MN_2].join(' ') },
+    { name: '엘리제를 위하여 · 베토벤', bpm: 62, notes: [EL_T1, EL_T2, EL_M, EL_T1, EL_T2].join(' ') },
+    { name: '자장가 · 브람스', bpm: 66, notes: [BR_A, BR_A].join(' ') }
+  ].map(prepareSong);
 
   const rhythm = {
     id: 'rhythm', title: '오르골 리듬', cat: '리듬', catColor: 'b', dur: 40,
@@ -1214,13 +1237,22 @@
       const D = durOf(ctx);
       const LEAD = 2200;
       const FALL = 1500;
-      // 랜덤으로 한 곡만 골라서, 시간이 될 때까지 그 곡을 반복 연주해요
-      const theSong = SONGS[Math.floor(R() * SONGS.length)];
+      // 랜덤으로 한 곡만 골라서 연주해요
+      // 오락실: 짧은 곡을 시간이 될 때까지 반복 / 음악관(long): 긴 곡을 처음부터 끝까지 한 번
+      const isLong = !!(opts && opts.long);
+      const list = isLong ? LONG_SONGS : SONGS;
+      const theSong = list[Math.floor(R() * list.length)];
       const notes = [];
       const titles = [];
       const beats = [];
       let at = LEAD;
       let speed = (opts && opts.speed) || 1;
+      if (isLong) {
+        // 곡이 게임 시간 안에 끝까지 들어가도록 필요하면 조금만 빠르게
+        const songMs = (theSong.tune.reduce((a, n) => a + n.beats, 0) * 60000) / theSong.bpm;
+        speed = Math.max(speed, songMs / Math.max(5000, D - LEAD - 1800));
+      }
+      let songEnd = 0;
       for (let k = 0; at < D - 3000; k++) {
         const song = theSong;
         const beatMs = 60000 / (song.bpm * speed);
@@ -1232,7 +1264,9 @@
           t += n.beats * beatMs;
         });
         for (let x = at; x < t && x < D - 1200; x += beatMs) beats.push({ at: x, accent: b++ % 4 === 0 });
+        songEnd = t;
         at = t + beatMs * 2;
+        if (isLong) break;
       }
       notes.forEach((n) => { n.state = 'wait'; n.el = null; });
       let t0 = 0;
@@ -1246,6 +1280,7 @@
       let hit = 0;
       let H = 400;
       let judgeY = 320;
+      let finaleShown = false;
 
       ctx.stage.innerHTML = '';
       const wrap = el(`<div class="rh-wrap mb"><div class="rh-song disp"></div><div class="rh-lanes">${COLS.map((c) =>
@@ -1281,6 +1316,12 @@
             retrigger(songEl, 'pop');
           }
           while (bptr < beats.length && beats[bptr].at <= e) ctx.sfx.mbTick(beats[bptr++].accent);
+          if (isLong && !finaleShown && songEnd && e > songEnd + 600) {
+            finaleShown = true;
+            songEl.textContent = `👏 연주 완성! ${hit}음 / ${notes.length}음`;
+            retrigger(songEl, 'pop');
+            ctx.sfx.fanfare();
+          }
           while (ptr < notes.length && notes[ptr].at - FALL <= e) {
             const n = notes[ptr++];
             n.el = el(`<div class="rh-note" style="--c:${HEX[COLS[n.lane]]}"><b>${SOLFA[n.midi % 12]}</b></div>`);

@@ -1253,3 +1253,21 @@ button { font-family: var(--body); color: inherit; }
 .dn-center { left: 50%; top: 0; bottom: 0; width: 3px; margin-left: -1.5px; border: 0; border-radius: 2px; background: var(--yellow); }
 .dn-center.f-r { background: var(--red); border: 0; }
 .dn-center.f-b { background: var(--blue); border: 0; }
+/* 주기율표 힌트 */
+.pe-hint { min-height: 0; max-height: 0; overflow: hidden; opacity: 0; font-size: 14px; line-height: 1.4; text-align: center; color: #FFE7B0; background: rgba(255,210,63,.12); border: 2px dashed rgba(255,210,63,.45); border-radius: 12px; padding: 0 10px; transition: opacity .3s, max-height .3s, padding .3s; word-break: keep-all; }
+.pe-hint.show { opacity: 1; max-height: 80px; padding: 6px 10px; }
+.pe-hint b { color: #FFD23F; font-weight: 400; font-family: var(--disp); font-size: 16px; }
+.pe-hint u { text-decoration: none; color: #fff; background: rgba(255,210,63,.45); border-radius: 4px; padding: 0 2px; }
+.pe-cell.hint { background: rgba(255,210,63,.55); color: var(--ink); animation: hintPulse 1s ease-in-out infinite; }
+
+/* 세로가 짧은 화면(카톡 안 브라우저 등): 버튼·순위표를 줄여서 게임 화면을 넓게 */
+@media (max-height: 680px) {
+  :root { --bz: min(23vw, 88px); }
+  .screen.play { gap: 6px; padding-top: calc(8px + env(safe-area-inset-top)); padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  #hud-score { font-size: 32px; }
+  .hud-time { font-size: 20px; padding: 6px 10px; }
+  .rv { flex-direction: row; justify-content: center; gap: 6px; padding: 3px 4px; }
+  .rv .av { width: 22px; height: 22px; }
+  .rv .rk { position: static; }
+  .gb-name { font-size: 11px; bottom: -6px; }
+}

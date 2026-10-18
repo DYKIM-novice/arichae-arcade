@@ -79,7 +79,7 @@ EDU_GAMES: Dict[str, int] = {
     "fishing": 35,   # 바다 낚시
     "space": 35,     # 행성 찾기 (우주관)
     "tree": 35,      # 진화 나무 오르기 (생명의 나무)
-    "music": 40,     # 오르골 연주회 (음악관)
+    "music": 60,     # 오르골 연주회 (음악관) — 긴 곡을 끝까지
     "periodic": 35,  # 주기율표 빨리 고르기
 }
 ALL_GAMES: Dict[str, int] = {**GAMES, **EDU_GAMES}
