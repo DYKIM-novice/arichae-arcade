@@ -1507,31 +1507,35 @@
   const music = {
     id: 'music', edu: true,
     icon: `<svg viewBox="0 0 40 40" aria-hidden="true"><rect x="5" y="16" width="30" height="19" rx="3" fill="#C98B4F"/><rect x="5" y="16" width="30" height="5" fill="#A86B35"/><path d="M7 16 L11 6 L33 6 L33 16" fill="#E0A868"/><circle cx="20" cy="27" r="3.4" fill="#FFE27A"/><path d="M35 24 h3 v5 h-3" fill="none" stroke="#FFE27A" stroke-width="2"/><path d="M14 4 v-2 M20 4 v-3 M26 4 v-2" stroke="#FFE7B0" stroke-width="1.6" stroke-linecap="round"/></svg>`,
-    hall: '음악관', title: '오르골 연주회', cat: '클래식 리듬', catColor: 'y', dur: 60,
-    levels: ['e', 'm'],
+    hall: '음악관', title: '오르골 연주회', cat: '클래식 리듬', catColor: 'y', dur: 165,
+    levels: ['e', 'm', 'h'],
+    levelNames: { e: '하', m: '중', h: '상' },
     buttons: ['r', 'g', 'b'], music: false, pressSound: false,
     rules(lv) {
-      return lv === 'e'
-        ? ['음표가 선에 닿을 때 같은 줄 버튼!', '맞히면 오르골 소리로 클래식이 연주돼요', '한 곡을 처음부터 끝까지, 조금 느리게 연주해요']
-        : ['음표가 선에 닿을 때 같은 줄 버튼!', '한 곡을 처음부터 끝까지 연주해요', '낮은 음은 왼쪽, 높은 음은 오른쪽'];
+      if (lv === 'e') return ['음표가 선에 닿을 때 같은 줄 버튼!', '주제 → 변주 1 → 변주 2, 약 2분 반 연주', '하: 조금 느리게, 음표 수는 그대로'];
+      if (lv === 'h') return ['음표가 선에 닿을 때 같은 줄 버튼!', '변주로 갈수록 음표가 두 배로 많아져요', '상: 조금 빠르게! 콤보를 이어가요'];
+      return ['음표가 선에 닿을 때 같은 줄 버튼!', '주제 → 변주 1(음표 두 배) → 변주 2', '낮은 음은 왼쪽, 높은 음은 오른쪽'];
     },
     illus() {
       return `<div class="il-row" style="gap:16px"><div style="width:84px;height:84px">${music.icon}</div>
         <div class="il-cap" style="text-align:left">♪ 환희의 송가 · 베토벤<br>♪ 터키 행진곡 · 모차르트<br>♪ 미뉴에트 · 바흐 …</div></div>`;
     },
-    learn(lv) {
+    learn(lv, songId) {
+      const song = (G.MUSIC_SONGS || []).find((x) => x.id === songId);
+      if (song && song.fact) return song.fact;
       return lv === 'e'
         ? '오르골은 작은 쇠빗을 핀이 하나씩 튕겨서 소리를 내요. 낮은 음은 긴 빗살, 높은 음은 짧은 빗살! 오늘 연주한 곡들은 200~300년 전에 만들어진 클래식이에요.'
         : '베토벤은 귀가 거의 들리지 않게 된 뒤에 "환희의 송가"가 나오는 교향곡 9번을 완성했어요. 바흐는 "음악의 아버지", 모차르트는 다섯 살 때부터 작곡을 한 천재로 불려요.';
     },
     create(ctx) {
       const base = G.ALL.rhythm;
-      return base.createWith(ctx, { speed: ctx.level === 'e' ? 0.85 : 1, long: true });
+      const lv = ['e', 'm', 'h'].includes(ctx.level) ? ctx.level : 'm';
+      return base.createWith(ctx, { speed: { e: 0.85, m: 1, h: 1.1 }[lv], long: true, songId: ctx.song, level: lv });
     }
   };
 
   Object.assign(G.ALL, { light, paint, history, fishing, space, tree, music, periodic });
-  G.EDU = ['light', 'paint', 'history', 'fishing', 'space', 'tree', 'music', 'periodic'];
+  G.EDU = ['light', 'paint', 'history', 'fishing', 'space', 'tree', 'periodic'];   // 음악(오르골 연주회)은 음악관 모드에서
   G.LEVEL_NAME = { e: '초등', m: '중등', h: '고등' };
   // 고른 난이도가 없는 게임은 가장 가까운 단계로
   G.effLevel = function (def, lv) {

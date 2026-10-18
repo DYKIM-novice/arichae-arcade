@@ -79,10 +79,13 @@ EDU_GAMES: Dict[str, int] = {
     "fishing": 35,   # 바다 낚시
     "space": 35,     # 행성 찾기 (우주관)
     "tree": 35,      # 진화 나무 오르기 (생명의 나무)
-    "music": 60,     # 오르골 연주회 (음악관) — 긴 곡을 끝까지
+    "music": 165,    # 오르골 연주회 (음악관) — 주제·변주 1·변주 2 약 2분 45초
     "periodic": 35,  # 주기율표 빨리 고르기
 }
 ALL_GAMES: Dict[str, int] = {**GAMES, **EDU_GAMES}
+EDU_PICKABLE = [g for g in EDU_GAMES if g != "music"]   # 과학관에서 고를 수 있는 게임 (음악은 음악관으로)
+# 음악관: 방장이 곡을 골라 순서대로 오르골 연주회
+MUSIC_SONGS = ("twinkle", "ode", "minuet", "elise", "lullaby")
 LEVELS = ("e", "m", "h")          # 초·중·고
 MAX_PICKS = 10
 
@@ -317,9 +320,11 @@ class Room:
         self.host_pid = ""
         self.phase = "lobby"
         self.length = 5
-        self.mode = "arcade"      # arcade(오락실, 랜덤) / edu(과학관, 선택)
+        self.mode = "arcade"      # arcade(오락실, 랜덤) / edu(과학관, 선택) / music(음악관, 곡 선택)
         self.level = "m"          # 과학관 난이도: e(초) m(중) h(고)
         self.picks: List[str] = []
+        self.songs: List[str] = []      # 음악관에서 고른 곡
+        self.song_seq: List[str] = []
         self.deck: List[str] = []
         self.sequence: List[str] = []
         self.index = -1
@@ -352,6 +357,7 @@ class Room:
             "mode": self.mode,
             "level": self.level,
             "picks": self.picks,
+            "songs": self.songs,
             "sequence": self.sequence,
             "index": self.index,
             "current": self.current,
@@ -402,8 +408,12 @@ class Room:
         return ids
 
     def start_match(self) -> None:
+        self.song_seq = []
         if self.mode == "edu":
-            self.sequence = [g for g in self.picks if g in EDU_GAMES]
+            self.sequence = [g for g in self.picks if g in EDU_PICKABLE]
+        elif self.mode == "music":
+            self.song_seq = [s for s in self.songs if s in MUSIC_SONGS]
+            self.sequence = ["music"] * len(self.song_seq)
         else:
             self.sequence = self.build_sequence(self.length)
         self.index = -1
@@ -431,7 +441,8 @@ class Room:
                 self.current = {
                     "game": gid,
                     "index": i,
-                    "level": self.level if self.mode == "edu" else "",
+                    "level": self.level if self.mode in ("edu", "music") else "",
+                    "song": self.song_seq[i] if self.mode == "music" and i < len(self.song_seq) else "",
                     "seed": random.randint(1, 2_000_000_000),
                     "introAt": t0,
                     "startAt": start_at,
@@ -735,15 +746,19 @@ async def ws_session(ws: WebSocketConn) -> None:
                     if length in (3, 5, 10):
                         room.length = length
                         changed = True
-                if msg.get("mode") in ("arcade", "edu"):
+                if msg.get("mode") in ("arcade", "edu", "music"):
                     room.mode = msg["mode"]
                     changed = True
                 if msg.get("level") in LEVELS:
                     room.level = msg["level"]
                     changed = True
                 if isinstance(msg.get("picks"), list):
-                    picks = [str(g) for g in msg["picks"] if str(g) in EDU_GAMES]
+                    picks = [str(g) for g in msg["picks"] if str(g) in EDU_PICKABLE]
                     room.picks = picks[:MAX_PICKS]
+                    changed = True
+                if isinstance(msg.get("songs"), list):
+                    songs = [str(g) for g in msg["songs"] if str(g) in MUSIC_SONGS]
+                    room.songs = songs[:MAX_PICKS]
                     changed = True
                 if changed:
                     await room.broadcast_state()
@@ -754,8 +769,12 @@ async def ws_session(ws: WebSocketConn) -> None:
                 if room.mode == "edu" and not room.picks:
                     await reply({"t": "error", "code": "no_picks", "msg": "과학관 게임을 하나 이상 골라주세요"})
                     continue
+                if room.mode == "music" and not room.songs:
+                    await reply({"t": "error", "code": "no_picks", "msg": "연주할 곡을 하나 이상 골라주세요"})
+                    continue
                 log.info("[%s] 게임 시작 (%s)", room.code,
-                         "과학관 " + ",".join(room.picks) if room.mode == "edu" else f"{room.length}게임")
+                         "과학관 " + ",".join(room.picks) if room.mode == "edu"
+                         else "음악관 " + ",".join(room.songs) if room.mode == "music" else f"{room.length}게임")
                 room.start_match()
 
             elif t in ("prog", "final") and room.phase in ("play", "intro"):

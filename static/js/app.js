@@ -617,19 +617,22 @@
       : '');
 
     renderSettings(isHost);
+    placeLobbyActions(isHost);
 
     const edu = room.mode === 'edu';
-    const picks = room.picks || [];
+    const musicMode = room.mode === 'music';
+    const picks = edu ? (room.picks || []) : musicMode ? (room.songs || []) : [];
     const others = room.players.filter((p) => !p.isHost && p.connected);
     const readyCount = others.filter((p) => p.ready).length + 1;
     const total = others.length + 1;
     const mainBtn = $('#btn-main');
     if (isHost) {
-      const noPick = edu && !picks.length;
+      const noPick = (edu || musicMode) && !picks.length;
       mainBtn.className = 'btn btn-green' + (noPick ? ' wait' : '');
-      mainBtn.textContent = noPick ? '게임을 골라주세요' : edu ? `과학관 시작 · ${picks.length}게임` : '시작하기';
+      mainBtn.textContent = noPick ? (musicMode ? '곡을 골라주세요' : '게임을 골라주세요')
+        : edu ? `과학관 시작 · ${picks.length}게임` : musicMode ? `음악관 시작 · ${picks.length}곡` : '시작하기';
       $('#lobby-help').innerHTML = noPick
-        ? '위에서 하고 싶은 게임을 눌러 주세요'
+        ? (musicMode ? '위에서 연주할 곡을 눌러 주세요' : '위에서 하고 싶은 게임을 눌러 주세요')
         : total === 1
           ? '가족을 초대하거나 혼자 연습할 수 있어요'
           : `준비 완료 <b>${readyCount}</b> / ${total}명 · ${readyCount === total ? '모두 준비됐어요!' : '그래도 시작할 수 있어요'}`;
@@ -643,7 +646,22 @@
     renderToggles();
   }
 
-  /* 모드(오락실/과학관) · 게임 길이 · 난이도 · 게임 고르기 */
+  // 참가자는 '준비 완료' 버튼을 방 코드 바로 아래(위쪽)에, 방장은 설정을 다 보고 누르도록 맨 아래에
+  function placeLobbyActions(isHost) {
+    const lobby = $('#s-lobby');
+    const actions = lobby.querySelector('.lobby-actions');
+    const anchor = lobby.querySelector('.code-card');
+    if (!actions || !anchor) return;
+    if (!isHost) {
+      if (anchor.nextElementSibling !== actions) anchor.after(actions);
+      actions.classList.add('top');
+    } else {
+      if (lobby.lastElementChild !== actions) lobby.appendChild(actions);
+      actions.classList.remove('top');
+    }
+  }
+
+  /* 모드(오락실/과학관/음악관) · 게임 길이 · 난이도 · 게임 고르기 */
   function renderSettings(isHost) {
     const room = S.room;
     const edu = room.mode === 'edu';
@@ -651,19 +669,23 @@
     const picks = room.picks || [];
     const dis = isHost ? '' : 'disabled';
 
+    const music = room.mode === 'music';
     $('#settings').classList.toggle('edu', edu);
+    $('#settings').classList.toggle('music', music);
     $('#settings-note').textContent = isHost ? '눌러서 바꿀 수 있어요' : '방장만 바꿀 수 있어요';
     $$('#mode-seg button').forEach((b) => {
-      const on = b.dataset.mode === (edu ? 'edu' : 'arcade');
+      const on = b.dataset.mode === (music ? 'music' : edu ? 'edu' : 'arcade');
       b.classList.toggle('on', on);
       b.disabled = !isHost;
       b.setAttribute('aria-pressed', String(on));
     });
-    $('#arcade-panel').style.display = edu ? 'none' : '';
+    $('#arcade-panel').style.display = edu || music ? 'none' : '';
     $('#edu-panel').style.display = edu ? '' : 'none';
+    $('#music-panel').style.display = music ? '' : 'none';
 
     $('#lengths').innerHTML = LENGTHS.map((l) =>
       `<button type="button" data-len="${l.n}" class="${room.length === l.n ? 'on' : ''}" ${dis} aria-pressed="${room.length === l.n}"><b>${l.name}</b><span>${l.sub}</span></button>`).join('');
+    if (music) { renderMusicPanel(isHost, lv); return; }
     if (!edu) return;
 
     $('#levels').innerHTML = LEVELS.map((l) =>
@@ -688,6 +710,31 @@
       ? `${picks.length}개 · 약 ${Math.max(1, Math.round(secs / 60))}분 · 누른 순서대로`
       : '누른 순서대로 진행해요';
   }
+
+  // 음악관: 난이도(초·중) + 곡 고르기
+  function renderMusicPanel(isHost, lv) {
+    const room = S.room;
+    const dis = isHost ? '' : 'disabled';
+    const mlv = ['e', 'm', 'h'].includes(lv) ? lv : 'm';
+    const MNAME = { e: ['하', '조금 느리게'], m: ['중', '보통 빠르기'], h: ['상', '빠르고 음표 많이'] };
+    const songs = room.songs || [];
+    $('#mlevels').innerHTML = ['e', 'm', 'h'].map((k) =>
+      `<button type="button" data-lv="${k}" class="lv-${k}${mlv === k ? ' on' : ''}" ${dis} aria-pressed="${mlv === k}"><b class="disp">${MNAME[k][0]}</b><span>${MNAME[k][1]}</span></button>`).join('');
+    $('#song-cards').innerHTML = (G.MUSIC_SONGS || []).map((sg) => {
+      const n = songs.indexOf(sg.id) + 1;
+      return `<button type="button" class="ec ec-y${n ? ' on' : ''}" data-song="${sg.id}" ${dis} aria-pressed="${!!n}">
+        <span class="ec-ic mb-ic">${MUSIC_NOTE}</span>
+        <span class="ec-txt"><span class="ec-hall">${esc(sg.composer)}</span><b class="disp">${esc(sg.title)}</b>
+        <span class="ec-lv"><span class="ec-note">주제 + 변주 2개 · 약 2분 45초</span></span></span>
+        <span class="ec-no">${n ? n : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'}</span>
+      </button>`;
+    }).join('');
+    const secs = songs.length * (165 + 14);
+    $('#song-note').textContent = songs.length
+      ? `${songs.length}곡 · 약 ${Math.max(1, Math.round(secs / 60))}분 · 누른 순서대로`
+      : '누른 순서대로 연주해요';
+  }
+  const MUSIC_NOTE = '<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17" fill="#2A1E3E"/><path d="M16 27 V11 L29 8 V24" fill="none" stroke="#FFE27A" stroke-width="2.6" stroke-linejoin="round"/><ellipse cx="13.5" cy="27.5" rx="4" ry="3" fill="#FFE27A"/><ellipse cx="26.5" cy="24.5" rx="4" ry="3" fill="#FFE27A"/></svg>';
 
   function renderToggles() {
     const sb = $('#btn-sound');
@@ -720,6 +767,32 @@
       SND.SFX.click();
       send({ t: 'settings', level: b.dataset.lv });
     });
+    $('#mlevels').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-lv]');
+      if (!b || b.disabled) return;
+      SND.SFX.click();
+      send({ t: 'settings', level: b.dataset.lv });
+    });
+    $('#song-cards').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-song]');
+      if (!b || b.disabled || !S.room) return;
+      const id = b.dataset.song;
+      const songs = (S.room.songs || []).slice();
+      const i = songs.indexOf(id);
+      if (i >= 0) {
+        songs.splice(i, 1);
+        SND.SFX.soft();
+      } else {
+        if (songs.length >= 10) { toast('최대 10곡까지 고를 수 있어요'); return; }
+        songs.push(id);
+        const sg = (G.MUSIC_SONGS || []).find((x) => x.id === id);
+        if (sg && sg.tune) SND.SFX.musicbox(sg.tune[0].midi);
+        SND.vibrate(10);
+      }
+      S.room.songs = songs;
+      renderLobby();
+      send({ t: 'settings', songs });
+    });
     $('#edu-cards').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-pick]');
       if (!b || b.disabled || !S.room) return;
@@ -751,10 +824,11 @@
       const room = S.room;
       if (!room) return;
       if (room.hostPid === S.pid) {
-        if (room.mode === 'edu' && !(room.picks || []).length) {
+        const needPick = (room.mode === 'edu' && !(room.picks || []).length) || (room.mode === 'music' && !(room.songs || []).length);
+        if (needPick) {
           SND.SFX.bad();
-          toast('과학관 게임을 하나 이상 골라주세요');
-          const box = $('#edu-cards');
+          toast(room.mode === 'music' ? '연주할 곡을 하나 이상 골라주세요' : '과학관 게임을 하나 이상 골라주세요');
+          const box = $(room.mode === 'music' ? '#song-cards' : '#edu-cards');
           box.classList.remove('nudge');
           void box.offsetWidth;
           box.classList.add('nudge');
@@ -858,13 +932,17 @@
     const lv = levelFor(def);
     const pill = $('#intro-cat');
     const secs = Math.round((cur.endAt - cur.startAt) / 1000);
-    pill.innerHTML = def.edu
-      ? `${esc(def.hall)} · ${esc(def.cat)} · <b class="lv-pill lv-${lv}">${G.LEVEL_NAME[lv]}</b> · ${secs}초`
+    const song = cur.song ? (G.MUSIC_SONGS || []).find((x) => x.id === cur.song) : null;
+    const timeTxt = secs >= 90 ? `${Math.floor(secs / 60)}분 ${secs % 60 ? (secs % 60) + '초' : ''}`.trim() : `${secs}초`;
+    pill.innerHTML = song
+      ? `음악관 · ${esc(song.composer)} · 난이도 <b class="lv-pill lv-${lv}">${levelName(def, lv)}</b> · ${timeTxt}`
+      : def.edu
+      ? `${esc(def.hall)} · ${esc(def.cat)} · <b class="lv-pill lv-${lv}">${levelName(def, lv)}</b> · ${timeTxt}`
       : `${esc(def.cat)} 게임 · ${secs}초`;
     pill.style.background = cs[0];
     pill.style.color = cs[1];
     const title = $('#intro-title');
-    title.textContent = def.title;
+    title.textContent = song ? song.title : def.title;
     title.style.fontSize = def.title.length > 8 ? '36px' : def.title.length > 6 ? '42px' : '';
     title.style.animation = 'none';
     void title.offsetWidth;
@@ -885,6 +963,9 @@
     const cur = S.room && S.room.current;
     const lv = (cur && cur.level) || (S.room && S.room.level) || 'm';
     return G.effLevel(def, lv);
+  }
+  function levelName(def, lv) {
+    return (def && def.levelNames && def.levelNames[lv]) || G.LEVEL_NAME[lv];
   }
   function rulesOf(def, lv) {
     return typeof def.rules === 'function' ? def.rules(lv) : def.rules;
@@ -1014,6 +1095,7 @@
     const ctx = {
       seed: cur.seed,
       level: lv,
+      song: cur.song || '',
       startAt: cur.startAt,
       endAt: cur.endAt,
       myPid: S.pid,
@@ -1574,8 +1656,8 @@
     const learn = $('#result-learn');
     if (def.edu && typeof def.learn === 'function') {
       const lv = levelFor(def);
-      learn.innerHTML = `<div class="lc-head"><span class="lc-ic">${def.icon || ''}</span><b class="disp">오늘 배운 것</b><span class="lc-tag">${esc(def.hall)} · ${G.LEVEL_NAME[lv]}</span></div>
-        <p>${esc(def.learn(lv))}</p>`;
+      learn.innerHTML = `<div class="lc-head"><span class="lc-ic">${def.icon || ''}</span><b class="disp">오늘 배운 것</b><span class="lc-tag">${esc(def.hall)} · ${levelName(def, lv)}</span></div>
+        <p>${esc(def.learn(lv, (room.current && room.current.song) || ''))}</p>`;
       learn.classList.add('show');
     } else {
       learn.innerHTML = '';
@@ -1602,7 +1684,12 @@
     const remain = Math.max(0, Math.ceil(((room.current.resultEnd || 0) - serverNow()) / 1000));
     const box = $('#result-next');
     const label = nextId ? '다음 게임' : '곧 공개';
-    const title = nextId ? G.get(nextId).title : '최종 결과 발표';
+    let title = nextId ? G.get(nextId).title : '최종 결과 발표';
+    if (nextId && room.mode === 'music') {
+      const sid = (room.songs || [])[room.index + 1];
+      const sg = (G.MUSIC_SONGS || []).find((x) => x.id === sid);
+      if (sg) title = `♪ ${sg.title} · ${sg.composer}`;
+    }
     const html = `<div><div class="lbl">${label}</div><div class="ttl">${title}</div></div><div class="cnt">${remain}</div>`;
     if (box.innerHTML !== html) box.innerHTML = html;
   }
