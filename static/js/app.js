@@ -1115,6 +1115,11 @@
     S.inst = S.def.create(ctx);
     S.started = true;
     S.inst.start(t);
+    // 음악관: 곡이 일찍 끝나면 끝나는 시각을 서버에 알려서 그때 판을 끝내요
+    if (S.inst.plannedEnd) {
+      const pe = S.inst.plannedEnd();
+      if (pe > 0 && cur.startAt + pe < cur.endAt) send({ t: 'cut', g: cur.index, at: Math.round(cur.startAt + pe) });
+    }
     requestAnimationFrame(fitStage);
     showGo();
     SND.SFX.go();
@@ -1223,8 +1228,9 @@
 
   function tickPlay(t) {
     const cur = S.room.current;
-    const total = cur.endAt - cur.startAt;
-    const remain = Math.max(0, cur.endAt - t);
+    const endAt = cur.cutAt || cur.endAt;   // 음악관은 곡이 끝나면 일찍 끝나요
+    const total = endAt - cur.startAt;
+    const remain = Math.max(0, endAt - t);
     const secs = Math.ceil(remain / 1000);
     $('#hud-time').textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
     $('#timebar-fill').style.transform = `scaleX(${remain / total})`;
@@ -1249,7 +1255,7 @@
         S.lastSentScore = sc;
         send({ t: 'prog', g: S.playIndex, score: sc, v: S.inst.value() });
       }
-      if (t >= cur.endAt) finishPlay();
+      if (t >= endAt) finishPlay();
     }
     renderRivals(false);
   }
@@ -1854,6 +1860,15 @@
     setupLobby();
     setupPad();
     $('#btn-again').addEventListener('click', () => { SND.SFX.click(); send({ t: 'again' }); });
+    // 게임 종료: 방에서 나가서 처음 화면으로
+    $('#btn-exit').addEventListener('click', () => {
+      SND.SFX.click();
+      send({ t: 'leave' });
+      S.kicked = true;   // 다시 자동 연결하지 않게
+      clearKey(KEY_SESSION);
+      FW.stop();
+      setTimeout(() => { dropSocket(); location.href = location.pathname; }, 250);
+    });
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && S.room && S.room.phase !== 'lobby' && S.room.phase !== 'final') wakeLock(true);
     });

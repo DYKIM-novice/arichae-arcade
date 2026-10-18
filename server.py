@@ -455,13 +455,16 @@ class Room:
 
                 self.phase = "play"
                 await self.broadcast_state()
-                deadline = end_at + scaled(GRACE_MS)
-                while now_ms() < deadline:
+                while True:
+                    # 음악관: 곡이 끝나면(끝난 뒤 3초) 남은 시간을 기다리지 않고 끝내요 (cutAt)
+                    cut_at = self.current.get("cutAt") or end_at
+                    if now_ms() >= cut_at + scaled(GRACE_MS):
+                        break
                     await asyncio.sleep(0.2)
                     if self.live_dirty:
                         self.live_dirty = False
                         await self.broadcast_live()
-                    if now_ms() >= end_at and self.all_finished():
+                    if now_ms() >= cut_at and self.all_finished():
                         break
                 await self.broadcast_live()
 
@@ -794,6 +797,18 @@ async def ws_session(ws: WebSocketConn) -> None:
                 if t == "final":
                     player.finished = True
                 room.live_dirty = True
+
+            elif t == "cut" and room.phase == "play" and room.mode == "music":
+                # 곡이 끝나는 시각(모든 기기가 같은 악보라 값이 같아요). 처음 받은 값만 써요.
+                cur = room.current
+                try:
+                    at = int(msg.get("at") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if (msg.get("g") == room.index and cur and "cutAt" not in cur
+                        and cur["startAt"] + scaled(20_000) <= at < cur["endAt"]):
+                    cur["cutAt"] = at
+                    await room.broadcast_state()
 
             elif t == "again" and is_host and room.phase in ("final", "result", "intro", "play"):
                 await room.back_to_lobby()

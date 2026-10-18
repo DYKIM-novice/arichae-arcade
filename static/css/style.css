@@ -1314,3 +1314,12 @@ button { font-family: var(--body); color: inherit; }
 /* 음악관 상: 화음 음표 (두 줄 동시에) */
 .rh-note.chord { outline: 3px solid #FFE27A; outline-offset: 2px; }
 .rh-note.chord::after { content: '화음'; position: absolute; right: 4px; top: -9px; font-size: 10px; font-family: var(--disp); color: #3A2E00; background: #FFE27A; border-radius: 6px; padding: 0 4px; }
+/* 최종 결과: 한 판 더 / 게임 종료 버튼이 항상 화면 아래에 보이게 */
+#s-final .lobby-actions {
+  position: sticky; bottom: calc(-16px - env(safe-area-inset-bottom)); z-index: 4;
+  margin: auto -18px calc(-16px - env(safe-area-inset-bottom));
+  padding: 26px 18px calc(14px + env(safe-area-inset-bottom));
+  background: linear-gradient(to bottom, rgba(21,18,43,0), rgba(21,18,43,.94) 30%, rgba(21,18,43,.98));
+}
+#s-final #final-help { order: 2; }
+#s-final #btn-exit { order: 3; min-height: 50px; }

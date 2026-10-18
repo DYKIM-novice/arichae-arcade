@@ -1474,6 +1474,8 @@
           ctx.setBadge(combo >= 5 ? `${combo} 콤보` : null, 'b');
         },
         end() {},
+        // 음악관: 곡이 끝나고 3초 뒤에 판을 끝내요 (시작부터 ms, 없으면 0)
+        plannedEnd: () => (isLong && songEnd ? songEnd + 3000 : 0),
         score: () => score,
         value: () => score,
         summary: () => `${notes.length}음 중 ${hit}음 연주 · 최대 ${maxCombo}콤보`
