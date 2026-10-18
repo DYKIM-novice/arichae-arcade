@@ -725,11 +725,11 @@
       return `<button type="button" class="ec ec-y${n ? ' on' : ''}" data-song="${sg.id}" ${dis} aria-pressed="${!!n}">
         <span class="ec-ic mb-ic">${MUSIC_NOTE}</span>
         <span class="ec-txt"><span class="ec-hall">${esc(sg.composer)}</span><b class="disp">${esc(sg.title)}</b>
-        <span class="ec-lv"><span class="ec-note">주제 + 변주 2개 · 약 2분 45초</span></span></span>
+        <span class="ec-lv"><span class="ec-note">주제 + 변주 · 약 1분 30초</span></span></span>
         <span class="ec-no">${n ? n : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'}</span>
       </button>`;
     }).join('');
-    const secs = songs.length * (165 + 14);
+    const secs = songs.length * (95 + 14);
     $('#song-note').textContent = songs.length
       ? `${songs.length}곡 · 약 ${Math.max(1, Math.round(secs / 60))}분 · 누른 순서대로`
       : '누른 순서대로 연주해요';

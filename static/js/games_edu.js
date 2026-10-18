@@ -1507,14 +1507,14 @@
   const music = {
     id: 'music', edu: true,
     icon: `<svg viewBox="0 0 40 40" aria-hidden="true"><rect x="5" y="16" width="30" height="19" rx="3" fill="#C98B4F"/><rect x="5" y="16" width="30" height="5" fill="#A86B35"/><path d="M7 16 L11 6 L33 6 L33 16" fill="#E0A868"/><circle cx="20" cy="27" r="3.4" fill="#FFE27A"/><path d="M35 24 h3 v5 h-3" fill="none" stroke="#FFE27A" stroke-width="2"/><path d="M14 4 v-2 M20 4 v-3 M26 4 v-2" stroke="#FFE7B0" stroke-width="1.6" stroke-linecap="round"/></svg>`,
-    hall: '음악관', title: '오르골 연주회', cat: '클래식 리듬', catColor: 'y', dur: 165,
+    hall: '음악관', title: '오르골 연주회', cat: '클래식 리듬', catColor: 'y', dur: 95,
     levels: ['e', 'm', 'h'],
     levelNames: { e: '하', m: '중', h: '상' },
     buttons: ['r', 'g', 'b'], music: false, pressSound: false,
     rules(lv) {
-      if (lv === 'e') return ['음표가 선에 닿을 때 같은 줄 버튼!', '주제 → 변주 1 → 변주 2, 약 2분 반 연주', '하: 조금 느리게, 음표 수는 그대로'];
-      if (lv === 'h') return ['음표가 선에 닿을 때 같은 줄 버튼!', '변주로 갈수록 음표가 두 배로 많아져요', '상: 조금 빠르게! 콤보를 이어가요'];
-      return ['음표가 선에 닿을 때 같은 줄 버튼!', '주제 → 변주 1(음표 두 배) → 변주 2', '낮은 음은 왼쪽, 높은 음은 오른쪽'];
+      if (lv === 'e') return ['음표가 선에 닿을 때 같은 줄 버튼!', '주제 → 변주, 약 1분 30초 연주', '하: 조금 느리게, 음표 수는 그대로'];
+      if (lv === 'h') return ['음표가 선에 닿을 때 같은 줄 버튼!', '변주에서 높은 소리로 음표가 두 배!', '상: 조금 빠르게! 콤보를 이어가요'];
+      return ['음표가 선에 닿을 때 같은 줄 버튼!', '주제 → 변주(음표 두 배), 약 1분 30초', '낮은 음은 왼쪽, 높은 음은 오른쪽'];
     },
     illus() {
       return `<div class="il-row" style="gap:16px"><div style="width:84px;height:84px">${music.icon}</div>

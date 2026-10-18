@@ -1257,18 +1257,31 @@
       let speed = (opts && opts.speed) || 1;
       let songEnd = 0;
       if (isLong) {
-        // 음악관: 주제 → 변주 1 → 변주 2 로 약 2분 반 동안 한 곡을 연주해요
+        // 음악관: 주제 → 변주 로 약 1분 30초 동안 한 곡을 연주해요
         const lv = (opts && opts.level) || 'm';
         const T = theSong.tune;
         const dbl = (tune) => tune.flatMap((n) => (n.beats >= 1
           ? [Object.assign({}, n, { beats: n.beats / 2 }), Object.assign({}, n, { beats: n.beats / 2 })]
           : [n]));
         const up = (tune) => tune.map((n) => Object.assign({}, n, { midi: n.midi + 12 }));
+        // 변주는 곡의 앞 절반으로 (악보의 한 단락 단위) → 한 곡 약 1분 30초
+        const halfOf = (tune) => {
+          const total = tune.reduce((a, n) => a + n.beats, 0);
+          const out = [];
+          let acc = 0;
+          for (const n of tune) {
+            if (acc >= total / 2 - 0.01) break;
+            out.push(n);
+            acc += n.beats;
+          }
+          return out;
+        };
+        const H = halfOf(T);
         const sections = lv === 'e'
-          ? [{ name: '주제', tune: T, mul: 1 }, { name: '변주 1 · 높은 소리로', tune: up(T), mul: 1 }, { name: '변주 2 · 다시 처음 소리로', tune: T, mul: 1.05 }]
+          ? [{ name: '주제', tune: T, mul: 1 }, { name: '변주 · 높은 소리로', tune: up(H), mul: 1 }]
           : lv === 'h'
-            ? [{ name: '주제', tune: T, mul: 1 }, { name: '변주 1 · 음표가 두 배로', tune: dbl(T), mul: 1 }, { name: '변주 2 · 높은 소리로 두 배', tune: up(dbl(T)), mul: 1.08 }]
-            : [{ name: '주제', tune: T, mul: 1 }, { name: '변주 1 · 음표가 두 배로', tune: dbl(T), mul: 1 }, { name: '변주 2 · 높은 소리로', tune: up(T), mul: 1.08 }];
+            ? [{ name: '주제', tune: T, mul: 1 }, { name: '변주 · 높은 소리로 음표 두 배', tune: up(dbl(H)), mul: 1.05 }]
+            : [{ name: '주제', tune: T, mul: 1 }, { name: '변주 · 음표가 두 배로', tune: dbl(H), mul: 1 }];
         const beatsOf = (tune) => tune.reduce((a, n) => a + n.beats, 0);
         const totalMs = sections.reduce((a, sec) => a + ((beatsOf(sec.tune) + 2) * 60000) / (theSong.bpm * sec.mul), 0);
         // 게임 시간에 맞게 빠르기를 살짝 조절 (기본 빠르기의 0.88~1.2배 안에서)
