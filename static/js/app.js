@@ -1689,6 +1689,77 @@
   /* ================================================================
      시작
      ================================================================ */
+  /* ================================================================
+     앱 설치 (홈 화면에 아이콘 추가) — 누구나 앱에서 바로 방을 만들 수 있게
+     ================================================================ */
+  function setupInstall() {
+    const btn = $('#btn-install');
+    const modal = $('#install-modal');
+    const body = $('#install-body');
+    const ua = navigator.userAgent || '';
+    const isIOS = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+    const isKakao = /KAKAOTALK/i.test(ua);
+    const standalone = () => (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+    let deferred = null;
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => { /* 무시 */ });
+    }
+    if (standalone()) { btn.style.display = 'none'; return; }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferred = e;
+      btn.classList.add('ready');
+    });
+    window.addEventListener('appinstalled', () => {
+      deferred = null;
+      btn.style.display = 'none';
+      closeModal();
+      toast('설치됐어요! 이제 홈 화면의 아리채 오락실 아이콘으로 열어요', 3600);
+    });
+
+    function openModal(html) {
+      body.innerHTML = html;
+      modal.classList.add('show');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+    function closeModal() {
+      modal.classList.remove('show');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    $('#install-close').addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+    body.addEventListener('click', (e) => {
+      if (e.target.closest('[data-open-ext]')) {
+        location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.origin + '/');
+      }
+    });
+
+    const why = '<p class="install-why">설치하면 홈 화면 아이콘으로 바로 열려요. 누구나 앱에서 <b>방 만들기</b>를 눌러 방장이 될 수 있어요.</p>';
+    btn.addEventListener('click', async () => {
+      SND.unlock();
+      SND.SFX.click();
+      if (deferred) {
+        deferred.prompt();
+        try { await deferred.userChoice; } catch (e) { /* 무시 */ }
+        deferred = null;
+        btn.classList.remove('ready');
+        return;
+      }
+      if (isKakao) {
+        openModal(`${why}<p>카카오톡 안에서는 설치할 수 없어요. 먼저 기본 브라우저로 열어 주세요.</p>
+          <button class="btn btn-yellow" type="button" data-open-ext>크롬(사파리)으로 열기</button>`);
+      } else if (isIOS) {
+        openModal(`${why}<ol class="install-steps"><li><b>Safari</b>로 이 페이지를 열어요</li>
+          <li>아래쪽 <b>공유 버튼</b> <span class="ic">□↑</span> 을 눌러요</li><li><b>홈 화면에 추가</b>를 누르면 끝!</li></ol>`);
+      } else {
+        openModal(`${why}<ol class="install-steps"><li>브라우저 오른쪽 위 <b>메뉴(⋮)</b>를 눌러요</li>
+          <li><b>앱 설치</b> 또는 <b>홈 화면에 추가</b>를 눌러요</li><li>홈 화면에 생긴 아이콘으로 열면 끝!</li></ol>`);
+      }
+    });
+  }
+
   async function init() {
     ['pointerdown', 'touchend', 'click', 'keydown'].forEach((ev) =>
       document.addEventListener(ev, () => SND.unlock(), { passive: true }));
@@ -1700,6 +1771,7 @@
       if (!document.hidden && S.room && S.room.phase !== 'lobby' && S.room.phase !== 'final') wakeLock(true);
     });
     setupResume();
+    setupInstall();
 
     try {
       const r = await fetch('/api/info', { cache: 'no-store' });

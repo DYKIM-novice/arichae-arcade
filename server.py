@@ -848,7 +848,7 @@ async def send_json(writer, data: dict, head_only=False) -> None:
                         "application/json; charset=utf-8", head_only, {"Cache-Control": "no-store"})
 
 
-async def serve_file(writer, path: Path, head_only: bool, no_cache: bool) -> None:
+async def serve_file(writer, path: Path, head_only: bool, no_cache: bool, ctype_override: str = "") -> None:
     try:
         target = path.resolve()
         target.relative_to(STATIC_DIR)
@@ -859,8 +859,12 @@ async def serve_file(writer, path: Path, head_only: bool, no_cache: bool) -> Non
         await send_response(writer, 404, b"not found", head_only=head_only)
         return
     ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+    if ctype in ("text/javascript",):
+        ctype = "application/javascript"
     if ctype.startswith("text/") or ctype in ("application/javascript", "image/svg+xml"):
         ctype += "; charset=utf-8"
+    if ctype_override:
+        ctype = ctype_override
     body = target.read_bytes()
     cache = "no-cache" if no_cache else "public, max-age=300"
     await send_response(writer, 200, body, ctype, head_only, {"Cache-Control": cache})
@@ -936,6 +940,11 @@ async def handle_http(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                 }, head_only)
         elif path.startswith("/static/"):
             await serve_file(writer, STATIC_DIR / path[len("/static/"):], head_only, False)
+        elif path == "/manifest.webmanifest":
+            await serve_file(writer, STATIC_DIR / "manifest.webmanifest", head_only, True, "application/manifest+json; charset=utf-8")
+        elif path == "/sw.js":
+            # 서비스 워커는 사이트 전체(/)를 맡아야 해서 맨 위 주소로 내보내요
+            await serve_file(writer, STATIC_DIR / "sw.js", head_only, True)
         elif path == "/favicon.ico":
             await send_response(writer, 404, b"", head_only=head_only)
         else:

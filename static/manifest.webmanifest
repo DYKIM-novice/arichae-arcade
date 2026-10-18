@@ -1,0 +1,16 @@
+{
+  "name": "아리채 오락실",
+  "short_name": "아리채 오락실",
+  "description": "버튼 세 개로 온 가족이 함께하는 미니게임",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#15122B",
+  "theme_color": "#15122B",
+  "lang": "ko",
+  "icons": [
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

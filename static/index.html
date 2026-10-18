@@ -7,6 +7,20 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="format-detection" content="telephone=no">
+<script>
+/* 카톡 안 브라우저로 열리면 자동으로 기본 브라우저(크롬·사파리)로 다시 열어요 */
+(function () {
+  try {
+    if (/KAKAOTALK/i.test(navigator.userAgent) && !sessionStorage.getItem('arichae_ext')) {
+      sessionStorage.setItem('arichae_ext', '1');
+      location.replace('kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href));
+    }
+  } catch (e) { /* 무시 */ }
+})();
+</script>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+<meta name="apple-mobile-web-app-title" content="아리채 오락실">
 <meta property="og:title" content="아리채 오락실">
 <meta property="og:description" content="버튼 세 개로 붙는 온 가족 미니게임 한 판! 눌러서 입장하세요">
 <title>아리채 오락실</title>
@@ -14,7 +28,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&display=swap">
-<link rel="stylesheet" href="static/css/style.css?v=20">
+<link rel="stylesheet" href="static/css/style.css?v=21">
 </head>
 <body>
 <div class="ambient" aria-hidden="true"><i></i><i></i><i></i><div class="stars"></div><div class="stars s2"></div></div>
@@ -24,7 +38,13 @@
   <section id="s-home" class="screen">
     <div class="topbar">
       <span class="chip-y disp">FAMILY ARCADE</span>
-      <span class="topbar-right" id="home-room"></span>
+      <div class="topbar-right">
+        <span class="home-room" id="home-room"></span>
+        <button class="btn-install" id="btn-install" type="button" aria-label="앱 설치">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M12 7v7"/><path d="M9 11l3 3 3-3"/><path d="M10 18h4"/></svg>
+          <span>앱 설치</span>
+        </button>
+      </div>
     </div>
     <div class="logo">
       <svg class="star s1" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1 L14.2 9.8 L23 12 L14.2 14.2 L12 23 L9.8 14.2 L1 12 L9.8 9.8 Z" fill="#FFD23F"/></svg>
@@ -211,14 +231,20 @@
   </div>
 </div>
 
+<div class="modal" id="install-modal" aria-hidden="true">
+  <div class="modal-box card install-box">
+    <div class="list-head"><span class="disp modal-title">앱으로 설치하기</span><button class="icon-btn" id="install-close" type="button" aria-label="닫기"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F6F3FF" stroke-width="2.6" stroke-linecap="round"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button></div>
+    <div class="install-body" id="install-body"></div>
+  </div>
+</div>
 <div class="banner" id="banner" role="status"></div>
 <div class="toast" id="toast" role="status"></div>
 
-<script src="static/js/animals.js?v=20"></script>
-<script src="static/js/audio.js?v=20"></script>
-<script src="static/js/games.js?v=20"></script>
-<script src="static/js/games_extra.js?v=20"></script>
-<script src="static/js/games_edu.js?v=20"></script>
-<script src="static/js/app.js?v=20"></script>
+<script src="static/js/animals.js?v=21"></script>
+<script src="static/js/audio.js?v=21"></script>
+<script src="static/js/games.js?v=21"></script>
+<script src="static/js/games_extra.js?v=21"></script>
+<script src="static/js/games_edu.js?v=21"></script>
+<script src="static/js/app.js?v=21"></script>
 </body>
 </html>

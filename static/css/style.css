@@ -1271,3 +1271,22 @@ button { font-family: var(--body); color: inherit; }
   .rv .rk { position: static; }
   .gb-name { font-size: 11px; bottom: -6px; }
 }
+
+/* 앱 설치 버튼 (첫 화면 오른쪽 위) */
+.home-room { display: inline-flex; align-items: center; gap: 6px; }
+.btn-install {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 0; border-radius: 999px; cursor: pointer;
+  background: var(--panel2); color: var(--text); font-size: 14px; box-shadow: 0 3px 0 var(--deep); white-space: nowrap;
+}
+.btn-install svg { color: var(--yellow); }
+.btn-install.ready { background: var(--yellow); color: var(--ink); box-shadow: 0 3px 0 var(--yellowS); animation: installPulse 2s ease-in-out infinite; }
+.btn-install.ready svg { color: var(--ink); }
+.btn-install:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--deep); }
+@keyframes installPulse { 50% { transform: scale(1.06); } }
+.install-box { display: flex; flex-direction: column; gap: 12px; }
+.install-body { display: flex; flex-direction: column; gap: 12px; font-size: 16px; line-height: 1.5; color: var(--muted); }
+.install-body p { margin: 0; }
+.install-body b { color: var(--text); font-weight: 400; }
+.install-why { background: rgba(255,210,63,.1); border-radius: 12px; padding: 10px 12px; color: #FFE7B0 !important; }
+.install-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; }
+.install-steps .ic { display: inline-block; padding: 0 6px; border-radius: 6px; background: var(--panel3); color: var(--text); }
