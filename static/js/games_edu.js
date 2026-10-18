@@ -1512,13 +1512,13 @@
     levelNames: { e: '하', m: '중', h: '상' },
     buttons: ['r', 'g', 'b'], music: false, pressSound: false,
     rules(lv) {
-      if (lv === 'e') return ['음표가 선에 닿을 때 같은 줄 버튼!', '주제 → 변주, 약 1분 30초 연주', '하: 조금 느리게, 음표 수는 그대로'];
-      if (lv === 'h') return ['음표가 선에 닿을 때 같은 줄 버튼!', '변주에서 높은 소리로 음표가 두 배!', '상: 조금 빠르게! 콤보를 이어가요'];
-      return ['음표가 선에 닿을 때 같은 줄 버튼!', '주제 → 변주(음표 두 배), 약 1분 30초', '낮은 음은 왼쪽, 높은 음은 오른쪽'];
+      if (lv === 'e') return ['음표가 선에 닿을 때 같은 줄 버튼!', '주제 → 변주(음표 두 배), 약 1분 30초', '낮은 음은 왼쪽, 높은 음은 오른쪽'];
+      if (lv === 'h') return ['처음부터 음표가 두 배로 빨라요', '화음 음표는 두 줄을 동시에!', '상: 콤보를 이어가면 점수가 쑥쑥'];
+      return ['음표가 선에 닿을 때 같은 줄 버튼!', '조금 빠르게, 변주는 높은 소리로 두 배', '낮은 음은 왼쪽, 높은 음은 오른쪽'];
     },
     illus() {
       return `<div class="il-row" style="gap:16px"><div style="width:84px;height:84px">${music.icon}</div>
-        <div class="il-cap" style="text-align:left">♪ 환희의 송가 · 베토벤<br>♪ 터키 행진곡 · 모차르트<br>♪ 미뉴에트 · 바흐 …</div></div>`;
+        <div class="il-cap" style="text-align:left">♪ 환희의 송가 · 베토벤<br>♪ 작은 별 변주곡 · 모차르트<br>♪ 미뉴에트 · 바흐 …</div></div>`;
     },
     learn(lv, songId) {
       const song = (G.MUSIC_SONGS || []).find((x) => x.id === songId);
@@ -1530,7 +1530,7 @@
     create(ctx) {
       const base = G.ALL.rhythm;
       const lv = ['e', 'm', 'h'].includes(ctx.level) ? ctx.level : 'm';
-      return base.createWith(ctx, { speed: { e: 0.85, m: 1, h: 1.1 }[lv], long: true, songId: ctx.song, level: lv });
+      return base.createWith(ctx, { speed: { e: 1, m: 1.1, h: 1.15 }[lv], long: true, songId: ctx.song, level: lv });
     }
   };
 

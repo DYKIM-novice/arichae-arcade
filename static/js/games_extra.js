@@ -1219,11 +1219,11 @@
       fact: '모차르트는 프랑스 동요 "아, 어머니께 말씀드릴게요"의 선율로 12개의 변주곡을 만들었어요. 우리가 아는 "반짝반짝 작은 별"과 같은 멜로디예요.' },
     { id: 'ode', title: '환희의 송가', composer: '베토벤', name: '환희의 송가 · 베토벤', bpm: 116, notes: [OD_A, OD_A2, OD_B, OD_A2, OD_B, OD_A2].join(' '),
       fact: '베토벤 교향곡 9번 마지막 악장의 합창 선율이에요. 베토벤은 귀가 거의 들리지 않을 때 이 곡을 완성했어요. 지금은 유럽연합(EU)의 노래로도 쓰여요.' },
-    { id: 'minuet', title: '미뉴에트 G장조', composer: '바흐', name: '미뉴에트 G장조 · 바흐', bpm: 112, notes: [MN_1, MN_2, MN_1, MN_2].join(' '),
+    { id: 'minuet', title: '미뉴에트 G장조', composer: '바흐', name: '미뉴에트 G장조 · 바흐', bpm: 112, meter: 3, pickup: 0, notes: [MN_1, MN_2, MN_1, MN_2].join(' '),
       fact: '미뉴에트는 3박자의 우아한 춤곡이에요. 바흐가 아내 안나 막달레나를 위해 엮은 음악 노트에 실려 있어요. 요즘은 페촐트라는 작곡가가 만든 곡으로 알려져 있어요.' },
-    { id: 'elise', title: '엘리제를 위하여', composer: '베토벤', name: '엘리제를 위하여 · 베토벤', bpm: 62, notes: [EL_T1, EL_T2, EL_M, EL_T1, EL_T2].join(' '),
+    { id: 'elise', title: '엘리제를 위하여', composer: '베토벤', name: '엘리제를 위하여 · 베토벤', bpm: 62, meter: 3, pickup: 1, notes: [EL_T1, EL_T2, EL_M, EL_T1, EL_T2].join(' '),
       fact: '베토벤이 1810년쯤 쓴 피아노 소품이에요. "엘리제"가 누구인지는 지금도 정확히 몰라요.' },
-    { id: 'lullaby', title: '자장가', composer: '브람스', name: '자장가 · 브람스', bpm: 66, notes: [BR_A, BR_A].join(' '),
+    { id: 'lullaby', title: '자장가', composer: '브람스', name: '자장가 · 브람스', bpm: 66, meter: 3, pickup: 1, notes: [BR_A, BR_A].join(' '),
       fact: '브람스가 친구의 아기가 태어난 것을 축하하며 선물한 노래예요. 세계에서 가장 유명한 자장가 중 하나예요.' }
   ].map(prepareSong);
   LONG_SONGS.forEach((s) => { s.sec = Math.round((s.tune.reduce((a, n) => a + n.beats, 0) * 60) / s.bpm); });
@@ -1277,30 +1277,41 @@
           return out;
         };
         const H = halfOf(T);
+        // 하: 주제 + 음표 두 배 변주 / 중: 조금 빠르게, 높은 소리로 두 배 변주
+        // 상: 처음부터 음표 두 배 + 마디 첫 박마다 두 줄을 같이 누르는 화음 음표
         const sections = lv === 'e'
-          ? [{ name: '주제', tune: T, mul: 1 }, { name: '변주 · 높은 소리로', tune: up(H), mul: 1 }]
+          ? [{ name: '주제', tune: T, mul: 1 }, { name: '변주 · 음표가 두 배로', tune: dbl(H), mul: 1 }]
           : lv === 'h'
-            ? [{ name: '주제', tune: T, mul: 1 }, { name: '변주 · 높은 소리로 음표 두 배', tune: up(dbl(H)), mul: 1.05 }]
-            : [{ name: '주제', tune: T, mul: 1 }, { name: '변주 · 음표가 두 배로', tune: dbl(H), mul: 1 }];
+            ? [{ name: '주제 · 음표 두 배', tune: dbl(T), mul: 1, chord: true }, { name: '변주 · 높은 소리 + 화음', tune: up(dbl(H)), mul: 1.08, chord: true }]
+            : [{ name: '주제', tune: T, mul: 1 }, { name: '변주 · 높은 소리로 음표 두 배', tune: up(dbl(H)), mul: 1.05 }];
         const beatsOf = (tune) => tune.reduce((a, n) => a + n.beats, 0);
         const totalMs = sections.reduce((a, sec) => a + ((beatsOf(sec.tune) + 2) * 60000) / (theSong.bpm * sec.mul), 0);
-        // 게임 시간에 맞게 빠르기를 살짝 조절 (기본 빠르기의 0.88~1.2배 안에서)
+        // 게임 시간에 맞게 빠르기를 살짝 조절 (상은 너무 느려지지 않게)
         const need = totalMs / Math.max(5000, D - LEAD - 2500);
-        // (긴 곡은 시간 안에 끝나도록 최대 1.15배까지는 허용)
-        speed = Math.min(Math.max(speed * 1.2, Math.min(need, 1.15)), Math.max(speed * 0.88, need));
+        const floor = lv === 'h' ? 0.95 : 0.88;
+        speed = Math.min(Math.max(speed * 1.2, Math.min(need, 1.15)), Math.max(speed * floor, need));
         sections.forEach((sec, si) => {
           const beatMs = 60000 / (theSong.bpm * speed * sec.mul);
           titles.push({ at: at - beatMs * 2, name: si === 0 ? `${theSong.name}` : `${theSong.title} · ${sec.name}` });
           let t = at;
           let b = 0;
+          let pos = 0;
           sec.tune.forEach((n) => {
-            if (t < D - 1200) notes.push({ at: t, lane: n.lane, midi: n.midi });
+            if (t < D - 1200) {
+              notes.push({ at: t, lane: n.lane, midi: n.midi });
+              // 화음: 마디 첫 박마다 한 옥타브 아래 음을 다른 줄에 같이
+              const meter = theSong.meter || 4;
+              const bp = (((pos - (theSong.pickup || 0)) % meter) + meter) % meter;
+              if (sec.chord && (bp < 0.01 || meter - bp < 0.01)) notes.push({ at: t, lane: n.lane === 0 ? 2 : 0, midi: n.midi - 12, chord: true });
+            }
             t += n.beats * beatMs;
+            pos += n.beats;
           });
           for (let x = at; x < t && x < D - 1200; x += beatMs) beats.push({ at: x, accent: b++ % 4 === 0 });
           songEnd = t;
           at = t + beatMs * 2;
         });
+        notes.sort((a, b) => a.at - b.at);
       }
       for (let k = 0; !isLong && at < D - 3000; k++) {
         const song = theSong;
@@ -1372,7 +1383,7 @@
           }
           while (ptr < notes.length && notes[ptr].at - FALL <= e) {
             const n = notes[ptr++];
-            n.el = el(`<div class="rh-note" style="--c:${HEX[COLS[n.lane]]}"><b>${SOLFA[n.midi % 12]}</b></div>`);
+            n.el = el(`<div class="rh-note${n.chord ? ' chord' : ''}" style="--c:${HEX[COLS[n.lane]]}"><b>${SOLFA[n.midi % 12]}</b></div>`);
             lanes[n.lane].appendChild(n.el);
           }
           for (let i = 0; i < ptr; i++) {
