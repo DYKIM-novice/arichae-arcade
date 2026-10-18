@@ -69,7 +69,7 @@
 
   const light = {
     id: 'light', edu: true,
-    icon: `<svg viewBox="0 0 40 40" aria-hidden="true"><g style="mix-blend-mode:screen"><circle cx="15" cy="15" r="10" fill="#FF3B3B"/><circle cx="25" cy="15" r="10" fill="#2EE65A" style="mix-blend-mode:screen"/><circle cx="20" cy="24" r="10" fill="#3D6BFF" style="mix-blend-mode:screen"/></g></svg>`, hall: '빛의 방', title: '빛 섞기', cat: '빛의 삼원색', catColor: 'b', dur: 45,
+    icon: `<svg viewBox="0 0 40 40" aria-hidden="true"><g style="mix-blend-mode:screen"><circle cx="15" cy="15" r="10" fill="#FF3B3B"/><circle cx="25" cy="15" r="10" fill="#2EE65A" style="mix-blend-mode:screen"/><circle cx="20" cy="24" r="10" fill="#3D6BFF" style="mix-blend-mode:screen"/></g></svg>`, hall: '빛의 방', title: '빛 섞기', cat: '빛의 삼원색', catColor: 'b', dur: 35,
     levels: ['e', 'm'],
     buttons: ['r', 'g', 'b'],
     buttonStyle() {
@@ -218,7 +218,7 @@
 
   const paint = {
     id: 'paint', edu: true,
-    icon: `<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 4 C31 4 37 11 37 19 C37 25 32 26 28 25 C24 24 23 27 25 31 C27 35 24 37 20 37 C10 37 3 30 3 20 C3 11 10 4 20 4 Z" fill="#F2E3C6"/><circle cx="12" cy="17" r="3.6" fill="#E8262B"/><circle cx="19" cy="11" r="3.6" fill="#FFD400"/><circle cx="28" cy="13" r="3.6" fill="#1F5BD6"/><circle cx="12" cy="27" r="3.6" fill="#2FAE4E"/></svg>`, hall: '물감 공방', title: '물감 섞기', cat: '색의 혼합', catColor: 'r', dur: 45,
+    icon: `<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 4 C31 4 37 11 37 19 C37 25 32 26 28 25 C24 24 23 27 25 31 C27 35 24 37 20 37 C10 37 3 30 3 20 C3 11 10 4 20 4 Z" fill="#F2E3C6"/><circle cx="12" cy="17" r="3.6" fill="#E8262B"/><circle cx="19" cy="11" r="3.6" fill="#FFD400"/><circle cx="28" cy="13" r="3.6" fill="#1F5BD6"/><circle cx="12" cy="27" r="3.6" fill="#2FAE4E"/></svg>`, hall: '물감 공방', title: '물감 섞기', cat: '색의 혼합', catColor: 'r', dur: 35,
     levels: ['e', 'm'],
     buttons: ['r', 'g', 'b'],
     buttonStyle(lv) {
@@ -424,7 +424,7 @@
 
   const history = {
     id: 'history', edu: true,
-    icon: `<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17" fill="#15122B"/><circle cx="20" cy="20" r="13" fill="none" stroke="#F2B33D" stroke-width="6" stroke-dasharray="72 82" transform="rotate(-90 20 20)"/><circle cx="20" cy="20" r="13" fill="none" stroke="#4A90D9" stroke-width="6" stroke-dasharray="5 82" stroke-dashoffset="-72" transform="rotate(-90 20 20)"/><circle cx="20" cy="20" r="13" fill="none" stroke="#8DB33A" stroke-width="6" stroke-dasharray="3.5 82" stroke-dashoffset="-77" transform="rotate(-90 20 20)"/><circle cx="20" cy="20" r="13" fill="none" stroke="#F08A4B" stroke-width="6" stroke-dasharray="1.5 82" stroke-dashoffset="-80.5" transform="rotate(-90 20 20)"/><path d="M20 20 L20 10 M20 20 L27 23" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/><circle cx="20" cy="20" r="2.4" fill="#fff"/></svg>`, hall: '시간 여행관', title: '지구 역사 순서', cat: '지구의 역사', catColor: 'y', dur: 50,
+    icon: `<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17" fill="#15122B"/><circle cx="20" cy="20" r="13" fill="none" stroke="#F2B33D" stroke-width="6" stroke-dasharray="72 82" transform="rotate(-90 20 20)"/><circle cx="20" cy="20" r="13" fill="none" stroke="#4A90D9" stroke-width="6" stroke-dasharray="5 82" stroke-dashoffset="-72" transform="rotate(-90 20 20)"/><circle cx="20" cy="20" r="13" fill="none" stroke="#8DB33A" stroke-width="6" stroke-dasharray="3.5 82" stroke-dashoffset="-77" transform="rotate(-90 20 20)"/><circle cx="20" cy="20" r="13" fill="none" stroke="#F08A4B" stroke-width="6" stroke-dasharray="1.5 82" stroke-dashoffset="-80.5" transform="rotate(-90 20 20)"/><path d="M20 20 L20 10 M20 20 L27 23" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/><circle cx="20" cy="20" r="2.4" fill="#fff"/></svg>`, hall: '시간 여행관', title: '지구 역사 순서', cat: '지구의 역사', catColor: 'y', dur: 40,
     levels: ['m'],
     buttons: ['r', 'g', 'b'],
     rules() {
@@ -609,7 +609,7 @@
 
   const fishing = {
     id: 'fishing', edu: true,
-    icon: `<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M30 2 V16 Q30 22 25 22 Q21 22 21 18" fill="none" stroke="#E8EEF5" stroke-width="2.4" stroke-linecap="round"/><path d="M8 29 L2 23 L2 35 Z" fill="#E2700F"/><ellipse cx="21" cy="29" rx="15" ry="9" fill="#FF8A1F"/><rect x="14" y="21" width="3.4" height="16" fill="#fff"/><rect x="24" y="21" width="3.4" height="16" fill="#fff"/><circle cx="31" cy="27" r="2.2" fill="#1C1733"/></svg>`, hall: '바다관', title: '바다 낚시', cat: '바다 생물 분류', catColor: 'b', dur: 45,
+    icon: `<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M30 2 V16 Q30 22 25 22 Q21 22 21 18" fill="none" stroke="#E8EEF5" stroke-width="2.4" stroke-linecap="round"/><path d="M8 29 L2 23 L2 35 Z" fill="#E2700F"/><ellipse cx="21" cy="29" rx="15" ry="9" fill="#FF8A1F"/><rect x="14" y="21" width="3.4" height="16" fill="#fff"/><rect x="24" y="21" width="3.4" height="16" fill="#fff"/><circle cx="31" cy="27" r="2.2" fill="#1C1733"/></svg>`, hall: '바다관', title: '바다 낚시', cat: '바다 생물 분류', catColor: 'b', dur: 35,
     levels: ['e', 'm'],
     buttons: ['r', 'g', 'b'],
     rules(lv) {
@@ -831,7 +831,7 @@
 
   const periodic = {
     id: 'periodic', edu: true,
-    icon: `<svg viewBox="0 0 40 40" aria-hidden="true"><rect x="3" y="3" width="34" height="34" rx="7" fill="#2ED573"/><rect x="3" y="3" width="34" height="34" rx="7" fill="none" stroke="#1A8F4A" stroke-width="3"/><text x="8" y="13" font-size="8" fill="#0B2A17" font-family="sans-serif" font-weight="700">1</text><text x="20" y="31" text-anchor="middle" font-size="19" fill="#0B2A17" font-family="sans-serif" font-weight="900">H</text></svg>`, hall: '원소관', title: '주기율표 빨리 고르기', cat: '원소와 주기율표', catColor: 'g', dur: 45,
+    icon: `<svg viewBox="0 0 40 40" aria-hidden="true"><rect x="3" y="3" width="34" height="34" rx="7" fill="#2ED573"/><rect x="3" y="3" width="34" height="34" rx="7" fill="none" stroke="#1A8F4A" stroke-width="3"/><text x="8" y="13" font-size="8" fill="#0B2A17" font-family="sans-serif" font-weight="700">1</text><text x="20" y="31" text-anchor="middle" font-size="19" fill="#0B2A17" font-family="sans-serif" font-weight="900">H</text></svg>`, hall: '원소관', title: '주기율표 빨리 고르기', cat: '원소와 주기율표', catColor: 'g', dur: 35,
     levels: ['e', 'm', 'h'],
     buttons: ['r', 'g', 'b'],
     rules(lv) {
@@ -1032,7 +1032,7 @@
   const space = {
     id: 'space', edu: true,
     icon: `<svg viewBox="0 0 40 40" aria-hidden="true"><ellipse cx="20" cy="20" rx="18" ry="5" fill="none" stroke="#C9B27A" stroke-width="2.4" transform="rotate(-18 20 20)"/><circle cx="20" cy="20" r="11" fill="#F2D27E"/><rect x="9" y="17" width="22" height="2.4" fill="#D9B464"/><path d="M3 24 Q20 30 37 15" fill="none" stroke="#E6D29C" stroke-width="2.4"/><circle cx="6" cy="7" r="1.2" fill="#fff"/><circle cx="33" cy="33" r="1" fill="#fff"/><circle cx="34" cy="6" r="1.4" fill="#fff"/></svg>`,
-    hall: '우주관', title: '행성 찾기', cat: '태양계', catColor: 'b', dur: 45,
+    hall: '우주관', title: '행성 찾기', cat: '태양계', catColor: 'b', dur: 35,
     levels: ['e', 'm'],
     buttons: ['r', 'g', 'b'],
     rules(lv) {
@@ -1286,7 +1286,7 @@
   const tree = {
     id: 'tree', edu: true,
     icon: `<svg viewBox="0 0 40 40" aria-hidden="true"><rect x="3" y="3" width="34" height="34" rx="6" fill="#F6E7C1"/><path d="M20 35 L20 20 M20 24 L10 14 M20 22 L30 12 M20 20 L20 9" stroke="#6B4A2E" stroke-width="2.6" stroke-linecap="round" fill="none"/><circle cx="10" cy="12" r="4.5" fill="#FF8A5B"/><circle cx="20" cy="8" r="4.5" fill="#3DD6D0"/><circle cx="30" cy="11" r="4.5" fill="#5BB8FF"/></svg>`,
-    hall: '생명의 나무', title: '진화 나무 오르기', cat: '동물 분류', catColor: 'g', dur: 45,
+    hall: '생명의 나무', title: '진화 나무 오르기', cat: '동물 분류', catColor: 'g', dur: 35,
     levels: ['e', 'm'],
     buttons: ['r', 'g', 'b'],
     rules(lv) {

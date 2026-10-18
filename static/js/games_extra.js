@@ -46,7 +46,7 @@
      5. 투척왕 (연타 + 타이밍, 누르고 떼기)
      ================================================================ */
   const throwG = {
-    id: 'throw', title: '투척왕', cat: '연타+타이밍', catColor: 'r', dur: 45,
+    id: 'throw', title: '투척왕', cat: '연타+타이밍', catColor: 'r', dur: 35,
     buttons: ['r', 'g', 'b'], pressSound: false,
     rules: ['빨강·파랑 번갈아 연타로 힘을 모아요', '초록을 누르고 있으면 각도가 올라가요', '45도 근처에서 떼면 가장 멀리 날아가요'],
     illus() {
@@ -225,7 +225,7 @@
      6. 따라 누르기 (기억력)
      ================================================================ */
   const simon = {
-    id: 'simon', title: '따라 누르기', cat: '기억력', catColor: 'b', dur: 45,
+    id: 'simon', title: '따라 누르기', cat: '기억력', catColor: 'b', dur: 35,
     buttons: ['r', 'g', 'b'],
     rules: ['불이 깜빡인 순서를 잘 기억해요', '같은 순서대로 버튼을 눌러요', '성공할 때마다 하나씩 길어져요'],
     illus() {
@@ -347,7 +347,7 @@
      7. 풍선 불기 (연타 조절)
      ================================================================ */
   const balloon = {
-    id: 'balloon', title: '풍선 불기', cat: '연타 조절', catColor: 'r', dur: 40,
+    id: 'balloon', title: '풍선 불기', cat: '연타 조절', catColor: 'r', dur: 30,
     buttons: ['r', 'g', 'b'], pressSound: false,
     rules: ['빨강이나 파랑을 눌러 풍선을 불어요', '초록을 누르면 풍선을 묶어서 점수!', '너무 크게 불면 펑! 흔들리면 조심'],
     illus() {
@@ -467,7 +467,7 @@
   };
 
   const mole = {
-    id: 'mole', title: '두더지 잡기', cat: '반응', catColor: 'g', dur: 40,
+    id: 'mole', title: '두더지 잡기', cat: '반응', catColor: 'g', dur: 30,
     buttons: ['r', 'g', 'b'],
     rules: ['왼쪽·가운데·오른쪽 구멍 = 빨강·초록·파랑', '두더지가 나오면 그 자리 버튼!', '황금 두더지는 +40, 폭탄은 누르면 -40'],
     illus() {
@@ -507,7 +507,8 @@
       const info = wrap.querySelector('.ml-info');
 
       function down(h) {
-        moleEls[h].classList.remove('up');
+        // 'hit'(납작) 상태까지 같이 지워서 구멍 속으로 완전히 들어가게
+        moleEls[h].className = 'ml-mole';
         holes[h] = null;
       }
 
@@ -570,7 +571,7 @@
           }
           m.classList.add('hit');
           ctx.setScore(score);
-          setTimeout(() => { if (holes[i] === h) down(i); }, 180);
+          setTimeout(() => { if (holes[i] === h) down(i); }, 220);
         },
         end() {},
         score: () => score,
@@ -584,7 +585,7 @@
      9. 줄다리기 (팀 연타)
      ================================================================ */
   const tug = {
-    id: 'tug', title: '줄다리기', cat: '팀 연타', catColor: 'r', dur: 30,
+    id: 'tug', title: '줄다리기', cat: '팀 연타', catColor: 'r', dur: 25,
     buttons: ['r', 'b'], pressSound: false,
     rules: ['빨강팀과 파랑팀으로 자동으로 나뉘어요', '내 팀 색 버튼을 미친 듯이 연타!', '이긴 팀은 모두 +300 보너스'],
     illus() {
@@ -683,7 +684,7 @@
      10. 용접 이어붙이기 (누르고 떼기)
      ================================================================ */
   const weld = {
-    id: 'weld', title: '용접 이어붙이기', cat: '누르고 떼기', catColor: 'y', dur: 45,
+    id: 'weld', title: '용접 이어붙이기', cat: '누르고 떼기', catColor: 'y', dur: 35,
     buttons: ['r', 'g', 'b'], pressSound: false,
     rules: ['지시한 색 버튼을 누르고 있으면 용접이 나가요', '깃발 위치에서 정확히 손을 떼요', '끝까지 가면 타버려서 0점'],
     illus() {
@@ -819,7 +820,7 @@
      11. 크레인 낙하 (타이밍)
      ================================================================ */
   const crane = {
-    id: 'crane', title: '크레인 낙하', cat: '타이밍', catColor: 'y', dur: 45,
+    id: 'crane', title: '크레인 낙하', cat: '타이밍', catColor: 'y', dur: 35,
     buttons: ['r', 'g', 'b'],
     rules: ['좌우로 움직이는 블록을 아무 버튼으로 떨어뜨려요', '아래 블록과 겹친 부분만 남아요', '딱 맞추면 퍼펙트! 크기 그대로'],
     illus() {
@@ -1012,7 +1013,7 @@
      12. 숫자 세기 (관찰)
      ================================================================ */
   const count = {
-    id: 'count', title: '숫자 세기', cat: '관찰', catColor: 'g', dur: 50,
+    id: 'count', title: '숫자 세기', cat: '관찰', catColor: 'g', dur: 40,
     buttons: ['r', 'g', 'b'],
     rules: ['여러 도형이 화면을 지나가요', '물어보는 도형이 몇 개였는지 세요', '정답이 적힌 버튼을 눌러요'],
     illus() {
@@ -1159,44 +1160,87 @@
   };
 
   /* ================================================================
-     13. 리듬 박자 (타이밍)
+     13. 오르골 리듬 (타이밍) — 누구나 아는 옛 노래(저작권 만료곡) 멜로디
      ================================================================ */
+  // 음 이름 → MIDI 번호 (C4 = 60)
+  const NOTE_IDX = { C: 0, 'C#': 1, D: 2, 'D#': 3, E: 4, F: 5, 'F#': 6, G: 7, 'G#': 8, A: 9, 'A#': 10, B: 11 };
+  const SOLFA = ['도', '도#', '레', '레#', '미', '파', '파#', '솔', '솔#', '라', '라#', '시'];
+  function parseTune(str) {
+    return str.trim().split(/\s+/).map((tok) => {
+      const [n, len] = tok.split(':');
+      const m = n.match(/^([A-G]#?)(\d)$/);
+      return { midi: 12 * (Number(m[2]) + 1) + NOTE_IDX[m[1]], beats: len ? Number(len) : 1 };
+    });
+  }
+  // 모두 저작권이 끝난 옛 동요·클래식 (우리 박자로 직접 옮겨 적음)
+  const SONGS = [
+    { name: '반짝반짝 작은 별', bpm: 108, notes: 'C5 C5 G5 G5 A5 A5 G5:2 F5 F5 E5 E5 D5 D5 C5:2 G5 G5 F5 F5 E5 E5 D5:2' },
+    { name: '떴다 떴다 비행기', bpm: 116, notes: 'E5 D5 C5 D5 E5 E5 E5:2 D5 D5 D5:2 E5 G5 G5:2 E5 D5 C5 D5 E5 E5 E5:2 D5 D5 E5 D5 C5:2' },
+    { name: '나비야', bpm: 96, notes: 'G5:.5 E5:.5 E5 F5:.5 D5:.5 D5 C5:.5 D5:.5 E5:.5 F5:.5 G5:.5 G5:.5 G5 G5:.5 E5:.5 E5 F5:.5 D5:.5 D5 C5:.5 E5:.5 G5:.5 G5:.5 C5:2' },
+    { name: '환희의 송가', bpm: 120, notes: 'E5 E5 F5 G5 G5 F5 E5 D5 C5 C5 D5 E5 E5:1.5 D5:.5 D5:2 E5 E5 F5 G5 G5 F5 E5 D5 C5 C5 D5 E5 D5:1.5 C5:.5 C5:2' },
+    { name: '징글벨', bpm: 126, notes: 'E5 E5 E5:2 E5 E5 E5:2 E5 G5 C5:1.5 D5:.5 E5:2 F5 F5 F5:1.5 F5:.5 F5 E5 E5 E5:.5 E5:.5 G5 G5 F5 D5 C5:2' },
+    { name: '엘리제를 위하여', bpm: 66, notes: 'E6:.5 D#6:.5 E6:.5 D#6:.5 E6:.5 B5:.5 D6:.5 C6:.5 A5:1.5 C5:.5 E5:.5 A5:.5 B5:1.5 E5:.5 G#5:.5 B5:.5 C6:1.5' }
+  ].map((s) => {
+    const notes = parseTune(s.notes);
+    const uniq = Array.from(new Set(notes.map((n) => n.midi))).sort((a, b) => a - b);
+    // 낮은 음 = 왼쪽(빨강), 가운데 음 = 가운데(초록), 높은 음 = 오른쪽(파랑)
+    notes.forEach((n) => { n.lane = Math.min(2, Math.floor((uniq.indexOf(n.midi) * 3) / uniq.length)); });
+    return Object.assign({}, s, { tune: notes });
+  });
+
   const rhythm = {
-    id: 'rhythm', title: '리듬 박자', cat: '리듬', catColor: 'b', dur: 50,
-    buttons: ['r', 'g', 'b'], music: false,
-    rules: ['노트가 판정선에 닿을 때 같은 줄 버튼!', '정확할수록 PERFECT, 콤보가 이어지면 보너스', '왼쪽·가운데·오른쪽 = 빨강·초록·파랑'],
+    id: 'rhythm', title: '오르골 리듬', cat: '리듬', catColor: 'b', dur: 40,
+    buttons: ['r', 'g', 'b'], music: false, pressSound: false,
+    rules: ['음표가 선에 닿을 때 같은 줄 버튼!', '잘 맞히면 오르골 소리로 노래가 연주돼요', '낮은 음은 왼쪽, 높은 음은 오른쪽이에요'],
     illus() {
-      return `<div class="il-rhythm">${COLS.map((c, i) => `<div class="ir-lane"><i style="background:${HEX[c]};top:${20 + i * 22}%"></i><b style="border-color:${HEX[c]}"></b></div>`).join('')}</div>`;
+      return `<div class="il-row" style="gap:14px"><div class="il-rhythm">${COLS.map((c, i) => `<div class="ir-lane"><i style="background:${HEX[c]};top:${20 + i * 22}%"></i><b style="border-color:${HEX[c]}"></b></div>`).join('')}</div>
+        <div class="il-cap" style="text-align:left">♪ 반짝반짝 작은 별<br>♪ 환희의 송가<br>♪ 징글벨 …</div></div>`;
     },
     create(ctx) {
       const R = rng(ctx.seed);
       const D = durOf(ctx);
-      const BEAT = 500;
-      const LEAD = 1600;
-      const FALL = 1400;
-      const notes = [];
-      for (let b = 0; LEAD + b * BEAT < D - 1500; b++) {
-        const at = LEAD + b * BEAT;
-        const prog = at / D;
-        const lane = Math.floor(R() * 3);
-        notes.push({ at, lane });
-        if (R() < 0.18 + prog * 0.3) notes.push({ at: at + BEAT / 2, lane: (lane + 1 + Math.floor(R() * 2)) % 3 });
-        if (prog > 0.45 && R() < 0.15) notes.push({ at, lane: (lane + 1 + Math.floor(R() * 2)) % 3 });
+      const LEAD = 2200;
+      const FALL = 1500;
+      // 노래 순서를 섞고, 시간이 될 때까지 이어서 연주 (갈수록 조금씩 빨라짐)
+      const order = SONGS.slice();
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(R() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
       }
-      notes.sort((a, b) => a.at - b.at);
+      const notes = [];
+      const titles = [];
+      const beats = [];
+      let at = LEAD;
+      let speed = 1;
+      for (let k = 0; at < D - 3000; k++) {
+        const song = order[k % order.length];
+        const beatMs = 60000 / (song.bpm * speed);
+        titles.push({ at: at - beatMs * 2, name: song.name });
+        let t = at;
+        let b = 0;
+        song.tune.forEach((n) => {
+          if (t < D - 1200) notes.push({ at: t, lane: n.lane, midi: n.midi });
+          t += n.beats * beatMs;
+        });
+        for (let x = at; x < t && x < D - 1200; x += beatMs) beats.push({ at: x, accent: b++ % 4 === 0 });
+        at = t + beatMs * 2.5;
+        speed *= 1.07;
+      }
       notes.forEach((n) => { n.state = 'wait'; n.el = null; });
       let t0 = 0;
       let ptr = 0;
+      let bptr = 0;
+      let tptr = 0;
       let score = 0;
       let combo = 0;
       let maxCombo = 0;
       let perfect = 0;
-      let lastBeat = -1;
+      let hit = 0;
       let H = 400;
       let judgeY = 320;
 
       ctx.stage.innerHTML = '';
-      const wrap = el(`<div class="rh-wrap"><div class="rh-lanes">${COLS.map((c) =>
+      const wrap = el(`<div class="rh-wrap mb"><div class="rh-song disp"></div><div class="rh-lanes">${COLS.map((c) =>
         `<div class="rh-lane" style="--c:${HEX[c]}"><div class="rh-receptor">${shape(c, 18)}</div></div>`).join('')}</div>
         <div class="rh-line"></div><div class="rh-judge disp"></div><div class="rh-combo disp"></div></div>`);
       ctx.stage.appendChild(wrap);
@@ -1204,6 +1248,7 @@
       const receptors = Array.from(wrap.querySelectorAll('.rh-receptor'));
       const judge = wrap.querySelector('.rh-judge');
       const comboEl = wrap.querySelector('.rh-combo');
+      const songEl = wrap.querySelector('.rh-song');
 
       function showJudge(text, color) {
         msgPop(judge, text, color);
@@ -1223,14 +1268,14 @@
         },
         tick(t) {
           const e = t - t0;
-          const beat = Math.floor((e - LEAD) / BEAT);
-          if (beat !== lastBeat && e >= LEAD - BEAT * 4) {
-            lastBeat = beat;
-            ctx.sfx.kick(((beat % 4) + 4) % 4 === 0);
+          while (tptr < titles.length && titles[tptr].at <= e) {
+            songEl.textContent = '♪ ' + titles[tptr++].name;
+            retrigger(songEl, 'pop');
           }
+          while (bptr < beats.length && beats[bptr].at <= e) ctx.sfx.mbTick(beats[bptr++].accent);
           while (ptr < notes.length && notes[ptr].at - FALL <= e) {
             const n = notes[ptr++];
-            n.el = el(`<div class="rh-note" style="--c:${HEX[COLS[n.lane]]}">${shape(COLS[n.lane], 16)}</div>`);
+            n.el = el(`<div class="rh-note" style="--c:${HEX[COLS[n.lane]]}"><b>${SOLFA[n.midi % 12]}</b></div>`);
             lanes[n.lane].appendChild(n.el);
           }
           for (let i = 0; i < ptr; i++) {
@@ -1257,11 +1302,16 @@
             const d = Math.abs(e - n.at);
             if (d <= 180 && (!best || d < Math.abs(e - best.at))) best = n;
           }
-          if (!best) return;
+          if (!best) {
+            ctx.sfx.mbTick(false);
+            return;
+          }
           const d = Math.abs(e - best.at);
           best.state = 'hit';
           removeNote(best);
+          ctx.sfx.musicbox(best.midi);
           combo++;
+          hit++;
           maxCombo = Math.max(maxCombo, combo);
           let base;
           if (d < 60) { base = 100; perfect++; showJudge('PERFECT', '#FFD23F'); ctx.vibrate(10); }
@@ -1276,7 +1326,7 @@
         end() {},
         score: () => score,
         value: () => score,
-        summary: () => `최대 ${maxCombo}콤보 · 퍼펙트 ${perfect}개`
+        summary: () => `${notes.length}음 중 ${hit}음 연주 · 최대 ${maxCombo}콤보`
       };
     }
   };
@@ -1285,7 +1335,7 @@
      14. 가짜 찾기 (판단)
      ================================================================ */
   const odd = {
-    id: 'odd', title: '가짜 찾기', cat: '판단', catColor: 'b', dur: 40,
+    id: 'odd', title: '가짜 찾기', cat: '판단', catColor: 'b', dur: 30,
     buttons: ['r', 'g', 'b'],
     rules: ['셋 중에 하나만 달라요', '다른 하나가 있는 자리의 버튼을 눌러요', '빨리 찾을수록 점수가 커요'],
     illus() {
@@ -1403,7 +1453,7 @@
      15. 나무 도끼질 (연타)
      ================================================================ */
   const chop = {
-    id: 'chop', title: '나무 도끼질', cat: '연타', catColor: 'g', dur: 30,
+    id: 'chop', title: '나무 도끼질', cat: '연타', catColor: 'g', dur: 25,
     buttons: ['r', 'g', 'b'], pressSound: false,
     rules: ['아무 버튼이나 연타해서 나무를 베요', '나무를 쓰러뜨리면 +100점', '갈수록 나무가 굵어져요!'],
     illus() {
@@ -1502,7 +1552,7 @@
     <g class="dn-leg r"><rect x="60" y="70" width="10" height="20" rx="4" fill="#3BA85A"/><rect x="58" y="86" width="15" height="6" rx="3" fill="#2E9149"/></g></svg>`;
 
   const dino = {
-    id: 'dino', title: '공룡 발걸음', cat: '박자', catColor: 'y', dur: 40,
+    id: 'dino', title: '공룡 발걸음', cat: '박자', catColor: 'y', dur: 30,
     buttons: ['r', 'b'], music: false, pressSound: false,
     rules: ['쿵! 박자에 맞춰 왼발(빨강)·오른발(파랑)', '번갈아 정확히 밟을수록 멀리 가요', '점점 빨라져요!'],
     illus() {
@@ -1647,7 +1697,7 @@
   const PLATE_SVG = '<svg viewBox="0 0 60 24" aria-hidden="true"><ellipse cx="30" cy="12" rx="29" ry="11" fill="#FF8A3D"/><ellipse cx="30" cy="10" rx="20" ry="6" fill="#FFB27A"/><ellipse cx="30" cy="12" rx="29" ry="11" fill="none" stroke="#B85A1C" stroke-width="2"/></svg>';
 
   const plate = {
-    id: 'plate', title: '접시 깨기', cat: '타이밍', catColor: 'r', dur: 45,
+    id: 'plate', title: '접시 깨기', cat: '타이밍', catColor: 'r', dur: 35,
     buttons: ['r', 'g', 'b'],
     rules: ['접시가 날아올라 과녁에 닿으면 그 줄 버튼!', '가장 높이 떴을 때가 퍼펙트', '접시 없을 때 쏘면 헛방 -5'],
     illus() {

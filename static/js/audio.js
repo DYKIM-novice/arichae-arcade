@@ -184,6 +184,20 @@
         tone(f, l, { type: 'triangle', vol: 0.28, delay: d }));
       [0, 0.42, 0.94, 2.06].forEach((d) => noise(0.6, { vol: 0.1, freq: 5000, delay: d }));
     },
+    // 오르골 소리: 맑은 기본음 + 금속성 배음이 천천히 사라지는 소리
+    musicbox(midi, vol) {
+      const f = 440 * Math.pow(2, (midi - 69) / 12);
+      const v = vol == null ? 0.32 : vol;
+      [[1, 1, 1.7], [2, 0.32, 0.9], [3, 0.1, 0.45], [4.95, 0.06, 0.22], [6.8, 0.035, 0.12]].forEach(([m, a, d]) => {
+        if (f * m < 12000) tone(f * m, d, { type: 'sine', vol: v * a, attack: 0.002 });
+      });
+      noise(0.012, { vol: 0.025, freq: 6000 });
+    },
+    // 오르골 태엽이 도는 듯한 작은 박자 소리
+    mbTick(accent) {
+      noise(0.018, { vol: accent ? 0.05 : 0.03, freq: 4200, filter: 'bandpass' });
+      tone(accent ? 2637 : 2349, 0.03, { type: 'sine', vol: accent ? 0.035 : 0.02 });
+    },
     note(lane) { tone({ r: 523.25, g: 659.25, b: 783.99 }[lane] || 600, 0.12, { type: 'triangle', vol: 0.22 }); },
     fanfare() {
       const n = [[523, 0], [659, 0.12], [784, 0.24], [1047, 0.36], [784, 0.52], [1047, 0.64]];

@@ -315,37 +315,90 @@
     return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
   }
 
+  const CONNECT_TIMEOUT = 8000;   // 이 시간 안에 연결이 안 되면 다시 시도
+  const STALE_MS = 9000;          // 이 시간 동안 서버에서 아무것도 안 오면 끊긴 것으로 보고 다시 연결
+
   function connect() {
     return new Promise((resolve, reject) => {
       if (S.ws && S.ws.readyState === WebSocket.OPEN) { resolve(); return; }
+      if (S.ws) dropSocket();
       let ws;
       try { ws = new WebSocket(wsUrl()); } catch (e) { reject(e); return; }
       S.ws = ws;
       let opened = false;
+      let settled = false;
+      const fail = () => {
+        if (settled) return;
+        settled = true;
+        reject(new Error('closed'));
+      };
+      const timer = setTimeout(() => {
+        if (opened || S.ws !== ws) return;
+        // 응답 없는 연결 시도는 버리고 다시 시도
+        detach(ws);
+        if (S.ws === ws) S.ws = null;
+        fail();
+      }, CONNECT_TIMEOUT);
       ws.onopen = () => {
+        clearTimeout(timer);
+        if (S.ws !== ws) { detach(ws); return; }
         opened = true;
+        settled = true;
         S.connected = true;
         S.retry = 0;
+        S.lastMsgAt = Date.now();
         startPing();
         resolve();
       };
       ws.onmessage = (ev) => {
+        if (S.ws !== ws) return;
+        S.lastMsgAt = Date.now();
         let msg;
         try { msg = JSON.parse(ev.data); } catch (e) { return; }
         handle(msg);
       };
       ws.onclose = () => {
+        clearTimeout(timer);
         if (S.ws === ws) {
           S.connected = false;
           S.ws = null;
           stopPing();
           updateConnPill();
-          if (!opened) reject(new Error('closed'));
+          if (!opened) { fail(); return; }
           scheduleReconnect();
         }
       };
       ws.onerror = () => { /* onclose에서 처리 */ };
     });
+  }
+
+  // 이벤트를 떼고 소켓을 닫아요 (닫히는 걸 기다리지 않음)
+  function detach(ws) {
+    ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
+    try { ws.close(); } catch (e) { /* 무시 */ }
+  }
+  function dropSocket() {
+    const ws = S.ws;
+    S.ws = null;
+    S.connected = false;
+    stopPing();
+    if (ws) detach(ws);
+    updateConnPill();
+  }
+  // 반쯤 끊긴 연결(신호가 안 오는데 닫히지도 않은 상태)을 찾아서 다시 연결
+  function checkStale() {
+    if (!S.ws || !S.connected || !S.pid) return;
+    if (Date.now() - (S.lastMsgAt || 0) > STALE_MS) {
+      dropSocket();
+      reconnectNow();
+    }
+  }
+  function reconnectNow() {
+    if (S.kicked || !S.pid) return;
+    S.retry = 0;
+    clearTimeout(S.reconnectTimer);
+    if (S.connected && S.ws && S.ws.readyState === WebSocket.OPEN) return;
+    scheduleReconnect(0);
   }
 
   function send(obj) {
@@ -354,7 +407,10 @@
 
   function startPing() {
     stopPing();
-    const ping = () => send({ t: 'ping', c: Date.now(), rtt: Math.round(S.rtt) });
+    const ping = () => {
+      checkStale();
+      send({ t: 'ping', c: Date.now(), rtt: Math.round(S.rtt) });
+    };
     ping();
     S.pingTimer = setInterval(ping, 2000);
   }
@@ -363,20 +419,37 @@
     S.pingTimer = null;
   }
 
-  function scheduleReconnect() {
+  function scheduleReconnect(delay) {
     if (S.kicked || !S.pid) return;
     banner('연결이 끊겼어요 · 다시 연결하는 중…');
     clearTimeout(S.reconnectTimer);
-    const wait = Math.min(5000, 700 * (S.retry + 1));
+    const wait = delay != null ? delay : Math.min(4000, 600 * (S.retry + 1));
     S.retry++;
     S.reconnectTimer = setTimeout(async () => {
+      if (S.connecting) return;
+      S.connecting = true;
       try {
         await connect();
         send({ t: 'rejoin', room: S.code, pid: S.pid, token: S.token });
       } catch (e) {
+        S.connecting = false;
         scheduleReconnect();
+        return;
       }
+      S.connecting = false;
     }, wait);
+  }
+
+  // 다른 앱(카톡 등)에 다녀오거나 화면을 다시 켜면 바로 연결 상태를 확인해요
+  function setupResume() {
+    const resume = () => {
+      if (document.visibilityState !== 'visible' || !S.pid || S.kicked) return;
+      if (!S.connected || !S.ws) reconnectNow();
+      else checkStale();
+    };
+    document.addEventListener('visibilitychange', resume);
+    window.addEventListener('pageshow', resume);
+    window.addEventListener('online', () => { if (S.pid) { dropSocket(); reconnectNow(); } });
   }
 
   function handle(msg) {
@@ -1597,8 +1670,8 @@
     $('#btn-again').addEventListener('click', () => { SND.SFX.click(); send({ t: 'again' }); });
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && S.room && S.room.phase !== 'lobby' && S.room.phase !== 'final') wakeLock(true);
-      if (!document.hidden && S.pid && !S.connected) scheduleReconnect();
     });
+    setupResume();
 
     try {
       const r = await fetch('/api/info', { cache: 'no-store' });

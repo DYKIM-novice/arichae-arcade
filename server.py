@@ -45,39 +45,40 @@ RESULT_MS = 8000         # 결과 발표 화면
 GRACE_MS = 1500          # 플레이 종료 후 최종 점수 수신 대기
 HOST_HANDOVER_SEC = 20   # 방장이 끊긴 뒤 방장 넘기기까지 대기
 ROOM_IDLE_SEC = 30 * 60  # 아무도 접속 안 한 방 정리
-WS_IDLE_SEC = 15         # 이 시간 동안 아무 신호가 없으면 끊긴 것으로 처리 (기기는 2초마다 신호를 보냄)
+WS_IDLE_SEC = 30         # 이 시간 동안 아무 신호가 없으면 끊긴 것으로 처리 (기기는 2초마다 신호를 보냄)
+SEND_TIMEOUT_SEC = 4     # 한 기기에 보내기가 이 시간 안에 안 끝나면 그 기기만 끊어요 (방 전체가 멈추지 않게)
 WS_MAX_MESSAGE = 64 * 1024
 
 # 미니게임 ID와 플레이 시간(초)
 GAMES: Dict[str, int] = {
-    "blocks": 60,   # 블록 지우기
-    "race": 30,     # 전력 질주
-    "stop": 40,     # 딱 멈춰
-    "signal": 40,   # 신호등
-    "throw": 45,    # 투척왕
-    "simon": 45,    # 따라 누르기
-    "balloon": 40,  # 풍선 불기
-    "mole": 40,     # 두더지 잡기
-    "tug": 30,      # 줄다리기
-    "weld": 45,     # 용접 이어붙이기
-    "crane": 45,    # 크레인 낙하
-    "count": 50,    # 숫자 세기
-    "rhythm": 50,   # 리듬 박자
-    "odd": 40,      # 가짜 찾기
-    "chop": 30,     # 나무 도끼질
-    "dino": 40,     # 공룡 발걸음
-    "plate": 45,    # 접시 깨기
+    "blocks": 50,   # 블록 지우기
+    "race": 25,     # 전력 질주
+    "stop": 30,     # 딱 멈춰
+    "signal": 30,   # 신호등
+    "throw": 35,    # 투척왕
+    "simon": 35,    # 따라 누르기
+    "balloon": 30,  # 풍선 불기
+    "mole": 30,     # 두더지 잡기
+    "tug": 25,      # 줄다리기
+    "weld": 35,     # 용접 이어붙이기
+    "crane": 35,    # 크레인 낙하
+    "count": 40,    # 숫자 세기
+    "rhythm": 40,   # 리듬 박자
+    "odd": 30,      # 가짜 찾기
+    "chop": 25,     # 나무 도끼질
+    "dino": 30,     # 공룡 발걸음
+    "plate": 35,    # 접시 깨기
 }
 
 # 과학관(교육) 게임 — 방장이 직접 골라서 플레이
 EDU_GAMES: Dict[str, int] = {
-    "light": 45,     # 빛 섞기
-    "paint": 45,     # 물감 섞기
-    "history": 50,   # 지구 역사 순서
-    "fishing": 45,   # 바다 낚시
-    "space": 45,     # 행성 찾기 (우주관)
-    "tree": 45,      # 진화 나무 오르기 (생명의 나무)
-    "periodic": 45,  # 주기율표 빨리 고르기
+    "light": 35,     # 빛 섞기
+    "paint": 35,     # 물감 섞기
+    "history": 40,   # 지구 역사 순서
+    "fishing": 35,   # 바다 낚시
+    "space": 35,     # 행성 찾기 (우주관)
+    "tree": 35,      # 진화 나무 오르기 (생명의 나무)
+    "periodic": 35,  # 주기율표 빨리 고르기
 }
 ALL_GAMES: Dict[str, int] = {**GAMES, **EDU_GAMES}
 LEVELS = ("e", "m", "h")          # 초·중·고
@@ -156,12 +157,26 @@ class WebSocketConn:
         else:
             header = struct.pack("!BBQ", 0x80 | opcode, 127, n)
         async with self.lock:
+            if self.closed:
+                raise WSClosed()
             try:
                 self.writer.write(header + payload)
-                await self.writer.drain()
+                await asyncio.wait_for(self.writer.drain(), timeout=SEND_TIMEOUT_SEC)
+            except asyncio.TimeoutError:
+                # 응답 없는 기기: 기다리지 않고 바로 끊어요 (그 기기는 다시 접속하면 돼요)
+                self.abort()
+                raise WSClosed()
             except (ConnectionError, OSError, RuntimeError):
                 self.closed = True
                 raise WSClosed()
+
+    def abort(self) -> None:
+        """기다리지 않고 즉시 연결을 끊어요."""
+        self.closed = True
+        try:
+            self.writer.transport.abort()
+        except Exception:
+            pass
 
     async def send_text(self, text: str) -> None:
         await self._send_frame(0x1, text.encode("utf-8"))
@@ -232,9 +247,10 @@ class WebSocketConn:
         self.closed = True
         try:
             self.writer.write(struct.pack("!BB", 0x88, 0))
-            await self.writer.drain()
+            await asyncio.wait_for(self.writer.drain(), timeout=1.5)
         except Exception:
-            pass
+            self.abort()
+            return
         try:
             self.writer.close()
         except Exception:

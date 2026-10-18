@@ -48,7 +48,7 @@
     title: '블록 지우기',
     cat: '정확도',
     catColor: 'b',
-    dur: 60,
+    dur: 50,
     buttons: ['r', 'g', 'b'],
     rules: ['맨 아래 블록과 같은 색 버튼을 누르세요', '틀리면 0.5초 동안 멈춰요', '연속으로 맞히면 콤보 점수가 붙어요'],
     illus() {
@@ -170,9 +170,9 @@
     title: '전력 질주',
     cat: '연타',
     catColor: 'r',
-    dur: 30,
+    dur: 25,
     buttons: ['r', 'b'],
-    rules: ['빨강·파랑 버튼을 번갈아 누르면 달려요', '같은 버튼을 연속으로 누르면 삐끗!', '200m 결승선에 먼저 들어가면 보너스'],
+    rules: ['빨강·파랑 버튼을 번갈아 누르면 달려요', '같은 버튼을 연속으로 누르면 삐끗!', '150m 결승선에 먼저 들어가면 보너스'],
     illus() {
       return `<div class="il-row il-race">
         <div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX.r};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE.r}">${shape('r', 24)}</div></div><span style="color:${LIGHT.r}">1</span></div>
@@ -183,7 +183,7 @@
       </div>`;
     },
     create(ctx) {
-      const GOAL = 200;
+      const GOAL = 150;
       let dist = 0;
       let last = null;
       let score = 0;
@@ -296,7 +296,7 @@
     title: '딱 멈춰',
     cat: '타이밍',
     catColor: 'y',
-    dur: 40,
+    dur: 30,
     buttons: ['r', 'g', 'b'],
     rules: ['바늘이 색 구역에 들어오면 그 색 버튼!', '구역 한가운데일수록 높은 점수', '다른 색이나 빗나가면 잠깐 멈춰요'],
     illus() {
@@ -450,7 +450,7 @@
     title: '신호등',
     cat: '반응',
     catColor: 'g',
-    dur: 40,
+    dur: 30,
     buttons: ['r', 'g', 'b'],
     rules: ['불이 켜지면 같은 색 버튼을 빨리!', '회색 X 불은 함정, 참으면 +20', '불 켜지기 전에 누르면 반칙 -20'],
     illus() {
