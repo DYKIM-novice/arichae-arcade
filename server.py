@@ -29,8 +29,13 @@ import struct
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import unquote, urlsplit
+
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # 같은 폴더의 records.py
+from records import RecordStore  # noqa: E402
+import boards as BG  # noqa: E402
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = (BASE_DIR / "static").resolve()
@@ -40,6 +45,10 @@ PUBLIC_URL = os.environ.get("ARICHAE_PUBLIC_URL", "").strip().rstrip("/")
 TIME_SCALE = float(os.environ.get("ARICHAE_TIME_SCALE", "1") or "1")
 
 MAX_PLAYERS = 8
+# 기록실 저장 폴더 (Render 에서는 디스크를 붙인 /var/data)
+DATA_DIR = Path(os.environ.get("ARICHAE_DATA_DIR") or (BASE_DIR / "data"))
+# 시험용으로 시간을 빠르게(ARICHAE_TIME_SCALE) 돌릴 때는 점수가 달라지니 기록하지 않아요
+RECORDS_ON = TIME_SCALE == 1 or os.environ.get("ARICHAE_RECORDS") == "1"
 TUG_BONUS = 300          # 줄다리기 이긴 팀 보너스
 INTRO_MS = 6000          # 미니게임 설명 + 3초 카운트다운
 RESULT_MS = 8000         # 결과 발표 화면
@@ -58,6 +67,7 @@ EDU_GAMES: Dict[str, int] = {g["id"]: int(g["dur"]) for g in MANIFEST["games"]["
 ALL_GAMES: Dict[str, int] = {**GAMES, **EDU_GAMES}
 EDU_PICKABLE = [g["id"] for g in MANIFEST["games"]["edu"] if g.get("pick", True)]   # 과학관에서 고를 수 있는 게임
 MUSIC_SONGS = tuple(MANIFEST["songs"])   # 음악관: 방장이 곡을 골라 순서대로 오르골 연주회
+BOARD_CFG = BG.BoardConfig(MANIFEST["games"].get("board", []))   # 보드게임관
 LEVELS = ("e", "m", "h", "x")     # 초·중·고 (+ 음악관 특상)
 MAX_PICKS = 10
 
@@ -72,6 +82,7 @@ ANIMALS = [
 RANK_POINTS = [100, 80, 65, 50, 40, 30, 20, 10]
 
 log = logging.getLogger("arichae")
+STORE = RecordStore(DATA_DIR)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
 
 mimetypes.add_type("text/javascript", ".js")
@@ -307,6 +318,8 @@ class Room:
         self.live_dirty = False
         self.join_counter = 0
         self.empty_since = now_ms()
+        self.board = BG.default_board(BOARD_CFG)   # 보드게임관 설정 (게임·대결 방식·AI 단계·자리)
+        self.bsess: Optional[dict] = None          # 진행 중인 보드게임 판
 
     # ---------- 공통 ----------
     def connected_players(self) -> List[Player]:
@@ -337,6 +350,8 @@ class Room:
             "lastResult": self.last_result,
             "standings": self.standings,
             "maxPlayers": MAX_PLAYERS,
+            "board": self.board,
+            "bsess": self.bsess,
         }
 
     async def broadcast(self, payload: dict) -> None:
@@ -516,7 +531,14 @@ class Room:
             else:
                 pts = RANK_POINTS[min(rank, len(RANK_POINTS)) - 1]
             p.total += pts
-            rows.append({"pid": p.pid, "score": p.game_score, "rank": rank, "points": pts, "played": p.played})
+            row = {"pid": p.pid, "score": p.game_score, "rank": rank, "points": pts, "played": p.played}
+            # 기록실: 이번 주 Top 10 에 들면 바로 등록 (이름·한마디는 결과 화면에서 고칠 수 있어요)
+            if RECORDS_ON and p.played and p.game_score > 0:
+                board, detail = self.record_board()
+                got = STORE.submit(board, p.game_score, p.name, p.animal, p.pid, detail) if board else None
+                if got:
+                    row["rec"] = {"board": board, "rank": got[0], "id": got[1]["id"]}
+            rows.append(row)
 
         everyone = sorted(self.players.values(), key=lambda p: (-p.total, p.order))
         standings = []
@@ -532,6 +554,16 @@ class Room:
         self.standings = standings
         self.last_result = {"index": self.index, "game": self.sequence[self.index], "rows": rows}
 
+    def record_board(self) -> Tuple[str, str]:
+        """이번 판 기록이 들어갈 기록판 이름: 오락실=게임, 과학관=게임:난이도, 음악관=music:곡"""
+        gid = self.sequence[self.index]
+        lv = self.current.get("level") or ""
+        if self.mode == "music" and gid == "music":
+            return f"music:{self.current.get('song') or ''}", lv
+        if gid in EDU_GAMES:
+            return f"{gid}:{lv or 'm'}", ""
+        return gid, ""
+
     async def back_to_lobby(self) -> None:
         if self.task and not self.task.done():
             self.task.cancel()
@@ -540,6 +572,7 @@ class Room:
         self.index = -1
         self.current = {}
         self.sequence = []
+        self.bsess = None
         for p in self.players.values():
             p.ready = False
             p.active_from = 0
@@ -555,6 +588,83 @@ def new_code() -> str:
         if code not in rooms:
             return code
     raise RuntimeError("방 코드를 만들 수 없어요")
+
+
+async def handle_board(room: "Room", player: "Player", msg: dict, reply, is_host: bool) -> None:
+    """보드게임관 메시지 — 서버는 차례와 수 목록만 지켜요"""
+    t = msg.get("t")
+    bs = room.bsess
+    seats = bs["seats"]
+    try:
+        n = int(msg.get("n", -1))
+    except (TypeError, ValueError):
+        n = -1
+    my_seats = [i for i, s in enumerate(seats) if s == player.pid]
+    if t == "bmove" and bs["status"] == "play":
+        turn = bs["turn"]
+        owner = seats[turn] if turn < len(seats) else ""
+        if n != len(bs["moves"]) or not (owner == player.pid or (owner == "ai" and BG.is_driver(room, player))):
+            await reply({"t": "bsync"})
+            return
+        m = msg.get("m")
+        if len(json.dumps(m)) > 400:
+            return
+        bs["moves"].append({"m": m, "s": turn})
+        nxt = msg.get("next")
+        bs["turn"] = nxt if isinstance(nxt, int) and 0 <= nxt < len(seats) else (turn + 1) % len(seats)
+        await room.broadcast_state()
+    elif t == "bend" and bs["status"] == "play":
+        if n != len(bs["moves"]) or not (my_seats or is_host):
+            return
+        try:
+            winner = int(msg.get("winner", -1))
+        except (TypeError, ValueError):
+            winner = -1
+        await finish_board(room, winner if -1 <= winner < len(seats) else -1, str(msg.get("reason") or "")[:20])
+    elif t == "bresign" and bs["status"] == "play" and my_seats:
+        loser = my_seats[0]
+        others = [i for i in range(len(seats)) if i != loser]
+        await finish_board(room, others[0] if len(others) == 1 else -1, "resign")
+    elif t == "bundo" and bs["status"] == "play" and bs.get("vs") == "ai" and my_seats:
+        try:
+            k = int(msg.get("to", -1))
+            seat = int(msg.get("turn", my_seats[0]))
+        except (TypeError, ValueError):
+            return
+        if 0 <= k < len(bs["moves"]) and seat in my_seats:
+            del bs["moves"][k:]
+            bs["turn"] = seat
+            bs["undos"] = bs.get("undos", 0) + 1
+            await room.broadcast_state()
+    elif t == "bhint" and bs["status"] == "play" and my_seats:
+        bs["hints"] = bs.get("hints", 0) + 1
+        await room.broadcast_state()
+    elif t == "brematch" and is_host and bs["status"] == "over":
+        # 한 판 더: 자리(흑·백)를 바꿔서
+        room.board["seats"] = list(reversed(bs["seats"])) if len(bs["seats"]) == 2 else bs["seats"][1:] + bs["seats"][:1]
+        seats2 = BG.resolve_seats(room, BOARD_CFG)
+        if not seats2:
+            await reply({"t": "error", "code": "no_players", "msg": "같이 할 사람이 더 필요해요"})
+            return
+        room.bsess = BG.new_session(room, BOARD_CFG, seats2)
+        await room.broadcast_state()
+
+
+async def finish_board(room: "Room", winner: int, reason: str) -> None:
+    bs = room.bsess
+    bs["status"] = "over"
+    res = {"winner": winner, "reason": reason, "at": now_ms()}
+    rec = BG.board_record(bs, winner) if RECORDS_ON else None
+    if rec:
+        p = room.players.get(rec["pid"])
+        if p:
+            got = STORE.submit(bs["game"], rec["score"], p.name, p.animal, p.pid, rec["detail"])
+            if got:
+                res["rec"] = {"board": bs["game"], "rank": got[0], "id": got[1]["id"], "pid": p.pid, "score": rec["score"]}
+    res["score"] = rec["score"] if rec else 0
+    bs["result"] = res
+    log.info("[%s] 보드게임 끝 %s 승자=%s (%s)", room.code, bs["game"], winner, reason)
+    await room.broadcast_state()
 
 
 async def handover_host_later(room: Room, pid: str) -> None:
@@ -721,7 +831,7 @@ async def ws_session(ws: WebSocketConn) -> None:
                     if length in (3, 5, 10):
                         room.length = length
                         changed = True
-                if msg.get("mode") in ("arcade", "edu", "music"):
+                if msg.get("mode") in ("arcade", "edu", "music", "board"):
                     room.mode = msg["mode"]
                     changed = True
                 if msg.get("level") in LEVELS:
@@ -734,6 +844,20 @@ async def ws_session(ws: WebSocketConn) -> None:
                 if isinstance(msg.get("songs"), list):
                     songs = [str(g) for g in msg["songs"] if str(g) in MUSIC_SONGS]
                     room.songs = songs[:MAX_PICKS]
+                    changed = True
+                if msg.get("board") in BOARD_CFG.games:
+                    room.board["game"] = msg["board"]
+                    room.board["seats"] = []
+                    changed = True
+                if msg.get("bvs") in ("ai", "pvp"):
+                    room.board["vs"] = msg["bvs"]
+                    changed = True
+                if msg.get("bai") in BG.AI_LEVELS:
+                    room.board["ai"] = msg["bai"]
+                    changed = True
+                if isinstance(msg.get("bseats"), list):
+                    ok = {p.pid for p in room.players.values()} | {"ai", ""}
+                    room.board["seats"] = [str(s) for s in msg["bseats"][:8] if str(s) in ok]
                     changed = True
                 # 특상(x)은 음악관에만 있어요 → 다른 모드에서는 고등으로
                 if room.mode != "music" and room.level == "x":
@@ -749,6 +873,18 @@ async def ws_session(ws: WebSocketConn) -> None:
                     continue
                 if room.mode == "music" and not room.songs:
                     await reply({"t": "error", "code": "no_picks", "msg": "연주할 곡을 하나 이상 골라주세요"})
+                    continue
+                if room.mode == "board":
+                    seats = BG.resolve_seats(room, BOARD_CFG)
+                    if not seats:
+                        await reply({"t": "error", "code": "no_players", "msg": "같이 할 사람이 더 필요해요 (AI와 대결도 할 수 있어요)"})
+                        continue
+                    room.bsess = BG.new_session(room, BOARD_CFG, seats)
+                    room.phase = "board"
+                    for p in room.players.values():
+                        p.ready = False
+                    log.info("[%s] 보드게임 시작 %s %s", room.code, room.bsess["game"], seats)
+                    await room.broadcast_state()
                     continue
                 log.info("[%s] 게임 시작 (%s)", room.code,
                          "과학관 " + ",".join(room.picks) if room.mode == "edu"
@@ -782,7 +918,14 @@ async def ws_session(ws: WebSocketConn) -> None:
                     cur["cutAt"] = at
                     await room.broadcast_state()
 
-            elif t == "again" and is_host and room.phase in ("final", "result", "intro", "play"):
+            elif t == "record_edit":
+                saved = STORE.edit(str(msg.get("id") or ""), player.pid, msg.get("name"), msg.get("comment"))
+                await reply({"t": "record_saved", "ok": bool(saved), "entry": saved})
+
+            elif t in ("bmove", "bend", "bundo", "bhint", "bresign", "brematch") and room.phase == "board" and room.bsess:
+                await handle_board(room, player, msg, reply, is_host)
+
+            elif t == "again" and is_host and room.phase in ("final", "result", "intro", "play", "board"):
                 await room.back_to_lobby()
 
             elif t == "kick" and is_host:
@@ -860,8 +1003,24 @@ async def send_json(writer, data: dict, head_only=False) -> None:
 def game_script_paths() -> List[str]:
     """index.html 에 넣을 스크립트 순서: 공통 → 게임들(games.json 순서) → app.js"""
     sc = MANIFEST.get("scripts", {})
-    games = [f"js/games/{group}/{g['id']}.js" for group, items in MANIFEST["games"].items() for g in items]
+    games: List[str] = []
+    for group, items in MANIFEST["games"].items():
+        for g in items:
+            if group == "board":
+                # 보드게임: 규칙·화면·따라하기 파일 (AI 는 워커가 따로 불러요)
+                games += [f"js/board/{g['id']}/{f}.js" for f in g.get("files", ["rules", "view"])]
+            else:
+                games.append(f"js/games/{group}/{g['id']}.js")
     return list(sc.get("before", [])) + games + list(sc.get("after", []))
+
+
+def worker_script_paths() -> List[str]:
+    """AI 워커가 불러오는 파일 (버전을 붙여서 알려줘요)"""
+    out = ["js/board/worker.js"]
+    for g in MANIFEST["games"].get("board", []):
+        if g.get("ai"):
+            out += [f"js/board/{g['id']}/rules.js", f"js/board/{g['id']}/ai.js"]
+    return out
 
 
 _index_cache: Dict[str, object] = {"key": None, "body": b""}
@@ -879,7 +1038,8 @@ def file_version(rel: str) -> str:
 def render_index() -> bytes:
     """index.html 의 <!--@scripts--> 와 ?v=@css 를 채워요. 파일이 바뀌었을 때만 다시 만들어요."""
     paths = game_script_paths()
-    watch = ["index.html", "games.json", "css/style.css"] + paths
+    wpaths = worker_script_paths()
+    watch = ["index.html", "games.json", "css/style.css"] + paths + wpaths
     key = []
     for rel in watch:
         try:
@@ -891,7 +1051,8 @@ def render_index() -> bytes:
         return _index_cache["body"]  # type: ignore[return-value]
     html = (STATIC_DIR / "index.html").read_text("utf-8")
     manifest_js = json.dumps({"games": MANIFEST["games"], "songs": MANIFEST["songs"]}, ensure_ascii=False)
-    tags = [f"<script>window.ARICHAE_MANIFEST = {manifest_js};</script>"]
+    versions_js = json.dumps({p: file_version(p) for p in wpaths})
+    tags = [f"<script>window.ARICHAE_MANIFEST = {manifest_js}; window.ARICHAE_VERSIONS = {versions_js};</script>"]
     tags += [f'<script src="static/{p}?v={file_version(p)}"></script>' for p in paths]
     html = html.replace("<!--@scripts-->", "\n".join(tags)).replace("?v=@css", "?v=" + file_version("css/style.css"))
     body = html.encode("utf-8")
@@ -973,6 +1134,8 @@ async def handle_http(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
 
         if path in ("/", "/index.html"):
             await send_response(writer, 200, render_index(), "text/html; charset=utf-8", head_only, {"Cache-Control": "no-cache"})
+        elif path == "/api/records":
+            await send_json(writer, STORE.snapshot(), head_only)
         elif path == "/api/info":
             await send_json(writer, {"lanUrl": f"http://{lan_ip()}:{PORT}", "publicUrl": PUBLIC_URL}, head_only)
         elif path.startswith("/api/room/"):

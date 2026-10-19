@@ -40,6 +40,7 @@
       <span class="chip-y disp">FAMILY ARCADE</span>
       <div class="topbar-right">
         <span class="home-room" id="home-room"></span>
+        <button class="btn-install btn-records" id="btn-records-home" type="button" aria-label="기록실"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/><path d="M12 14v3M8 21h8M9 17h6v4H9z"/></svg><span>기록실</span></button>
         <button class="btn-install" id="btn-install" type="button" aria-label="앱 설치">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M12 7v7"/><path d="M9 11l3 3 3-3"/><path d="M10 18h4"/></svg>
           <span>앱 설치</span>
@@ -92,6 +93,7 @@
     <div class="topbar">
       <h1 class="disp page-title">대기실</h1>
       <div class="topbar-right">
+        <button class="icon-btn btn-records rec-ic" id="btn-records-lobby" type="button" aria-label="기록실"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/><path d="M12 14v3M8 21h8M9 17h6v4H9z"/></svg></button>
         <button class="icon-btn" id="btn-sound" type="button" aria-label="소리 켜고 끄기"></button>
         <button class="icon-btn" id="btn-vibe" type="button" aria-label="진동 켜고 끄기"></button>
         <div class="conn-pill" id="conn-pill"><i></i><span>서버 연결됨</span></div>
@@ -115,6 +117,7 @@
         <button type="button" data-mode="arcade"><b class="disp">오락실</b><span>랜덤 게임</span></button>
         <button type="button" data-mode="edu"><b class="disp">과학관</b><span>배우는 게임</span></button>
         <button type="button" data-mode="music"><b class="disp">음악관</b><span>클래식 연주</span></button>
+        <button type="button" data-mode="board"><b class="disp">보드게임</b><span>AI·1:1 대결</span></button>
       </div>
       <div id="arcade-panel">
         <div class="list-head sub"><span>게임 길이</span></div>
@@ -126,6 +129,7 @@
         <div class="list-head sub"><span>게임 고르기</span><span class="hint-sm" id="pick-note">누른 순서대로 진행해요</span></div>
         <div class="edu-cards" id="edu-cards"></div>
       </div>
+      <div id="board-panel"></div>
       <div id="music-panel">
         <div class="list-head sub"><span>난이도</span></div>
         <div class="levels four" id="mlevels"></div>
@@ -189,6 +193,7 @@
       <span class="disp game-no" id="result-no"></span>
       <h1 class="disp result-title" id="result-title"></h1>
       <div class="hint-md" id="result-mine"></div>
+      <div class="result-rec" id="result-rec"></div>
     </div>
     <div class="podium" id="result-podium"></div>
     <div class="learn-card" id="result-learn"></div>
@@ -215,12 +220,77 @@
       <div class="list-head"><span>전체 순위</span><span class="hint-sm">순위 점수 합계</span></div>
       <div id="final-standings"></div>
     </div>
+    <div class="card final-recs" id="final-recs"></div>
     <div class="lobby-actions">
       <button class="btn btn-yellow" id="btn-again" type="button">한 판 더!</button>
       <div class="hint-md center" id="final-help"></div>
-      <button class="btn btn-ghost" id="btn-exit" type="button">게임 종료 · 처음 화면으로</button>
+      <div class="final-row2">
+        <button class="btn btn-ghost btn-records" id="btn-records-final" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/><path d="M12 14v3M8 21h8M9 17h6v4H9z"/></svg> 기록실</button>
+        <button class="btn btn-ghost" id="btn-exit" type="button">게임 종료</button>
+      </div>
     </div>
   </section>
+
+  <!-- ===================== 보드게임 대국 ===================== -->
+  <section id="s-board" class="screen board-screen">
+    <div class="confetti" id="bd-confetti"></div>
+    <div class="topbar">
+      <h1 class="disp page-title bd-title" id="bd-title"></h1>
+      <div class="topbar-right">
+        <button class="icon-btn bd-guide-ic" id="bd-guide-btn" type="button" aria-label="따라하기">📖</button>
+        <button class="icon-btn btn-records rec-ic" type="button" aria-label="기록실"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/><path d="M12 14v3M8 21h8M9 17h6v4H9z"/></svg></button>
+      </div>
+    </div>
+    <div class="bd-seats" id="bd-seats"></div>
+    <div class="bd-status" id="bd-status"></div>
+    <div class="bd-stage" id="bd-stage"></div>
+    <div class="bd-confirm" id="bd-confirm">
+      <span class="bd-c-lbl"></span>
+      <button type="button" class="btn btn-ghost" data-bcancel="1">취소</button>
+      <button type="button" class="btn btn-yellow" data-bconfirm="1">여기에 두기</button>
+    </div>
+    <div class="bd-actions" id="bd-actions"></div>
+    <div class="bd-result" id="bd-result"></div>
+  </section>
+
+  <!-- ===================== 기록실 ===================== -->
+  <section id="s-records" class="screen">
+    <div class="topbar">
+      <button class="icon-btn" id="rec-back" type="button" aria-label="뒤로"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F6F3FF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 L8 12 L15 19"/></svg></button>
+      <h1 class="disp page-title rec-title"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/><path d="M12 14v3M8 21h8M9 17h6v4H9z"/></svg> 기록실</h1>
+      <div class="topbar-right"><span class="rec-reset" id="rec-reset"></span></div>
+    </div>
+    <div class="seg rec-tabs" id="rec-tabs">
+      <button type="button" data-tab="week">이번 주 Top 10</button>
+      <button type="button" data-tab="hall">명예의 전당</button>
+    </div>
+    <div class="rec-cats" id="rec-cats"></div>
+    <div class="rec-games" id="rec-games"></div>
+    <div class="rec-subs" id="rec-subs"></div>
+    <div class="rec-list" id="rec-list"></div>
+    <div class="hint-sm center rec-foot">매주 일요일 밤 12시에 Top 10이 초기화되고, 게임별 1위는 명예의 전당에 영원히 남아요</div>
+  </section>
+
+  <!-- 기록 남기기 창 -->
+  <div class="modal" id="rec-modal" aria-hidden="true">
+    <div class="modal-box card rec-modal-box">
+      <div class="rec-m-title" id="rec-m-title"></div>
+      <div class="field">
+        <label for="rec-m-name">내 아이디</label>
+        <input id="rec-m-name" maxlength="10" placeholder="기록실에 보일 이름" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="rec-m-cm">한마디 <span class="hint-sm" id="rec-m-count">0/40</span></label>
+        <input id="rec-m-cm" maxlength="40" placeholder="자랑하기 · 놀리기 한마디!" autocomplete="off">
+      </div>
+      <div class="rec-m-taunts" id="rec-m-taunts"></div>
+      <div class="hint-sm">욕설은 자동으로 ♡로 바뀌어요</div>
+      <div class="rec-m-btns">
+        <button class="btn btn-ghost" id="rec-m-cancel" type="button">나중에</button>
+        <button class="btn btn-yellow" id="rec-m-save" type="button">기록 남기기</button>
+      </div>
+    </div>
+  </div>
 
   <!-- 캐릭터·이름 바꾸기 창 -->
   <div class="modal" id="modal" aria-hidden="true">

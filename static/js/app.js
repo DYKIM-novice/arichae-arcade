@@ -9,6 +9,9 @@
   const G = window.Games;
   const SND = window.Sound;
 
+  // 다른 모듈이 끼어들 수 있는 자리 (메시지 받을 때, 상태 바뀔 때, 결과·최종 화면)
+  const HOOKS = { message: [], state: [], result: [], final: [] };
+
   const KEY_SESSION = 'arichae_session';
   const KEY_PROFILE = 'arichae_profile';
   const LENGTHS = [
@@ -453,6 +456,7 @@
   }
 
   function handle(msg) {
+    HOOKS.message.forEach((fn) => { try { fn(msg); } catch (e) { console.error(e); } });
     switch (msg.t) {
       case 'pong': {
         const rtt = Date.now() - msg.c;
@@ -562,6 +566,9 @@
         renderResult();
         showScreen('s-result');
       }
+    } else if (room.phase === 'board') {
+      // 보드게임관: 화면은 board/hall.js 가 그려요
+      if (changed) { cleanupGame(); S.playIndex = -1; SND.BGM.stop(); setTheme('base'); }
     } else if (room.phase === 'final') {
       if (changed) {
         cleanupGame();
@@ -574,6 +581,7 @@
       }
     }
     S.shownKey = key;
+    HOOKS.state.forEach((fn) => { try { fn(room, changed, prev); } catch (e) { console.error(e); } });
   }
 
   function updateConnPill() {
@@ -626,7 +634,12 @@
     const readyCount = others.filter((p) => p.ready).length + 1;
     const total = others.length + 1;
     const mainBtn = $('#btn-main');
-    if (isHost) {
+    if (isHost && room.mode === 'board' && window.BoardHall) {
+      const bm = window.BoardHall.lobbyMain();
+      mainBtn.className = 'btn btn-green' + (bm.wait ? ' wait' : '');
+      mainBtn.textContent = bm.label;
+      $('#lobby-help').textContent = bm.help;
+    } else if (isHost) {
       const noPick = (edu || musicMode) && !picks.length;
       mainBtn.className = 'btn btn-green' + (noPick ? ' wait' : '');
       mainBtn.textContent = noPick ? (musicMode ? '곡을 골라주세요' : '게임을 골라주세요')
@@ -670,16 +683,20 @@
     const dis = isHost ? '' : 'disabled';
 
     const music = room.mode === 'music';
+    const board = room.mode === 'board';
     $('#settings').classList.toggle('edu', edu);
     $('#settings').classList.toggle('music', music);
+    $('#settings').classList.toggle('board', board);
     $('#settings-note').textContent = isHost ? '눌러서 바꿀 수 있어요' : '방장만 바꿀 수 있어요';
     $$('#mode-seg button').forEach((b) => {
-      const on = b.dataset.mode === (music ? 'music' : edu ? 'edu' : 'arcade');
+      const on = b.dataset.mode === (board ? 'board' : music ? 'music' : edu ? 'edu' : 'arcade');
       b.classList.toggle('on', on);
       b.disabled = !isHost;
       b.setAttribute('aria-pressed', String(on));
     });
-    $('#arcade-panel').style.display = edu || music ? 'none' : '';
+    $('#arcade-panel').style.display = edu || music || board ? 'none' : '';
+    $('#board-panel').style.display = board ? '' : 'none';
+    if (board) { if (window.BoardHall) window.BoardHall.renderLobby(isHost); return; }
     $('#edu-panel').style.display = edu ? '' : 'none';
     $('#music-panel').style.display = music ? '' : 'none';
 
@@ -1670,6 +1687,7 @@
       learn.classList.remove('show');
     }
     $('#result-standings').innerHTML = standingsHTML(room.standings, gains);
+    HOOKS.result.forEach((fn) => { try { fn(res); } catch (e) { console.error(e); } });
     $('#result-progress').textContent = `${res.index + 1} / ${room.sequence.length} 게임 진행`;
     renderNextCard();
     setTheme('gold');
@@ -1711,6 +1729,7 @@
     $('#final-podium').innerHTML = podiumHTML(st.slice(0, 3), (e) => fmtNum(e.total) + '점', true);
     $('#final-standings').innerHTML = standingsHTML(st, null, 3.6);
     renderFinalActions();
+    HOOKS.final.forEach((fn) => { try { fn(); } catch (e) { console.error(e); } });
     setTheme('gold');
     $('#final-confetti').innerHTML = '';
     FW.stop();
@@ -1898,6 +1917,14 @@
     }
     requestAnimationFrame(loop);
   }
+
+  /* 다른 화면 모듈(기록실, 보드게임관)이 쓸 수 있게 열어 둬요 */
+  window.App = {
+    $, $$, esc, S, G, A, SND,
+    send, toast, banner, showScreen, me, playerById, fmtNum, serverNow, setTheme, confetti, later,
+    podiumHTML, standingsHTML, wakeLock,
+    hooks: HOOKS
+  };
 
   init();
 })();
