@@ -1492,3 +1492,41 @@ button { font-family: var(--body); color: inherit; }
 .page-title { white-space: nowrap; }
 @media (max-width: 430px) { #s-lobby .conn-pill span { display: none; } #s-lobby .conn-pill { padding: 0 12px; } }
 .bd-guide-ic { font-size: 19px; }
+
+.bd-sub { font-size: 14px; color: var(--text); margin-top: 2px; }
+.bd-r-score { font-size: 24px; color: var(--text); }
+/* 오델로 */
+.ot-wrap { width: min(100%, calc(100dvh - 330px), 520px); min-width: 280px; aspect-ratio: 1; }
+.ot-board { width: 100%; height: 100%; display: block; border-radius: 10px; box-shadow: 0 6px 0 #0A3D21, 0 14px 30px rgba(0,0,0,.45); touch-action: none; user-select: none; }
+.ot-d.new { animation: stoneDrop .22s cubic-bezier(.3,1.6,.5,1); }
+.ot-d.flip { animation: discFlip .38s ease-in-out both; }
+@keyframes discFlip { 0% { transform: scaleX(1); } 50% { transform: scaleX(0); } 100% { transform: scaleX(1); } }
+.ot-dot { animation: targetPulse 1.4s ease-in-out infinite; }
+
+/* 보드게임 판 크기 (화면 높이에 맞춰요) */
+.c4-wrap { width: min(100%, calc((100dvh - 330px) * 7.5 / 7.4), 520px); min-width: 280px; aspect-ratio: 7.5 / 7.4; }
+.c4-board, .mc-board, .dt-board, .pv-board { width: 100%; height: 100%; display: block; touch-action: none; user-select: none; -webkit-user-select: none; }
+.c4-board { border-radius: 12px; }
+.c4-d.new { animation: c4fall .42s cubic-bezier(.55,0,.8,1.25) both; }
+@keyframes c4fall { from { transform: translateY(var(--from)); } to { transform: translateY(0); } }
+.mc-wrap { width: min(100%, calc((100dvh - 330px) * 6 / 11), 340px); min-width: 210px; aspect-ratio: 6 / 11; }
+.mc-pit.can { cursor: pointer; }
+.mc-pit.hit { animation: pitHit .35s ease both; }
+.mc-pit.cap { animation: pitCap .6s ease both; }
+@keyframes pitHit { 0% { opacity: .55; } 100% { opacity: 1; } }
+@keyframes pitCap { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
+.dt-wrap { width: min(100%, calc(100dvh - 330px), 480px); min-width: 260px; aspect-ratio: 1; }
+.dt-board { border-radius: 12px; box-shadow: 0 6px 0 #C9B48A, 0 14px 30px rgba(0,0,0,.4); }
+.dt-box.new { animation: stoneDrop .3s cubic-bezier(.3,1.6,.5,1); }
+.dt-last { animation: winGlow .9s ease-in-out 2; }
+.pv-wrap { width: min(100%, calc(100dvh - 330px), 520px); min-width: 260px; aspect-ratio: 1; }
+.pv-wrap.ck-wrap .pv-board { border-radius: 8px; box-shadow: 0 6px 0 #3E220A, 0 14px 30px rgba(0,0,0,.45); }
+.gn-wrap .pv-board { border-radius: 14px; box-shadow: 0 6px 0 #8A5A2E, 0 14px 30px rgba(0,0,0,.4); }
+.gn-wrap.tall { width: min(100%, calc((100dvh - 330px) * 0.8), 420px); aspect-ratio: 9.6 / 12; }
+.hx-wrap { width: min(100%, calc((100dvh - 330px) * 0.63), 400px); min-width: 220px; aspect-ratio: 0.63; }
+.hx-wrap .pv-board { border-radius: 12px; }
+.pv-pc.new { animation: stoneDrop .22s cubic-bezier(.3,1.6,.5,1); }
+.pv-pc.sel { filter: brightness(1.25); }
+.pv-can { animation: targetPulse 1.2s ease-in-out infinite; }
+.cg-cap { animation: winGlow .8s ease-in-out 3; }
+.bg-card b { font-size: 15px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.02em; }

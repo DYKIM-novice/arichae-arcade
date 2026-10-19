@@ -63,7 +63,7 @@
   function think(game, moves, level, opts, minMs) {
     const id = ++seq;
     const t0 = Date.now();
-    const scripts = [scriptUrl(`js/board/${game}/rules.js`), scriptUrl(`js/board/${game}/ai.js`)];
+    const scripts = [scriptUrl(`js/board/${game}/rules.js`), scriptUrl('js/board/aikit.js'), scriptUrl(`js/board/${game}/ai.js`)];
     return new Promise((resolve, reject) => {
       waiting[id] = { resolve, reject };
       getWorker().postMessage({ id, game, scripts, moves, level, opts: opts || {} });
@@ -73,8 +73,146 @@
     }));
   }
 
+  // 표준 규칙(init/moves/play/turn/result)을 대국 화면이 쓰는 모양으로
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  function std(R) {
+    return {
+      replay(moves) { let st = R.init(); for (const m of moves || []) st = R.play(st, m); return st; },
+      turnSeat: (st) => R.turn(st),
+      result: (st) => R.result(st),
+      legal: (st, m) => R.moves(st).some((x) => same(x, m))
+    };
+  }
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  function svg(viewBox, cls) {
+    const e = document.createElementNS(SVGNS, 'svg');
+    e.setAttribute('viewBox', viewBox);
+    if (cls) e.setAttribute('class', cls);
+    return e;
+  }
+  // 화면 좌표 → svg 좌표
+  function svgPoint(el, ev) {
+    const r = el.getBoundingClientRect();
+    const vb = el.viewBox.baseVal;
+    return [vb.x + ((ev.clientX - r.left) / r.width) * vb.width, vb.y + ((ev.clientY - r.top) / r.height) * vb.height];
+  }
+
+  /* ---------- 점(칸)을 차례로 눌러 수를 고르는 화면 (체커·고누 등) ----------
+     spec: viewBox, points[[x,y]], background() → svg, pieceAt(st,i) → 값, drawPiece(v,x,y,i,st) → svg,
+           pathOf(move) → [점 번호...], hitR, top(st, ctx) → svg(선택), firstHint: 처음에 고를 수 있는 점 표시 여부 */
+  function pathView(spec) {
+    return function mount(el, api) {
+      el.innerHTML = '';
+      const wrap = document.createElement('div');
+      wrap.className = 'pv-wrap ' + (spec.wrapClass || '');
+      const sv = svg(spec.viewBox, 'pv-board ' + (spec.boardClass || ''));
+      sv.innerHTML = `<g class="pv-root"><g class="pv-bg">${spec.background()}</g><g class="pv-mark"></g><g class="pv-pieces"></g><g class="pv-top"></g></g>`;
+      const gRoot = sv.querySelector('.pv-root');
+      let flipped = false;
+      wrap.appendChild(sv);
+      el.appendChild(wrap);
+      const gMark = sv.querySelector('.pv-mark');
+      const gPieces = sv.querySelector('.pv-pieces');
+      const gTop = sv.querySelector('.pv-top');
+      let st = null; let vc = {}; let path = []; let legal = []; let prevSig = null;
+
+      function cands() { return legal.filter((m) => { const p = spec.pathOf(m); return path.every((v, k) => p[k] === v); }); }
+      function draw() {
+        let out = '';
+        const P = spec.points;
+        const sig = [];
+        for (let i = 0; i < P.length; i++) {
+          const v = spec.pieceAt(st, i);
+          sig.push(v);
+          if (v == null || v === 0) continue;
+          const isNew = prevSig && prevSig[i] !== v;
+          out += `<g class="pv-pc${isNew ? ' new' : ''}${path[0] === i ? ' sel' : ''}" style="transform-origin:${P[i][0]}px ${P[i][1]}px">${spec.drawPiece(v, P[i][0], P[i][1], i, st)}</g>`;
+        }
+        gPieces.innerHTML = out;
+        prevSig = sig;
+        let mk = '';
+        const last = spec.lastPath ? spec.lastPath(st) : [];
+        last.forEach((i, k) => {
+          const [x, y] = P[i];
+          mk += `<circle cx="${x}" cy="${y}" r="${spec.hitR * 0.95}" fill="${k === last.length - 1 ? 'rgba(255,71,87,.28)' : 'rgba(255,71,87,.14)'}"/>`;
+        });
+        if (vc.canPlay) {
+          const cs = cands();
+          const nextIds = new Set(cs.map((m) => spec.pathOf(m)[path.length]).filter((v) => v != null));
+          nextIds.forEach((i) => {
+            const [x, y] = P[i];
+            mk += path.length || spec.firstHint !== false
+              ? `<circle class="pv-can${path.length ? ' go' : ''}" cx="${x}" cy="${y}" r="${spec.hitR * (path.length ? 0.42 : 0.9)}" fill="${path.length ? 'rgba(255,210,63,.75)' : 'none'}" stroke="#FFD23F" stroke-width="${spec.hitR * 0.12}"/>` : '';
+          });
+          path.forEach((i, k) => {
+            if (!k) return;
+            const [x1, y1] = P[path[k - 1]]; const [x2, y2] = P[i];
+            mk += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#FFD23F" stroke-width="${spec.hitR * 0.2}" stroke-linecap="round" opacity=".8"/>`;
+          });
+        }
+        if (vc.hint != null && vc.hint !== -1) {
+          const hp = spec.pathOf(vc.hint);
+          hp.forEach((i, k) => { const [x, y] = P[i]; mk += `<circle class="om-hint" cx="${x}" cy="${y}" r="${spec.hitR * (k ? 0.6 : 0.95)}" fill="rgba(61,123,255,.35)" stroke="#3D7BFF" stroke-width="${spec.hitR * 0.1}"/>`; });
+        }
+        gMark.innerHTML = mk;
+        gTop.innerHTML = spec.top ? spec.top(st, vc) : '';
+      }
+      function render(state, ctx) {
+        st = state; vc = ctx || {};
+        // 내 말이 늘 아래쪽에 오도록 (spec.flipSeat 자리면 판을 180도 돌려요)
+        const f = spec.flipSeat != null && vc.mySeat === spec.flipSeat;
+        if (f !== flipped) {
+          flipped = f;
+          gRoot.setAttribute('transform', f ? `rotate(180 ${spec.center[0]} ${spec.center[1]})` : '');
+        }
+        legal = vc.canPlay ? spec.moves(st) : [];
+        if (!vc.canPlay) path = [];
+        else if (path.length && !cands().length) path = [];
+        draw();
+      }
+      function tapPoint(i) {
+        const cs = cands();
+        const ext = cs.filter((m) => spec.pathOf(m)[path.length] === i);
+        if (!ext.length) {
+          // 처음부터 다시 고르기
+          const fresh = legal.filter((m) => spec.pathOf(m)[0] === i);
+          if (fresh.length) { path = [i]; api.tick(); finishIfDone(); draw(); return; }
+          if (path.length) { path = []; draw(); }
+          if (spec.why) api.say(spec.why(st, i)); else api.say('거기는 고를 수 없어요');
+          return;
+        }
+        path = path.concat([i]);
+        api.tick();
+        finishIfDone();
+        draw();
+      }
+      function finishIfDone() {
+        const cs = cands();
+        const done = cs.filter((m) => spec.pathOf(m).length === path.length);
+        const longer = cs.filter((m) => spec.pathOf(m).length > path.length);
+        if (done.length && !longer.length) {
+          const m = done[0];
+          path = [];
+          api.pick(m);
+        }
+      }
+      sv.addEventListener('pointerdown', (ev) => {
+        if (!st || !vc.canPlay) return;
+        ev.preventDefault();
+        let [x, y] = svgPoint(sv, ev);
+        if (flipped) { x = 2 * spec.center[0] - x; y = 2 * spec.center[1] - y; }
+        let best = -1; let bd = Infinity;
+        spec.points.forEach(([px, py], i) => { const d = (px - x) ** 2 + (py - y) ** 2; if (d < bd) { bd = d; best = i; } });
+        if (best < 0 || Math.sqrt(bd) > spec.hitR * 1.25) return;
+        tapPoint(best);
+      });
+      return { render, commit() {}, clear() { path = []; if (st) draw(); }, destroy() { el.innerHTML = ''; } };
+    };
+  }
+
   window.Boards = {
-    defs, guides, LEVELS, levelInfo, levelAvatar, register, think,
+    pathView,
+    defs, guides, LEVELS, levelInfo, levelAvatar, register, think, std, same, svg, svgPoint,
     get: (id) => defs[id],
     list: () => ((window.Games && window.Games.MANIFEST && window.Games.MANIFEST.games.board) || []).map((m) => defs[m.id]).filter(Boolean)
   };

@@ -239,13 +239,14 @@
     // 상태 줄
     let status;
     if (over || res) status = '';
-    else if (myTurn) status = `<b>내 차례</b> · 놓을 자리를 눌러요${bs.vs === 'ai' && (bs.undos || bs.hints) ? ' <span class="bd-norec">무르기·힌트 사용 → 기록 없음</span>' : ''}`;
+    else if (myTurn) status = `<b>내 차례</b> · ${esc(typeof def.turnHint === 'function' ? def.turnHint(st) : def.turnHint || '놓을 자리를 눌러요')}${bs.vs === 'ai' && (bs.undos || bs.hints) ? ' <span class="bd-norec">무르기·힌트 사용 → 기록 없음</span>' : ''}`;
     else if (aiTurn) status = `<span class="bd-dots">AI ${esc(B.levelInfo(bs.ai).name)}가 생각 중</span>`;
     else if (!mine.length) status = `구경 중 · <b>${esc(seatName(bs, turn))}</b> 차례`;
     else status = `<b>${esc(seatName(bs, turn))}</b> 차례를 기다려요`;
-    $('#bd-status').innerHTML = status;
+    const extra = def.status ? def.status(st, bs) : '';
+    $('#bd-status').innerHTML = status + (extra ? `<div class="bd-sub">${extra}</div>` : '');
 
-    const vctx = Object.assign({ canPlay: myTurn }, (!over && !res && def.viewCtx) ? def.viewCtx(st) : {});
+    const vctx = Object.assign({ canPlay: myTurn, mySeat: mine.length ? mine[0] : 0 }, (!over && !res && def.viewCtx) ? def.viewCtx(st) : {});
     vctx.hint = H.hint;
     H.view.render(st, vctx);
     if (!myTurn) $('#bd-confirm').classList.remove('show');
@@ -284,6 +285,8 @@
     const iWon = mine.includes(r.winner);
     const iLost = mine.length && r.winner >= 0 && !iWon;
     let title;
+    const fin = H.def.result(H.st || H.def.replay(bs.moves.map((x) => x.m), bs));
+    const scoreLine = fin && fin.score ? `<div class="bd-r-score disp">${fin.score.join(' : ')}</div>` : '';
     if (r.winner < 0) title = '무승부!';
     else if (iWon) title = '이겼어요!';
     else title = `${esc(seatName(bs, r.winner))} 승리!`;
@@ -304,7 +307,7 @@
     const learn = H.def.learn ? `<p class="bd-learn">${esc(H.def.learn)}</p>` : '';
     box.innerHTML = `<div class="bd-r-card">
       <div class="bd-r-emoji">${iWon ? '🎉' : iLost ? '😢' : '🏁'}</div>
-      <h2 class="disp">${title}</h2>${sub ? `<div class="hint-md">${sub}</div>` : ''}
+      <h2 class="disp">${title}</h2>${scoreLine}${sub ? `<div class="hint-md">${sub}</div>` : ''}
       ${rec}${learn}
       <div class="bd-r-btns">
         ${host ? '<button type="button" class="btn btn-yellow" data-bact="rematch">한 판 더! (흑백 바꿔서)</button>' : '<div class="hint-md">방장이 한 판 더 할 수 있어요</div>'}
@@ -576,6 +579,6 @@
     App.hooks.message.push(onMessage);
   }
 
-  window.BoardHall = { renderLobby, lobbyMain, openGuide, H };
+  window.BoardHall = { renderLobby, lobbyMain, openGuide, H, play: (m) => playMove(m) };
   setup();
 })();

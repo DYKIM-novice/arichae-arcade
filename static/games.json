@@ -35,7 +35,16 @@
       {"id": "periodic", "dur": 35, "name": "주기율표 빨리 고르기"}
     ],
     "board": [
-      {"id": "omok", "name": "오목", "players": [2, 2], "ai": true, "files": ["rules", "view", "guide"]}
+      {"id": "omok", "name": "오목", "players": [2, 2], "ai": true, "files": ["rules", "view", "guide"]},
+      {"id": "othello", "name": "오델로", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
+      {"id": "connect4", "name": "사목", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
+      {"id": "checkers", "name": "체커", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
+      {"id": "mancala", "name": "만칼라", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
+      {"id": "hex", "name": "헥스", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
+      {"id": "dots", "name": "점 잇기 상자", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
+      {"id": "umul", "name": "우물고누", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
+      {"id": "hobak", "name": "호박고누", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
+      {"id": "chamgonu", "name": "참고누", "players": [2, 2], "ai": true, "files": ["rules", "view"]}
     ]
   },
   "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]

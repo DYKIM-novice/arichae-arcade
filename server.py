@@ -1016,7 +1016,7 @@ def game_script_paths() -> List[str]:
 
 def worker_script_paths() -> List[str]:
     """AI 워커가 불러오는 파일 (버전을 붙여서 알려줘요)"""
-    out = ["js/board/worker.js"]
+    out = ["js/board/worker.js", "js/board/aikit.js"]
     for g in MANIFEST["games"].get("board", []):
         if g.get("ai"):
             out += [f"js/board/{g['id']}/rules.js", f"js/board/{g['id']}/ai.js"]
