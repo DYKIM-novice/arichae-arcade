@@ -40,6 +40,8 @@
     const m = G.META && G.META[id];
     return m ? (m.group === 'edu' ? 'edu' : m.group) : 'arcade';
   }
+  // 지금은 빠진 게임 (명예의 전당에 남은 옛 기록 이름)
+  const RETIRED = { hex: '헥스', umul: '우물고누', hobak: '호박고누' };
   function boardName(board) {
     if (board.startsWith('music:')) {
       const sg = (G.MUSIC_SONGS || []).find((s) => s.id === board.slice(6));
@@ -47,7 +49,7 @@
     }
     const [id, lv] = board.split(':');
     const m = G.META && G.META[id];
-    const nm = m ? m.name : id;
+    const nm = m ? m.name : (RETIRED[id] || id);
     return lv ? `${nm} · ${LV_SHORT[lv] || lv}` : nm;
   }
   // 한 관(카테고리)의 기록판 목록 (기록이 없어도 보여줘요)

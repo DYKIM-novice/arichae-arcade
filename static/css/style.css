@@ -1522,9 +1522,8 @@ button { font-family: var(--body); color: inherit; }
 .pv-wrap { width: min(100%, calc(100dvh - 330px), 520px); min-width: 260px; aspect-ratio: 1; }
 .pv-wrap.ck-wrap .pv-board { border-radius: 8px; box-shadow: 0 6px 0 #3E220A, 0 14px 30px rgba(0,0,0,.45); }
 .gn-wrap .pv-board { border-radius: 14px; box-shadow: 0 6px 0 #8A5A2E, 0 14px 30px rgba(0,0,0,.4); }
-.gn-wrap.tall { width: min(100%, calc((100dvh - 330px) * 0.8), 420px); aspect-ratio: 9.6 / 12; }
-.hx-wrap { width: min(100%, calc((100dvh - 330px) * 0.63), 400px); min-width: 220px; aspect-ratio: 0.63; }
-.hx-wrap .pv-board { border-radius: 12px; }
+.nb-pop { animation: nbPop .6s ease-out both; }
+@keyframes nbPop { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.25); opacity: 0; } }
 .pv-pc.new { animation: stoneDrop .22s cubic-bezier(.3,1.6,.5,1); }
 .pv-pc.sel { filter: brightness(1.25); }
 .pv-can { animation: targetPulse 1.2s ease-in-out infinite; }

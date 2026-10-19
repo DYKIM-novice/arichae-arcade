@@ -126,7 +126,7 @@
           sig.push(v);
           if (v == null || v === 0) continue;
           const isNew = prevSig && prevSig[i] !== v;
-          out += `<g class="pv-pc${isNew ? ' new' : ''}${path[0] === i ? ' sel' : ''}" style="transform-origin:${P[i][0]}px ${P[i][1]}px">${spec.drawPiece(v, P[i][0], P[i][1], i, st)}</g>`;
+          out += `<g class="pv-pc${isNew ? ' new' : ''}${path[0] === i ? ' sel' : ''}" style="transform-origin:${P[i][0]}px ${P[i][1]}px">${spec.drawPiece(v, P[i][0], P[i][1], i, st, flipped)}</g>`;
         }
         gPieces.innerHTML = out;
         prevSig = sig;

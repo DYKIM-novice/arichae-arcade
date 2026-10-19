@@ -40,10 +40,8 @@
       {"id": "connect4", "name": "사목", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
       {"id": "checkers", "name": "체커", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
       {"id": "mancala", "name": "만칼라", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
-      {"id": "hex", "name": "헥스", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
       {"id": "dots", "name": "점 잇기 상자", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
-      {"id": "umul", "name": "우물고누", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
-      {"id": "hobak", "name": "호박고누", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
+      {"id": "nebat", "name": "네밭고누", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
       {"id": "chamgonu", "name": "참고누", "players": [2, 2], "ai": true, "files": ["rules", "view"]}
     ]
   },
