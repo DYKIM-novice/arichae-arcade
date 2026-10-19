@@ -1,0 +1,39 @@
+{
+  "_설명": "게임 목록은 여기 한 곳에만 적어요. 서버(server.py)와 화면(kit.js)이 같이 읽어요. 게임 파일은 static/js/games/<무리>/<id>.js",
+  "scripts": {
+    "before": ["js/animals.js", "js/audio.js", "js/kit.js", "js/data/songs.js", "js/data/creatures.js"],
+    "after": ["js/app.js"]
+  },
+  "games": {
+    "arcade": [
+      { "id": "blocks", "dur": 50, "name": "블록 지우기" },
+      { "id": "race", "dur": 25, "name": "전력 질주" },
+      { "id": "stop", "dur": 30, "name": "딱 멈춰" },
+      { "id": "signal", "dur": 30, "name": "신호등" },
+      { "id": "throw", "dur": 35, "name": "투척왕" },
+      { "id": "simon", "dur": 35, "name": "따라 누르기" },
+      { "id": "balloon", "dur": 30, "name": "풍선 불기" },
+      { "id": "mole", "dur": 30, "name": "두더지 잡기" },
+      { "id": "tug", "dur": 25, "name": "줄다리기" },
+      { "id": "weld", "dur": 35, "name": "용접 이어붙이기" },
+      { "id": "crane", "dur": 35, "name": "크레인 낙하" },
+      { "id": "count", "dur": 40, "name": "숫자 세기" },
+      { "id": "rhythm", "dur": 40, "name": "오르골 리듬" },
+      { "id": "odd", "dur": 30, "name": "가짜 찾기" },
+      { "id": "chop", "dur": 25, "name": "나무 도끼질" },
+      { "id": "dino", "dur": 30, "name": "공룡 발걸음" },
+      { "id": "plate", "dur": 35, "name": "접시 깨기" }
+    ],
+    "edu": [
+      { "id": "light", "dur": 35, "name": "빛 섞기" },
+      { "id": "paint", "dur": 35, "name": "물감 섞기" },
+      { "id": "history", "dur": 40, "name": "지구 역사 순서" },
+      { "id": "fishing", "dur": 35, "name": "바다 낚시" },
+      { "id": "space", "dur": 35, "name": "행성 찾기" },
+      { "id": "tree", "dur": 35, "name": "진화 나무 오르기" },
+      { "id": "music", "dur": 95, "name": "오르골 연주회", "pick": false },
+      { "id": "periodic", "dur": 35, "name": "주기율표 빨리 고르기" }
+    ]
+  },
+  "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]
+}

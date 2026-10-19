@@ -125,20 +125,40 @@ Render가 알아서 새 버전으로 다시 켜요(1~2분). 그동안 하던 방
 
 ```
 arichae_arcade/
-├─ server.py            게임 서버 (파이썬 기본 기능만 사용)
-├─ render.yaml          Render 배포 설정
-├─ run.bat              윈도우 노트북에서 시험용 실행 파일
+├─ server.py              게임 서버 (파이썬 기본 기능만 사용)
+├─ render.yaml            Render 배포 설정
+├─ run.bat                윈도우 노트북에서 시험용 실행 파일
 └─ static/
-   ├─ index.html        화면 뼈대
-   ├─ css/style.css     디자인
+   ├─ games.json          ★ 게임 목록·플레이 시간·음악관 곡 순서 (서버와 화면이 같이 읽어요)
+   ├─ index.html          화면 뼈대 (스크립트 목록은 서버가 games.json 보고 자동으로 넣어요)
+   ├─ css/style.css       디자인
    └─ js/
-      ├─ app.js         화면 흐름·서버 연결·버튼 입력
-      ├─ games.js       미니게임 기본 4종
-      ├─ games_extra.js 미니게임 추가 13종
-      ├─ games_edu.js   과학관 게임 8종
-      ├─ animals.js     동물 캐릭터 20종
-      └─ audio.js       효과음·배경음악·진동
+      ├─ app.js           화면 흐름·서버 연결·버튼 입력
+      ├─ kit.js           게임 공통 도구 + 게임 등록부(G.register)
+      ├─ animals.js       동물 캐릭터 20종
+      ├─ audio.js         효과음·배경음악·진동
+      ├─ data/            내용 데이터 (songs.js 노래 악보, creatures.js 바다 생물)
+      └─ games/
+         ├─ arcade/       오락실 미니게임 — 게임 하나당 파일 하나 (blocks.js, race.js …)
+         └─ edu/          과학관·음악관 게임 (light.js, music.js …)
 ```
+
+## 게임·내용 추가하는 법
+
+**오락실 미니게임 하나 더**
+1. `static/js/games/arcade/<id>.js` 를 만들어요 (비슷한 게임 파일을 복사해서 시작하면 편해요).
+   파일 끝에서 `G.register(게임)` 으로 등록하고, 공통 도구는 `const { rng, el, HEX … } = G.kit;` 로 꺼내 써요.
+2. `static/games.json` 의 `"arcade"` 에 `{ "id": "<id>", "dur": 30, "name": "게임 이름" }` 한 줄 추가.
+3. 끝. 서버 수정, `index.html` 수정, `?v=` 버전 올리기 모두 필요 없어요 (서버가 파일 내용으로 버전을 붙여요).
+
+**과학관 게임 하나 더** — 위와 같고 폴더만 `games/edu/`, 목록은 `"edu"`. 게임 정의에 `edu: true`, `levels`, `hall` 을 넣어요.
+
+**음악관 곡 하나 더** — `js/data/songs.js` 의 `HALL` 에 곡을 넣고 `games.json` 의 `"songs"` 에 id 추가.
+저작권이 끝난 곡(작곡가 사후 70년 지난 클래식, 옛 동요)만 넣어요.
+
+**새 데이터 파일** (문제 은행, 연표 등) — `js/data/` 에 만들고 `games.json` 의 `scripts.before` 에 경로 추가.
+
+게임은 모두 서버가 준 같은 `seed` 로 같은 문제를 만들어야 해요 (`Math.random` 대신 `rng(ctx.seed)`).
 
 ## 설정 (환경변수, 선택)
 

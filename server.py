@@ -50,42 +50,14 @@ WS_IDLE_SEC = 30         # 이 시간 동안 아무 신호가 없으면 끊긴 �
 SEND_TIMEOUT_SEC = 4     # 한 기기에 보내기가 이 시간 안에 안 끝나면 그 기기만 끊어요 (방 전체가 멈추지 않게)
 WS_MAX_MESSAGE = 64 * 1024
 
-# 미니게임 ID와 플레이 시간(초)
-GAMES: Dict[str, int] = {
-    "blocks": 50,   # 블록 지우기
-    "race": 25,     # 전력 질주
-    "stop": 30,     # 딱 멈춰
-    "signal": 30,   # 신호등
-    "throw": 35,    # 투척왕
-    "simon": 35,    # 따라 누르기
-    "balloon": 30,  # 풍선 불기
-    "mole": 30,     # 두더지 잡기
-    "tug": 25,      # 줄다리기
-    "weld": 35,     # 용접 이어붙이기
-    "crane": 35,    # 크레인 낙하
-    "count": 40,    # 숫자 세기
-    "rhythm": 40,   # 리듬 박자
-    "odd": 30,      # 가짜 찾기
-    "chop": 25,     # 나무 도끼질
-    "dino": 30,     # 공룡 발걸음
-    "plate": 35,    # 접시 깨기
-}
-
-# 과학관(교육) 게임 — 방장이 직접 골라서 플레이
-EDU_GAMES: Dict[str, int] = {
-    "light": 35,     # 빛 섞기
-    "paint": 35,     # 물감 섞기
-    "history": 40,   # 지구 역사 순서
-    "fishing": 35,   # 바다 낚시
-    "space": 35,     # 행성 찾기 (우주관)
-    "tree": 35,      # 진화 나무 오르기 (생명의 나무)
-    "music": 95,     # 오르골 연주회 (음악관) — 주제·변주 약 1분 30초
-    "periodic": 35,  # 주기율표 빨리 고르기
-}
+# 게임 목록과 플레이 시간(초)은 static/games.json 한 곳에만 적어요 (화면도 같은 파일을 읽어요)
+MANIFEST_PATH = STATIC_DIR / "games.json"
+MANIFEST = json.loads(MANIFEST_PATH.read_text("utf-8"))
+GAMES: Dict[str, int] = {g["id"]: int(g["dur"]) for g in MANIFEST["games"]["arcade"]}      # 오락실
+EDU_GAMES: Dict[str, int] = {g["id"]: int(g["dur"]) for g in MANIFEST["games"]["edu"]}     # 과학관·음악관
 ALL_GAMES: Dict[str, int] = {**GAMES, **EDU_GAMES}
-EDU_PICKABLE = [g for g in EDU_GAMES if g != "music"]   # 과학관에서 고를 수 있는 게임 (음악은 음악관으로)
-# 음악관: 방장이 곡을 골라 순서대로 오르골 연주회
-MUSIC_SONGS = ("twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter")
+EDU_PICKABLE = [g["id"] for g in MANIFEST["games"]["edu"] if g.get("pick", True)]   # 과학관에서 고를 수 있는 게임
+MUSIC_SONGS = tuple(MANIFEST["songs"])   # 음악관: 방장이 곡을 골라 순서대로 오르골 연주회
 LEVELS = ("e", "m", "h", "x")     # 초·중·고 (+ 음악관 특상)
 MAX_PICKS = 10
 
@@ -885,7 +857,50 @@ async def send_json(writer, data: dict, head_only=False) -> None:
                         "application/json; charset=utf-8", head_only, {"Cache-Control": "no-store"})
 
 
-async def serve_file(writer, path: Path, head_only: bool, no_cache: bool, ctype_override: str = "") -> None:
+def game_script_paths() -> List[str]:
+    """index.html 에 넣을 스크립트 순서: 공통 → 게임들(games.json 순서) → app.js"""
+    sc = MANIFEST.get("scripts", {})
+    games = [f"js/games/{group}/{g['id']}.js" for group, items in MANIFEST["games"].items() for g in items]
+    return list(sc.get("before", [])) + games + list(sc.get("after", []))
+
+
+_index_cache: Dict[str, object] = {"key": None, "body": b""}
+
+
+def file_version(rel: str) -> str:
+    """파일 내용으로 만든 짧은 버전 (내용이 바뀌면 주소가 바뀌어서 폰이 새 파일을 받아요)"""
+    try:
+        return hashlib.md5((STATIC_DIR / rel).read_bytes()).hexdigest()[:8]
+    except OSError:
+        log.warning("파일이 없어요: static/%s", rel)
+        return "0"
+
+
+def render_index() -> bytes:
+    """index.html 의 <!--@scripts--> 와 ?v=@css 를 채워요. 파일이 바뀌었을 때만 다시 만들어요."""
+    paths = game_script_paths()
+    watch = ["index.html", "games.json", "css/style.css"] + paths
+    key = []
+    for rel in watch:
+        try:
+            key.append((STATIC_DIR / rel).stat().st_mtime_ns)
+        except OSError:
+            key.append(0)
+    key = tuple(key)
+    if _index_cache["key"] == key:
+        return _index_cache["body"]  # type: ignore[return-value]
+    html = (STATIC_DIR / "index.html").read_text("utf-8")
+    manifest_js = json.dumps({"games": MANIFEST["games"], "songs": MANIFEST["songs"]}, ensure_ascii=False)
+    tags = [f"<script>window.ARICHAE_MANIFEST = {manifest_js};</script>"]
+    tags += [f'<script src="static/{p}?v={file_version(p)}"></script>' for p in paths]
+    html = html.replace("<!--@scripts-->", "\n".join(tags)).replace("?v=@css", "?v=" + file_version("css/style.css"))
+    body = html.encode("utf-8")
+    _index_cache["key"] = key
+    _index_cache["body"] = body
+    return body
+
+
+async def serve_file(writer, path: Path, head_only: bool, no_cache: bool, ctype_override: str = "", immutable: bool = False) -> None:
     try:
         target = path.resolve()
         target.relative_to(STATIC_DIR)
@@ -903,7 +918,7 @@ async def serve_file(writer, path: Path, head_only: bool, no_cache: bool, ctype_
     if ctype_override:
         ctype = ctype_override
     body = target.read_bytes()
-    cache = "no-cache" if no_cache else "public, max-age=300"
+    cache = "no-cache" if no_cache else ("public, max-age=31536000, immutable" if immutable else "public, max-age=300")
     await send_response(writer, 200, body, ctype, head_only, {"Cache-Control": cache})
 
 
@@ -957,7 +972,7 @@ async def handle_http(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
         head_only = method == "HEAD"
 
         if path in ("/", "/index.html"):
-            await serve_file(writer, STATIC_DIR / "index.html", head_only, True)
+            await send_response(writer, 200, render_index(), "text/html; charset=utf-8", head_only, {"Cache-Control": "no-cache"})
         elif path == "/api/info":
             await send_json(writer, {"lanUrl": f"http://{lan_ip()}:{PORT}", "publicUrl": PUBLIC_URL}, head_only)
         elif path.startswith("/api/room/"):
@@ -976,7 +991,9 @@ async def handle_http(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                     "phase": room.phase,
                 }, head_only)
         elif path.startswith("/static/"):
-            await serve_file(writer, STATIC_DIR / path[len("/static/"):], head_only, False)
+            # 주소에 ?v=버전 이 붙은 파일은 내용이 바뀌면 주소도 바뀌니 오래 저장해도 돼요
+            versioned = "v=" in (urlsplit(target).query or "")
+            await serve_file(writer, STATIC_DIR / path[len("/static/"):], head_only, False, immutable=versioned)
         elif path == "/manifest.webmanifest":
             await serve_file(writer, STATIC_DIR / "manifest.webmanifest", head_only, True, "application/manifest+json; charset=utf-8")
         elif path == "/sw.js":
