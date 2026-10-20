@@ -143,23 +143,33 @@ def table_seats(room, cfg: CardConfig) -> Optional[List[str]]:
     return want
 
 
+# AI 친구 캐릭터 (static/js/animals.js 와 같은 이름) — 여러 명이면 서로 다른 동물로
+AI_ANIMALS = [("bear", "곰"), ("panda", "판다"), ("fox", "여우"), ("raccoon", "너구리"), ("koala", "코알라"),
+              ("hamster", "햄스터"), ("penguin", "펭귄"), ("owl", "부엉이"), ("frog", "개구리"), ("pig", "돼지"),
+              ("monkey", "원숭이"), ("lion", "사자"), ("sheep", "양"), ("otter", "수달"), ("cat", "고양이"),
+              ("dog", "강아지"), ("chick", "병아리"), ("mouse", "쥐"), ("tiger", "호랑이"), ("rabbit", "토끼")]
+
+
 def new_table(room, cfg: CardConfig, seats: List[str], engines: dict):
     gid = room.card.get("game")
     lv = int(room.card.get("ai") or 2)
     names = []
-    k = 0
-    n_ai = seats.count("ai")
-    for s in seats:
+    taken = {room.players[s].animal for s in seats if s != "ai" and s in room.players}
+    pool = [a for a in AI_ANIMALS if a[0] not in taken] or list(AI_ANIMALS)
+    random.shuffle(pool)
+    ai_animals = {}
+    for i, s in enumerate(seats):
         if s == "ai":
-            k += 1
-            names.append(f"AI {LEVEL_NAMES.get(lv, '')}{k if n_ai > 1 else ''}")
+            key, ko = pool[len(ai_animals) % len(pool)]
+            ai_animals[i] = key
+            names.append(f"AI {ko}")
         else:
             p = room.players.get(s)
             names.append(p.name if p else "?")
     rng = random.Random()
     eng = engines[gid](len(seats), names, [i for i, s in enumerate(seats) if s == "ai"], lv, rng)
     cs = {
-        "game": gid, "kind": "table", "seats": seats, "names": names, "ai": lv,
+        "game": gid, "kind": "table", "seats": seats, "names": names, "ai": lv, "aiAnimals": ai_animals,
         "status": "play", "result": None, "startAt": now_ms(),
         "round": (room.csess or {}).get("round", 0) + 1 if room.csess else 1,
     }

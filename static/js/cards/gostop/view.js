@@ -12,15 +12,15 @@
   const esc = (t) => String(t == null ? '' : t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const month = (id) => Math.floor(id / 4) + 1;
   const kind = (id) => W.info(id).kind;
-  const EV = { jjok: '쪽!', ppeok: '뻑!', ttadak: '따닥!', sweep: '싹쓸이!', bomb: '폭탄!', shake: '흔들기!', ppeok_eat: '뻑 먹기!', nagari: '나가리!' };
+  const EV = { jjok: '쪽!', ppeok: '뻑!', ttadak: '따닥!', sweep: '싹쓸이!', bomb: '폭탄!', shake: '흔들기!', ppeok_eat: '뻑 먹기!', nagari: '나가리!', bonus: '보너스 쌍피!' };
   const STEP_MS = { land: 700, flip: 750, take: 750 };
 
   function groups(cards) {
     const g = { gwang: [], yeol: [], tti: [], pi: [] };
-    cards.forEach((c) => { const k = kind(c); (g[k === 'ssang' ? 'pi' : k] || g.pi).push(c); });
+    cards.forEach((c) => { const k = kind(c); (g[k === 'ssang' || k === 'bonus' ? 'pi' : k] || g.pi).push(c); });
     return g;
   }
-  const piCount = (cards) => cards.reduce((a, c) => a + (kind(c) === 'ssang' ? 2 : kind(c) === 'pi' ? 1 : 0), 0);
+  const piCount = (cards) => cards.reduce((a, c) => a + (kind(c) === 'ssang' || kind(c) === 'bonus' ? 2 : kind(c) === 'pi' ? 1 : 0), 0);
 
   function mount(el, api) {
     W.preload();
@@ -92,7 +92,7 @@
       const playable = (view.opts && view.opts.play) || [];
       const shakeM = new Set(((view.opts && view.opts.shake) || []));
       $('.gs-hand').innerHTML = hand.map((c) => {
-        const match = view.floor.some((f) => month(f) === month(c));
+        const match = kind(c) === 'bonus' || view.floor.some((f) => month(f) === month(c));
         return card(c, `${c === sel ? 'sel' : ''}${playable.includes(c) && match ? ' match' : ''}${shakeM.has(month(c)) ? ' trio' : ''}`, `data-hc="${c}"`);
       }).join('');
       $('.gs-hand').classList.toggle('two', hand.length > 7);
@@ -116,7 +116,7 @@
         if (sel >= 0) out.push('<button type="button" class="btn gs-b go" data-gs="play">이 카드 내기</button>');
       }
       let msg = '';
-      if (myTurn && vv.phase === 'play' && !o.flipOnly) msg = sel >= 0 ? '한 번 더 누르거나 [이 카드 내기]' : '낼 카드를 눌러요 (초록빛 카드는 바닥과 같은 달)';
+      if (myTurn && vv.phase === 'play' && !o.flipOnly) msg = sel >= 0 ? (kind(sel) === 'bonus' ? '보너스 쌍피: 내면 바로 내 것 + 한 장 더 받아요' : '한 번 더 누르거나 [이 카드 내기]') : '낼 카드를 눌러요 (초록빛 카드는 바닥과 같은 달)';
       else if (myTurn && vv.phase === 'choose') msg = '가져갈 바닥 카드를 하나 골라요 (빛나는 카드)';
       else if (vv.toAct >= 0 && vv.toAct !== me) msg = `<span class="bd-dots">${esc(api.seat(vv.toAct).name)} 차례</span>`;
       const left = myTurn && vv.deadline ? Math.max(0, Math.ceil((vv.deadline - api.now()) / 1000)) : 0;
@@ -164,7 +164,7 @@
           ${(e.lines || []).map((ln) => `<div class="gs-end-row"><span class="av">${api.seat(ln.seat).av}</span><b>${esc(api.seat(ln.seat).name)}</b><span class="gs-tags">${ln.tags.map((t) => `<i>${t}</i>`).join('')}</span><span class="gs-pay">${ln.pay ? '−' + ln.pay : '0'}</span></div>`).join('')}
           ${e.sell && e.sell.length ? `<div class="hint-sm">${esc(api.seat(e.sell[0]).name)}: 광 ${e.sell[1]}장 팔아서 +${e.sell[1] * 3}</div>` : ''}`;
       }
-      box.innerHTML = `<div class="gs-end-card">${body}<div class="gs-end-next">${view.over ? '마지막 판이었어요!' : `${e.round}/${view.rounds}판 · 곧 다음 판`}</div><div class="gs-credit">화투 그림: Louie Mantia (CC BY-SA 4.0)</div></div>`;
+      box.innerHTML = `<div class="gs-end-card">${body}<div class="gs-end-next">${view.over ? '마지막 판이었어요!' : `${e.round}/${view.rounds}판 · 곧 다음 판`}</div><div class="gs-credit">화투 그림: Louie Mantia 원작을 고쳐 그림 (CC BY-SA 4.0)</div></div>`;
       box.className = 'gs-end show';
       const key = String(e.round);
       if (endKey !== key) { endKey = key; if (view.me != null && e.winner === view.me) { api.sfx('fanfare'); api.vibrate([50, 30, 90]); } else api.sfx('end'); }
@@ -208,13 +208,13 @@
         if (e.k === 'take') {
           const h = {}; e.cards.forEach((c) => { h[c] = 'taking'; });
           const more = e.cards.filter((c) => !floor.includes(c));   // 바닥에 없던 카드(폭탄 등)는 잠깐 보여 줘요
-          steps.push({ floor: floor.concat(more), hl: h, deck, ms: STEP_MS.take, sfx: 'soft', pop: evs.filter((x) => ['jjok', 'ppeok', 'ttadak', 'sweep', 'ppeok_eat'].includes(x.k)).map(popText)[0] || '' });
+          steps.push({ floor: floor.concat(more), hl: h, deck, ms: STEP_MS.take, sfx: 'soft', pop: evs.filter((x) => ['jjok', 'ppeok', 'ttadak', 'sweep', 'ppeok_eat', 'bonus'].includes(x.k)).map(popText)[0] || '' });
           floor = floor.filter((c) => !e.cards.includes(c));
         }
       });
       // 뻑처럼 가져간 게 없으면 특별한 일 알림만
       if (!evs.some((e) => e.k === 'take')) {
-        const sp = evs.filter((x) => ['jjok', 'ppeok', 'ttadak', 'sweep', 'ppeok_eat'].includes(x.k)).map(popText)[0];
+        const sp = evs.filter((x) => ['jjok', 'ppeok', 'ttadak', 'sweep', 'ppeok_eat', 'bonus'].includes(x.k)).map(popText)[0];
         if (sp) steps.push({ floor: floor.slice(), hl: {}, deck, ms: 650, pop: sp });
       }
       let k = 0;
@@ -287,7 +287,7 @@
     kind: 'table',
     icon: `<svg viewBox="0 0 40 40" aria-hidden="true"><rect x="2" y="2" width="36" height="36" rx="7" fill="#C81E2C"/>${W.image(0, 5, 6, 15, -10)}${W.image(28, 19, 7, 15, 9)}</svg>`,
     rulesText: '2명은 맞고(7점), 3명은 고스톱(3점), 4명은 한 명씩 광 팔고 쉬어요 · 같은 달 카드를 맞춰 가져가요 · 점수가 나면 고 또는 스톱 · 5판 합계',
-    learn: '화투는 포르투갈 카드가 일본(하나후다)을 거쳐 들어와 우리나라에서 고스톱으로 꽃피었어요. 열두 달의 꽃과 동물이 그려져 있어서 "꽃 싸움(花鬪)"이라고 해요. (화투 그림: Louie Mantia, CC BY-SA 4.0)',
+    learn: '화투는 포르투갈 카드가 일본(하나후다)을 거쳐 들어와 우리나라에서 고스톱으로 꽃피었어요. 열두 달의 꽃과 동물이 그려져 있어서 "꽃 싸움(花鬪)"이라고 해요. (화투 그림: Louie Mantia 원작을 우리 화투 색으로 고쳐 그림, CC BY-SA 4.0)',
     bar(v) { return v.round ? `<span class="cd-info">${v.round}/${v.rounds}판</span><span class="cd-info">${v.players.length === 2 ? '맞고' : '고스톱'} · <b>${v.threshold}점</b>부터</span>${v.nagari > 1 ? `<span class="cd-info">나가리 <b>×${v.nagari}</b></span>` : ''}` : ''; },
     rankLabel(v, i) { return v && v.seats[i] ? `${v.seats[i].total > 0 ? '+' : ''}${v.seats[i].total}점` : ''; },
     mount

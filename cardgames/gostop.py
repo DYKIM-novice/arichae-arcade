@@ -1,6 +1,6 @@
 """맞고(2명) · 고스톱(3명) · 광 팔기(4명) — 우리 집 규칙
 
-화투 48장: 달마다 4장. 카드 번호 = (달-1)*4 + k
+화투 48장 + 보너스 쌍피 2장(48·49): 달마다 4장. 카드 번호 = (달-1)*4 + k
   종류: gwang(광) · yeol(열끗) · tti(띠) · pi(피) · ssang(쌍피)
   띠 무리: hong(홍단 1·2·3월) · cheong(청단 6·9·10월) · cho(초단 4·5·7월) · 12월 띠는 무리 없음
   고도리: 2·4·8월 새 (열끗)  ·  9월 열끗(국진)은 피로 쓰면 쌍피 (점수가 더 좋은 쪽으로 저절로)
@@ -18,6 +18,9 @@
   피박(진 사람 피 7장 이하, 이긴 사람이 피로 점수) ×2 · 광박(이긴 사람이 광 점수, 진 사람 광 0장) ×2
   고박(3명 이상): 고를 불렀는데 남이 이기면 진 사람들 몫을 혼자 다 내요
   아무도 못 나면 나가리 → 다음 판 2배
+보너스 쌍피: 손에서 내면 바로 내 것(피 2장)이 되고 더미에서 1장을 받아 이어서 내요. 뒤집어서 나오면 가져가고 한 장 더 뒤집어요.
+  처음 바닥에 깔리면 먼저 하는 사람이 가져가고 더미에서 다시 깔아요
+선: 지난 판에 이긴 사람이 먼저 해요 (나가리면 그대로, 첫 판은 제비뽑기). 4명이면 선 바로 앞사람이 광을 팔고 쉬어요
 판수: 5판 합계 점수로 순위
 """
 import random
@@ -47,6 +50,10 @@ _SPEC = {
 for m in range(1, 13):
     for k, (kind, grp) in enumerate(_SPEC[m]):
         CARDS.append({"id": (m - 1) * 4 + k, "m": m, "kind": kind, "grp": grp})
+BONUS = (48, 49)
+for _b in BONUS:
+    CARDS.append({"id": _b, "m": 13, "kind": "bonus", "grp": ""})
+N_CARDS = len(CARDS)
 
 
 def month(c: int) -> int:
@@ -62,7 +69,7 @@ def grp(c: int) -> str:
 
 
 def pi_value(c: int) -> int:
-    return 2 if kind(c) == "ssang" else 1 if kind(c) == "pi" else 0
+    return 2 if kind(c) in ("ssang", "bonus") else 1 if kind(c) == "pi" else 0
 
 
 def score_detail(cards: List[int]) -> dict:
@@ -116,6 +123,7 @@ class GoStop:
         self.over = False
         self.log: List[str] = []
         self.dealer = rng.randrange(n_seats)
+        self.first = rng.randrange(n_seats)     # 선: 지난 판에 이긴 사람 (첫 판은 제비뽑기)
         self.nagari = 1
         self.deadline = 0.0
         self.wait_until = 0.0
@@ -130,12 +138,12 @@ class GoStop:
             self.phase = "done"
             return
         self.round += 1
-        deck = list(range(48))
+        deck = list(range(N_CARDS))
         self.rng.shuffle(deck)
         self.seller = -1
         players = list(range(self.n))
         if self.n == 4:
-            self.seller = (self.dealer + 3) % 4      # 판마다 돌아가며 한 명이 광을 팔고 쉬어요
+            self.seller = (self.first - 1) % 4      # 선 바로 앞사람이 광을 팔고 쉬어요
             players = [p for p in players if p != self.seller]
         self.players = players
         np_ = len(players)
@@ -157,6 +165,16 @@ class GoStop:
             return
         self.deck = deck
         self.captured: List[List[int]] = [[] for _ in range(self.n)]
+        # 선: 이긴 사람 (쉬는 사람이면 그다음 사람)
+        first = self.first
+        while first not in players:
+            first = (first + 1) % self.n
+        # 바닥에 깔린 보너스 쌍피는 선이 가져가고 더미에서 다시 깔아요
+        while any(kind(c) == "bonus" for c in self.floor):
+            b = next(c for c in self.floor if kind(c) == "bonus")
+            self.floor.remove(b)
+            self.captured[first].append(b)
+            self.floor.append(self.deck.pop())
         self.go = [0] * self.n
         self.go_score = [0] * self.n
         self.shake = [0] * self.n
@@ -164,13 +182,13 @@ class GoStop:
         self.bomb_turns = [0] * self.n
         self.shaken_months: List[set] = [set() for _ in range(self.n)]
         self.ppeok_owner: Dict[int, int] = {}   # 뻑 낸 달 → 누가
-        self.turn = players[(players.index(self.dealer) + 1) % np_] if self.dealer in players else players[0]
+        self.turn = first
         self.phase = "play"            # play → (choose) → (gostop) → 다음 사람
         self.pending = None
         self.end = None
         self.last_play: Optional[dict] = None
-        self.log.append(f"— {self.round}번째 판{' (나가리 ' + str(self.nagari) + '배)' if self.nagari > 1 else ''} —")
-        self._event("deal", -1)
+        self.log.append(f"— {self.round}번째 판{' (나가리 ' + str(self.nagari) + '배)' if self.nagari > 1 else ''} · 선 {self.names[first]} —")
+        self._event("deal", -1, first=first)
         self._set_deadline()
 
     def _event(self, k: str, seat: int, **kw) -> None:
@@ -299,6 +317,9 @@ class GoStop:
                 return "카드를 골라요"
             if c not in self.hands[i] or o.get("flipOnly"):
                 return "낼 수 없는 카드예요"
+            if kind(c) == "bonus":
+                self._play_bonus(i, c)
+                return None
             m = month(c)
             fl = [x for x in self.floor if month(x) == m]
             if len(fl) == 2 and kind(fl[0]) != kind(fl[1]) or len(fl) == 2 and pi_value(fl[0]) != pi_value(fl[1]):
@@ -314,6 +335,23 @@ class GoStop:
             self._resolve_play(i, c, fl[0] if len(fl) == 2 else None)
             return None
         return "알 수 없는 수예요"
+
+    def _play_bonus(self, i: int, c: int) -> None:
+        """보너스 쌍피: 바로 내 것 → 더미에서 1장 받아서 이어서 내요"""
+        self.hands[i].remove(c)
+        self._event("play", i, c=c)
+        self._event("bonus", i)
+        self.captured[i].append(c)
+        self._event("take", i, cards=[c])
+        self.log.append(f"{self.names[i]}: 보너스 쌍피!")
+        if self.deck:
+            self.hands[i].append(self.deck.pop())
+            self.hands[i].sort()
+        if not self.hands[i]:
+            self._finish_turn(i, [], 0, None)
+            return
+        self.phase = "play"
+        self._set_deadline()
 
     def _resolve_play(self, i: int, c: int, pick: Optional[int]) -> None:
         """손에서 낸 카드를 바닥과 맞추고 → 뒤집기"""
@@ -336,6 +374,13 @@ class GoStop:
         self._flip_phase(i, state, taken, c)
 
     def _flip_phase(self, i: int, st: Optional[dict], taken: List[int], played: Optional[int], steal: int = 0) -> None:
+        # 뒤집은 카드가 보너스 쌍피면 가져가고 한 장 더 뒤집어요
+        while self.deck and kind(self.deck[-1]) == "bonus":
+            b = self.deck.pop()
+            self._event("flip", i, c=b)
+            self._event("bonus", i)
+            self.log.append(f"{self.names[i]}: 보너스 쌍피!")
+            taken.append(b)
         if not self.deck:
             # 더미가 없으면 뒤집지 않고 끝
             if st and st.get("pair") is not None:
@@ -407,7 +452,7 @@ class GoStop:
 
     def _value(self, c: int) -> float:
         k = kind(c)
-        return {"gwang": 6, "yeol": 4 if grp(c) == "bird" else 3, "tti": 3, "ssang": 2.5, "pi": 1}[k]
+        return {"gwang": 6, "yeol": 4 if grp(c) == "bird" else 3, "tti": 3, "ssang": 2.5, "bonus": 2.5, "pi": 1}[k]
 
     def _finish_turn(self, i: int, taken: List[int], steal: int, played: Optional[int]) -> None:
         self.captured[i] += taken
@@ -417,7 +462,7 @@ class GoStop:
             for j in self.players:
                 if j == i:
                     continue
-                pis = sorted([c for c in self.captured[j] if kind(c) in ("pi", "ssang")], key=pi_value)
+                pis = sorted([c for c in self.captured[j] if kind(c) in ("pi", "ssang", "bonus")], key=pi_value)
                 if pis:
                     c = pis[0]
                     self.captured[j].remove(c)
@@ -524,6 +569,7 @@ class GoStop:
                     "detail": d, "base": base, "mult": mtags, "lines": lines, "pays": pays, "seller": self.seller,
                     "sell": sell, "sellCards": self.sell_cards}
         self.nagari = 1
+        self.first = w                     # 이긴 사람이 다음 판 선
         self.log.append(f"{self.names[w]} 승리 — {sum(pays)}점")
         self._event("win", w)
         self.phase = "roundover"
@@ -566,6 +612,9 @@ class GoStop:
     def _ai_pick_card(self, i: int, lv: int) -> int:
         h = self.hands[i]
         rng = self.rng
+        bonus = [c for c in h if kind(c) == "bonus"]
+        if bonus:
+            return bonus[0]           # 보너스 쌍피는 바로 내는 게 이득
         if lv <= 1 and rng.random() < 0.6:
             return rng.choice(h)
         seen = set(self.floor) | set(c for p in self.players for c in self.captured[p]) | set(h)

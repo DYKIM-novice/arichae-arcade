@@ -54,6 +54,7 @@
         <div class="db-slot db-mine-slot"><div class="db-card db-mine"></div><div class="db-tag db-mytag"></div></div>
       </div>
       <div class="db-count disp"></div>
+      <div class="db-fx"></div>
     </div>`;
     const $ = (s) => el.querySelector(s);
     let v = null;
@@ -142,7 +143,10 @@
         cen.innerHTML = cardHTML(L.card, v.centerSyms, { [s]: 'hit' });
         mine.innerHTML = cardHTML(v.prev, v.prevSyms, { [s]: 'hit' });
         mine.className = 'db-card db-mine';
-        banner(`<b>찾았다!</b> ${SYM[s][0]} ${esc(SYM[s][1])} <small>${(L.ms / 1000).toFixed(1)}초</small>`, 'good');
+        streak = lastWinNo === L.no - 1 ? streak + 1 : 1;
+        lastWinNo = L.no;
+        banner(`${SYM[s][0]} ${esc(SYM[s][1])} <small>${(L.ms / 1000).toFixed(1)}초</small>`, 'good');
+        cheer(cen.querySelector(`.db-sym[data-s="${s}"]`), L.ms);
         api.sfx('perfect'); api.vibrate([30, 30, 60]);
         later(() => {
           const a = cen.getBoundingClientRect(); const b = mine.getBoundingClientRect();
@@ -178,6 +182,37 @@
           later(() => { cen.className = 'db-card db-center gone'; }, 900);
         }
       }
+    }
+
+    // 찾을 때마다 신나는 한마디 + 반짝이 (눌러지지 않는 그림이라 게임을 가리지 않아요, 1초 안에 사라져요)
+    const CHEERS = ['아싸!', '따봉! 👍', '아자!', '오예!', '나이스!', '찾았다!', '대박!', '굿굿!', '앗싸라비아!', '천재다!'];
+    const FAST = ['번개 손! ⚡', '눈 깜짝할 새!', '초스피드!'];
+    let streak = 0; let lastWinNo = -9;
+    function cheer(symEl, ms) {
+      const fx = $('.db-fx');
+      const box = fx.getBoundingClientRect();
+      let x = box.width / 2; let y = box.height * 0.3;
+      if (symEl) { const r = symEl.getBoundingClientRect(); x = r.left + r.width / 2 - box.left; y = r.top + r.height / 2 - box.top; }
+      let word = ms < 1500 ? FAST[Math.floor(Math.random() * FAST.length)] : CHEERS[Math.floor(Math.random() * CHEERS.length)];
+      if (streak >= 3) word = `${streak}연속! 🔥`;
+      else if (streak === 2) word = '연속 두 번! ✌';
+      const w = document.createElement('div');
+      w.className = 'db-cheer disp' + (streak >= 3 ? ' hot' : '');
+      w.textContent = word;
+      w.style.left = `${Math.min(box.width - 70, Math.max(70, x))}px`; w.style.top = `${y}px`;
+      fx.appendChild(w);
+      const bits = ['⭐', '✨', '💥', '🎉', '💛', '⭐', '✨', '🌟'];
+      for (let k = 0; k < 10; k++) {
+        const b = document.createElement('i');
+        b.className = 'db-bit';
+        b.textContent = bits[k % bits.length];
+        const a = (k / 10) * Math.PI * 2 + Math.random() * 0.5;
+        const d = 50 + Math.random() * 50;
+        b.style.left = `${x}px`; b.style.top = `${y}px`;
+        b.style.setProperty('--dx', `${Math.cos(a) * d}px`); b.style.setProperty('--dy', `${Math.sin(a) * d}px`);
+        fx.appendChild(b);
+      }
+      setTimeout(() => { fx.innerHTML = ''; }, 1100);
     }
 
     function render(view) {

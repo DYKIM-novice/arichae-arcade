@@ -19,17 +19,39 @@
           <div class="hd-r-btns"><button type="button" class="btn btn-ghost" data-hr="x">취소</button><button type="button" class="btn btn-yellow" data-hr="go">레이즈!</button></div></div></div></div>`;
     const $ = (s) => el.querySelector(s);
     let v = null; let prevBoard = 0; let prevHand = 0; let raiseTo = 0; let raiseOpen = false; let lastToAct = -2;
+    let prevLast = []; let toastT = 0; let toastHTML = ''; let toastCls = '';
+    // 행동 종류 → 색 (폴드 회색 · 체크 파랑 · 콜 초록 · 레이즈 주황 · 올인 빨강)
+    const actKind = (t) => (!t ? '' : t.startsWith('폴드') ? 'k-fold' : t.startsWith('체크') ? 'k-check' : t.startsWith('콜') ? 'k-call'
+      : t.startsWith('레이즈') ? 'k-raise' : t.startsWith('올인') ? 'k-allin' : 'k-blind');
+    // 방금 한 행동: 아래 안내 줄에 크게 (내 차례가 아닐 때) — 2.5초
+    function toast(i, txt) {
+      const info = api.seat(i);
+      toastHTML = `<span class="av">${info.av}</span><b>${esc(info.name)}</b><em>${esc(txt)}</em>`;
+      toastCls = actKind(txt);
+      clearTimeout(toastT);
+      toastT = setTimeout(() => { toastHTML = ''; if (v) renderActs(); }, 2500);
+    }
 
     const cardHTML = (code, cls) => `<div class="hd-card${cls ? ' ' + cls : ''}">${C.svg(code)}</div>`;
     function pos(k, n) {
       // 내 자리(k=0)는 아래, 나머지는 시계 방향으로 둘러앉아요
       const a = Math.PI / 2 + (k / n) * Math.PI * 2;
-      return [50 + Math.cos(a) * 41, 52 + Math.sin(a) * 36];
+      return [50 + Math.cos(a) * 41, 53 + Math.sin(a) * 34];
     }
 
     function render(view) {
+      const handChanged = !v || view.hand !== v.hand;
       v = view;
       const n = v.seats.length;
+      // 방금 누가 무엇을 했나 → 가운데에 크게 (새 판 블라인드는 빼고)
+      const lasts = v.seats.map((s) => s.last || '');
+      const changed = lasts.map((t, i) => !handChanged && t && t !== prevLast[i] && !t.startsWith('스몰') && !t.startsWith('빅'));
+      prevLast = lasts;
+      if (changed.some(Boolean)) {
+        let pick = -1;
+        for (let k = 1; k <= n; k++) { const i = ((v.toAct >= 0 ? v.toAct : 0) - k + n * 2) % n; if (changed[i]) { pick = i; break; } }
+        if (pick >= 0 && pick !== v.me) toast(pick, lasts[pick]);
+      }
       const me = v.me == null ? 0 : v.me;
       const winners = (v.show && v.show.winners) || [];
       const best = new Set();
@@ -46,11 +68,11 @@
         const cards = k === 0 ? '' : s.cards.length ? `<div class="hd-sc${s.cards[0] !== '??' ? ' open' : ''}">${s.cards.map((c) => cardHTML(c, best.has(c) ? 'best' : '')).join('')}</div>` : '';
         const hand = v.show && !v.show.fold && v.show.hands[i] && k !== 0 ? `<div class="hd-hn">${v.show.hands[i].name}</div>` : '';
         html += `<div class="${cls}" style="left:${x}%;top:${y}%" data-seat="${i}">
-          ${k === 0 ? '' : `<div class="hd-av"><span class="hd-ring"></span>${info.av}</div><div class="hd-nm">${esc(info.name)}</div><div class="hd-chips">💰 ${s.chips}</div>${cards}${hand}`}
-          ${s.last && !s.out ? `<div class="hd-last">${s.last}</div>` : ''}
+          ${k === 0 ? '' : `<div class="hd-av"><span class="hd-ring"></span>${info.av}</div><div class="hd-nm">${esc(info.name)}</div><div class="hd-chips">💰 ${s.chips}</div>${turn ? '<div class="hd-think">생각 중…</div>' : ''}${cards}${hand}`}
+          ${s.last && !s.out ? `<div class="hd-last ${actKind(s.last)}${changed[i] ? ' new' : ''}">${s.last}</div>` : ''}
           ${v.dealer === i ? '<div class="hd-dealer">D</div>' : ''}</div>`;
         if (s.bet > 0) {
-          const [bx, by] = [50 + (x - 50) * 0.55, 50 + (y - 50) * 0.55];
+          const [bx, by] = [50 + (x - 50) * 0.68, 53 + (y - 53) * 0.66];
           html += `<div class="hd-bet" style="left:${bx}%;top:${by}%">${s.bet}</div>`;
         }
       }
@@ -97,7 +119,7 @@
         if (v.over) msg = '게임 끝!';
         else if (v.street === 'handover') msg = '다음 판을 나눠 줘요…';
         else if (v.toAct >= 0) msg = `<span class="bd-dots">${esc(api.seat(v.toAct).name)} 차례</span>`;
-        box.innerHTML = `<div class="hd-wait">${msg}</div>`;
+        box.innerHTML = `<div class="hd-wait">${toastHTML ? `<div class="hd-toast ${toastCls}">${toastHTML}</div>` : ''}<div>${msg}</div></div>`;
         return;
       }
       box.innerHTML = `${lg.fold ? '<button type="button" class="btn hd-b fold" data-ha="fold">폴드</button>' : ''}
@@ -163,7 +185,7 @@
       if (mine && v.deadline) acts.dataset.left = `${Math.ceil(left / 1000)}초`;
       else delete acts.dataset.left;
     }
-    return { render, tick, destroy() { el.innerHTML = ''; } };
+    return { render, tick, destroy() { clearTimeout(toastT); el.innerHTML = ''; } };
   }
 
   C.register({

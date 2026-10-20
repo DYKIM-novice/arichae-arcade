@@ -222,7 +222,11 @@
   function seatInfo(cs, i) {
     const s = cs.seats[i];
     const B = window.Boards;
-    if (s === 'ai') return { name: cs.names[i], av: B.levelAvatar(cs.ai), ai: true, me: false };
+    if (s === 'ai') {
+      // AI 마다 다른 동물 (서버가 정해 줘요). 단계는 이름 옆 작은 글씨로
+      const an = cs.aiAnimals && (cs.aiAnimals[i] || cs.aiAnimals[String(i)]);
+      return { name: cs.names[i], av: an ? A.svg(an) : B.levelAvatar(cs.ai), ai: true, me: false, lv: B.levelInfo(cs.ai).name };
+    }
     const p = person(s);
     return { name: p ? p.name : cs.names[i], av: p ? A.svg(p.animal) : '', ai: false, me: s === S.pid, off: p && !p.connected };
   }

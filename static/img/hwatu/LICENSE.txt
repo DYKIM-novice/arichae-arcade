@@ -1,9 +1,15 @@
-화투 그림 (0.webp ~ 47.webp, back.webp)
+화투 그림 (0.webp ~ 49.webp, back.webp)
 
 원작: Louie Mantia 의 하나후다 그림 (위키백과 Hanafuda 문서에 쓰인 전통 그림 세트)
 라이선스: Creative Commons 저작자표시-동일조건변경허락 4.0 (CC BY-SA 4.0)
          https://creativecommons.org/licenses/by-sa/4.0/
 가져온 곳: https://github.com/c-w-z/hanafuda (imgs/, CC-BY-SA-4.0, credited to Louie Mantia)
 
-바꾼 점: 크기를 200×328 로 줄이고, 우리 화투 달 순서(11월 오동 · 12월 비)에 맞게 번호를 바꿨어요.
+바꾼 점 (아리채 오락실):
+- 우리 화투 달 순서(11월 오동 · 12월 비)에 맞게 번호를 바꿨어요
+- 요즘 우리 화투처럼 다시 칠했어요: 흰 바탕, 진한 빨강·검정, 초록 잎은 검정(잎맥은 회색), 빨간 둥근 테두리
+- 광 카드에 빨간 동그라미 光, 홍단·청단 띠에 한글 글씨 (원래 일본 글씨는 지웠어요)
+- 48·49번 보너스 쌍피와 뒷면(back)은 새로 그렸어요
+- 크기 240×394
+글씨체: Noto Serif CJK / Noto Sans CJK (SIL Open Font License)
 이 폴더의 그림도 같은 CC BY-SA 4.0 으로 나눠요.
