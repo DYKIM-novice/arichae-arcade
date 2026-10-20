@@ -12,7 +12,8 @@
     { k: 'arcade', name: '오락실' },
     { k: 'edu', name: '과학관' },
     { k: 'music', name: '음악관' },
-    { k: 'board', name: '보드게임' }
+    { k: 'board', name: '보드게임' },
+    { k: 'card', name: '카드게임' }
   ];
   const LV_SHORT = { e: '초등', m: '중등', h: '고등' };
   const MLV = { e: '하', m: '중', h: '상', x: '특상' };
@@ -95,7 +96,7 @@
     // 그 사이에 게임 화면이 바뀌었으면 지금 화면으로
     let target = R.back;
     if (room) {
-      const phaseScreen = { lobby: 's-lobby', intro: 's-intro', play: 's-play', result: 's-result', final: 's-final', board: 's-board' }[room.phase];
+      const phaseScreen = { lobby: 's-lobby', intro: 's-intro', play: 's-play', result: 's-result', final: 's-final', board: 's-board', card: 's-card' }[room.phase];
       if (phaseScreen) target = phaseScreen;
     } else target = 's-home';
     App.showScreen(target);

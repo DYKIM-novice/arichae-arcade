@@ -36,6 +36,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))   # 같은 폴더의 records.py
 from records import RecordStore  # noqa: E402
 import boards as BG  # noqa: E402
+import cards as CG  # noqa: E402
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = (BASE_DIR / "static").resolve()
@@ -68,6 +69,7 @@ ALL_GAMES: Dict[str, int] = {**GAMES, **EDU_GAMES}
 EDU_PICKABLE = [g["id"] for g in MANIFEST["games"]["edu"] if g.get("pick", True)]   # 과학관에서 고를 수 있는 게임
 MUSIC_SONGS = tuple(MANIFEST["songs"])   # 음악관: 방장이 곡을 골라 순서대로 오르골 연주회
 BOARD_CFG = BG.BoardConfig(MANIFEST["games"].get("board", []))   # 보드게임관
+CARD_CFG = CG.CardConfig(MANIFEST["games"].get("card", []))       # 카드게임관
 LEVELS = ("e", "m", "h", "x")     # 초·중·고 (+ 음악관 특상)
 MAX_PICKS = 10
 
@@ -320,6 +322,9 @@ class Room:
         self.empty_since = now_ms()
         self.board = BG.default_board(BOARD_CFG)   # 보드게임관 설정 (게임·대결 방식·AI 단계·자리)
         self.bsess: Optional[dict] = None          # 진행 중인 보드게임 판
+        self.card = CG.default_card(CARD_CFG)      # 카드게임관 설정
+        self.csess: Optional[dict] = None          # 진행 중인 카드게임 판 (모두에게 보이는 부분)
+        self.ctask: Optional[asyncio.Task] = None  # 카드게임 시간 재기·AI
 
     # ---------- 공통 ----------
     def connected_players(self) -> List[Player]:
@@ -352,6 +357,8 @@ class Room:
             "maxPlayers": MAX_PLAYERS,
             "board": self.board,
             "bsess": self.bsess,
+            "card": self.card,
+            "csess": self.csess,
         }
 
     async def broadcast(self, payload: dict) -> None:
@@ -573,6 +580,10 @@ class Room:
         self.current = {}
         self.sequence = []
         self.bsess = None
+        self.csess = None
+        if self.ctask and not self.ctask.done():
+            self.ctask.cancel()
+        self.ctask = None
         for p in self.players.values():
             p.ready = False
             p.active_from = 0
@@ -648,6 +659,57 @@ async def handle_board(room: "Room", player: "Player", msg: dict, reply, is_host
             return
         room.bsess = BG.new_session(room, BOARD_CFG, seats2)
         await room.broadcast_state()
+
+
+async def handle_card(room: "Room", player: "Player", msg: dict, reply, is_host: bool) -> None:
+    """카드게임관 메시지"""
+    t = msg.get("t")
+    cs = room.csess
+    if cs["kind"] == "race":
+        if t == "cprog":
+            pr = CG.race_progress(cs, player.pid, msg)
+            if pr and RECORDS_ON and cs["game"] == "freecell":
+                rec = CG.freecell_record(pr["ms"], pr["m"], cs["deal"])
+                got = STORE.submit("freecell", rec["score"], player.name, player.animal, player.pid, rec["detail"])
+                if got:
+                    pr["rec"] = {"board": "freecell", "rank": got[0], "id": got[1]["id"], "score": rec["score"]}
+            if cs["status"] == "play" and CG.race_all_done(cs, [p.pid for p in room.connected_players()]):
+                await finish_race(room)
+            else:
+                await room.broadcast_state()
+        elif t == "cend" and is_host and cs["status"] == "play":
+            await finish_race(room)
+        elif t == "crematch" and is_host and cs["status"] == "over":
+            room.csess = CG.new_race(room, CARD_CFG)
+            start_card_timer(room)
+            await room.broadcast_state()
+
+
+async def finish_race(room: "Room") -> None:
+    cs = room.csess
+    if not cs or cs["status"] != "play":
+        return
+    cs["status"] = "over"
+    cs["result"] = {"rank": CG.race_ranking(cs), "at": now_ms()}
+    log.info("[%s] 카드게임 끝 %s (%s번 판)", room.code, cs["game"], cs.get("deal"))
+    await room.broadcast_state()
+
+
+def start_card_timer(room: "Room") -> None:
+    """프리첼: 제한 시간이 지나면 끝내요"""
+    if room.ctask and not room.ctask.done():
+        room.ctask.cancel()
+
+    async def run() -> None:
+        try:
+            while room.csess and room.csess["status"] == "play":
+                if now_ms() >= room.csess.get("limitAt", 1 << 60):
+                    await finish_race(room)
+                    return
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            pass
+    room.ctask = asyncio.ensure_future(run())
 
 
 async def finish_board(room: "Room", winner: int, reason: str) -> None:
@@ -831,7 +893,7 @@ async def ws_session(ws: WebSocketConn) -> None:
                     if length in (3, 5, 10):
                         room.length = length
                         changed = True
-                if msg.get("mode") in ("arcade", "edu", "music", "board"):
+                if msg.get("mode") in ("arcade", "edu", "music", "board", "card"):
                     room.mode = msg["mode"]
                     changed = True
                 if msg.get("level") in LEVELS:
@@ -859,6 +921,17 @@ async def ws_session(ws: WebSocketConn) -> None:
                     ok = {p.pid for p in room.players.values()} | {"ai", ""}
                     room.board["seats"] = [str(s) for s in msg["bseats"][:8] if str(s) in ok]
                     changed = True
+                if msg.get("card") in CARD_CFG.games:
+                    room.card["game"] = msg["card"]
+                    room.card["seats"] = []
+                    changed = True
+                if msg.get("cai") in CG.AI_LEVELS:
+                    room.card["ai"] = msg["cai"]
+                    changed = True
+                if isinstance(msg.get("cseats"), list):
+                    ok = {p.pid for p in room.players.values()} | {"ai"}
+                    room.card["seats"] = [str(s) for s in msg["cseats"][:8] if str(s) in ok]
+                    changed = True
                 # 특상(x)은 음악관에만 있어요 → 다른 모드에서는 고등으로
                 if room.mode != "music" and room.level == "x":
                     room.level = "h"
@@ -884,6 +957,20 @@ async def ws_session(ws: WebSocketConn) -> None:
                     for p in room.players.values():
                         p.ready = False
                     log.info("[%s] 보드게임 시작 %s %s", room.code, room.bsess["game"], seats)
+                    await room.broadcast_state()
+                    continue
+                if room.mode == "card":
+                    gid = room.card.get("game")
+                    if CARD_CFG.kind(gid) == "race":
+                        room.csess = CG.new_race(room, CARD_CFG)
+                        start_card_timer(room)
+                    else:
+                        await reply({"t": "error", "code": "soon", "msg": "곧 열려요!"})
+                        continue
+                    room.phase = "card"
+                    for p in room.players.values():
+                        p.ready = False
+                    log.info("[%s] 카드게임 시작 %s", room.code, gid)
                     await room.broadcast_state()
                     continue
                 log.info("[%s] 게임 시작 (%s)", room.code,
@@ -925,7 +1012,10 @@ async def ws_session(ws: WebSocketConn) -> None:
             elif t in ("bmove", "bend", "bundo", "bhint", "bresign", "brematch") and room.phase == "board" and room.bsess:
                 await handle_board(room, player, msg, reply, is_host)
 
-            elif t == "again" and is_host and room.phase in ("final", "result", "intro", "play", "board"):
+            elif t in ("cprog", "cact", "cend", "crematch") and room.phase == "card" and room.csess:
+                await handle_card(room, player, msg, reply, is_host)
+
+            elif t == "again" and is_host and room.phase in ("final", "result", "intro", "play", "board", "card"):
                 await room.back_to_lobby()
 
             elif t == "kick" and is_host:
@@ -1006,7 +1096,10 @@ def game_script_paths() -> List[str]:
     games: List[str] = []
     for group, items in MANIFEST["games"].items():
         for g in items:
-            if group == "board":
+            if group == "card":
+                d = g.get("dir", g["id"])
+                games += [f"js/cards/{d}/{f}.js" for f in g.get("files", ["view"])]
+            elif group == "board":
                 # 보드게임: 규칙·화면·따라하기 파일 (AI 는 워커가 따로 불러요)
                 # "dir" 이 있으면 그 폴더를 같이 써요 (바둑 9줄·13줄처럼 판 크기만 다른 게임)
                 d = g.get("dir", g["id"])

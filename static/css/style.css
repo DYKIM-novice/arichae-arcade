@@ -1584,3 +1584,56 @@ button { font-family: var(--body); color: inherit; }
 .howto-body li b { color: #FFE58A; }
 .howto-btns { display: flex; gap: 8px; }
 .howto-btns .btn { flex: 1 1 0; min-height: 48px; }
+
+/* ---------- 카드게임관 ---------- */
+.mode-seg:has(> button:nth-child(5)) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mode-seg button[data-mode="card"].on { background: #1B9E5A; color: #fff; box-shadow: 0 4px 0 #0E5C33; }
+.cd-who { display: flex; flex-wrap: wrap; gap: 6px; }
+.cd-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 999px; background: var(--ink); font-size: 14px; }
+.cd-chip .av { width: 26px; height: 26px; border-radius: 50%; overflow: hidden; background: var(--panel); }
+.cd-chip .av svg { width: 100%; height: 100%; }
+.card-screen { gap: 8px; overflow: hidden; touch-action: none; }
+.cd-bar { display: flex; align-items: center; gap: 12px; justify-content: center; font-size: 14px; color: var(--muted); flex-shrink: 0; }
+.cd-time { font-size: 22px; color: var(--yellow); min-width: 84px; }
+.cd-info b { color: var(--text); }
+.cd-rivals { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; flex-shrink: 0; }
+.cd-rivals:empty { display: none; }
+.cd-riv { display: flex; align-items: center; gap: 5px; padding: 3px 8px 3px 3px; border-radius: 999px; background: var(--panel); font-size: 12px; color: var(--muted); }
+.cd-riv.me { box-shadow: inset 0 0 0 2px var(--yellow); }
+.cd-riv.done { color: #2ED573; }
+.cd-riv.gave { opacity: .5; }
+.cd-riv .av { width: 22px; height: 22px; border-radius: 50%; overflow: hidden; background: var(--ink); flex-shrink: 0; }
+.cd-riv .av svg { width: 100%; height: 100%; }
+.cd-riv-bar { width: 40px; height: 6px; border-radius: 3px; background: var(--ink); overflow: hidden; }
+.cd-riv-bar i { display: block; height: 100%; background: linear-gradient(90deg, #2ED573, #7DF0AE); transition: width .4s; }
+.cd-stage { position: relative; flex: 1 1 auto; min-height: 0; width: 100%; }
+.cd-count { position: absolute; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center; font-size: 120px; color: var(--yellow); background: rgba(8,6,20,.45); pointer-events: none; text-shadow: 0 6px 0 rgba(0,0,0,.35); }
+.cd-count.show { display: flex; }
+.cd-result { display: none; }
+.cd-result.show { display: flex; position: absolute; inset: 0; z-index: 20; align-items: center; justify-content: center; padding: 18px; background: rgba(8,6,20,.62); animation: fadeIn .3s; }
+.cd-result.mini { display: flex; position: sticky; bottom: 0; z-index: 20; }
+.cd-result.mini .bd-r-card { padding: 10px; }
+.cd-r-list { display: flex; flex-direction: column; gap: 6px; }
+.cd-r-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 12px; background: var(--ink); font-size: 15px; text-align: left; }
+.cd-r-row.me { box-shadow: inset 0 0 0 2px var(--yellow); }
+.cd-r-n { width: 22px; font-size: 20px; color: var(--yellow); }
+.cd-r-row .av { width: 30px; height: 30px; border-radius: 50%; overflow: hidden; background: var(--panel); flex-shrink: 0; }
+.cd-r-row .av svg { width: 100%; height: 100%; }
+.cd-r-nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-r-v { font-size: 13px; color: var(--muted); }
+
+/* 트럼프 카드 */
+.pc { display: block; width: 100%; height: 100%; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.35)); }
+
+/* 프리첼 */
+.fc-wrap { position: absolute; inset: 0; border-radius: 14px; background: radial-gradient(ellipse at 50% 30%, #23955E, #146A40 75%); box-shadow: inset 0 0 0 2px rgba(0,0,0,.18); overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: none; }
+.fc-slot { position: absolute; border-radius: 6px; border: 1.5px dashed rgba(255,255,255,.35); }
+.fc-slot.home { background: rgba(255,255,255,.08); border-style: solid; display: flex; align-items: center; justify-content: center; }
+.fc-slot.home svg { width: 70%; height: 70%; }
+.fc-slot.col { border-color: rgba(255,255,255,.18); }
+.fc-card { position: absolute; left: 0; top: 0; transition: transform .22s cubic-bezier(.3,.8,.3,1), opacity .3s; will-change: transform; cursor: pointer; }
+.fc-card.dim .pc { filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.35)) brightness(.9); }
+.fc-card.shake { animation: fcShake .35s; }
+@keyframes fcShake { 20%, 60% { margin-left: -4px; } 40%, 80% { margin-left: 4px; } }
+.fc-card.fly { animation: fcFly 1.2s ease-in forwards; }
+@keyframes fcFly { 30% { margin-top: -40px; } 100% { margin-top: 900px; opacity: 0; } }

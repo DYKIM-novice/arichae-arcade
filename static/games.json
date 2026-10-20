@@ -1,8 +1,8 @@
 {
   "_설명": "게임 목록은 여기 한 곳에만 적어요. 서버(server.py)와 화면(kit.js)이 같이 읽어요. 게임 파일은 static/js/games/<무리>/<id>.js",
   "scripts": {
-    "before": ["js/animals.js", "js/audio.js", "js/kit.js", "js/data/songs.js", "js/data/creatures.js", "js/board/kit.js", "js/board/howto.js"],
-    "after": ["js/app.js", "js/records.js", "js/board/hall.js"]
+    "before": ["js/animals.js", "js/audio.js", "js/kit.js", "js/data/songs.js", "js/data/creatures.js", "js/board/kit.js", "js/board/howto.js", "js/cards/kit.js", "js/cards/howto.js"],
+    "after": ["js/app.js", "js/records.js", "js/board/hall.js", "js/cards/hall.js"]
   },
   "games": {
     "arcade": [
@@ -47,6 +47,9 @@
       {"id": "dots", "name": "점 잇기 상자", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
       {"id": "nebat", "name": "네밭고누", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
       {"id": "chamgonu", "name": "참고누", "players": [2, 2], "ai": true, "files": ["rules", "view"]}
+    ],
+    "card": [
+      {"id": "freecell", "name": "프리첼", "kind": "race", "players": [1, 8], "files": ["view"]}
     ]
   },
   "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]

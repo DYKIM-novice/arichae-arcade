@@ -566,8 +566,8 @@
         renderResult();
         showScreen('s-result');
       }
-    } else if (room.phase === 'board') {
-      // 보드게임관: 화면은 board/hall.js 가 그려요
+    } else if (room.phase === 'board' || room.phase === 'card') {
+      // 보드게임관·카드게임관: 화면은 board/hall.js · cards/hall.js 가 그려요
       if (changed) { cleanupGame(); S.playIndex = -1; SND.BGM.stop(); setTheme('base'); }
     } else if (room.phase === 'final') {
       if (changed) {
@@ -634,8 +634,9 @@
     const readyCount = others.filter((p) => p.ready).length + 1;
     const total = others.length + 1;
     const mainBtn = $('#btn-main');
-    if (isHost && room.mode === 'board' && window.BoardHall) {
-      const bm = window.BoardHall.lobbyMain();
+    const hall = room.mode === 'board' ? window.BoardHall : room.mode === 'card' ? window.CardHall : null;
+    if (isHost && hall) {
+      const bm = hall.lobbyMain();
       mainBtn.className = 'btn btn-green' + (bm.wait ? ' wait' : '');
       mainBtn.textContent = bm.label;
       $('#lobby-help').textContent = bm.help;
@@ -684,19 +685,23 @@
 
     const music = room.mode === 'music';
     const board = room.mode === 'board';
+    const card = room.mode === 'card';
     $('#settings').classList.toggle('edu', edu);
     $('#settings').classList.toggle('music', music);
     $('#settings').classList.toggle('board', board);
     $('#settings-note').textContent = isHost ? '눌러서 바꿀 수 있어요' : '방장만 바꿀 수 있어요';
     $$('#mode-seg button').forEach((b) => {
-      const on = b.dataset.mode === (board ? 'board' : music ? 'music' : edu ? 'edu' : 'arcade');
+      const on = b.dataset.mode === (card ? 'card' : board ? 'board' : music ? 'music' : edu ? 'edu' : 'arcade');
       b.classList.toggle('on', on);
       b.disabled = !isHost;
       b.setAttribute('aria-pressed', String(on));
     });
-    $('#arcade-panel').style.display = edu || music || board ? 'none' : '';
+    $('#arcade-panel').style.display = edu || music || board || card ? 'none' : '';
     $('#board-panel').style.display = board ? '' : 'none';
+    $('#card-panel').style.display = card ? '' : 'none';
+    if (board || card) { $('#edu-panel').style.display = 'none'; $('#music-panel').style.display = 'none'; }
     if (board) { if (window.BoardHall) window.BoardHall.renderLobby(isHost); return; }
+    if (card) { if (window.CardHall) window.CardHall.renderLobby(isHost); return; }
     $('#edu-panel').style.display = edu ? '' : 'none';
     $('#music-panel').style.display = music ? '' : 'none';
 
