@@ -1752,7 +1752,7 @@ button.cd-chip { border: 0; color: var(--text); font-family: var(--body); cursor
 @media (max-height: 700px) { .hd-mycards { height: 74px; margin-top: -30px; } .hd-mycards .hd-card { width: 50px; } .hd-card { width: 32px; } }
 
 /* 훌라 */
-.hl { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 6px; user-select: none; -webkit-user-select: none; }
+.hl-root { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 6px; user-select: none; -webkit-user-select: none; }
 .hl-opps { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; flex-shrink: 0; }
 .hl-opp { position: relative; display: grid; grid-template-columns: 32px auto; grid-template-rows: auto auto; column-gap: 6px; align-items: center; padding: 5px 8px 5px 5px; border-radius: 14px; background: var(--panel); min-width: 0; max-width: 33%; flex: 1 1 0; }
 .hl-opp.turn { box-shadow: 0 0 0 2px var(--yellow), 0 0 14px rgba(255,210,63,.45); }

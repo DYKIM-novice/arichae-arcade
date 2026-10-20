@@ -30,7 +30,7 @@
   }
 
   function mount(el, api) {
-    el.innerHTML = `<div class="hl">
+    el.innerHTML = `<div class="hl-root">
       <div class="hl-opps"></div>
       <div class="hl-mid"><div class="hl-piles"><button type="button" class="hl-stock" data-hl="draw"></button><button type="button" class="hl-disc" data-hl="thank"></button></div>
         <div class="hl-melds"></div><div class="hl-msg"></div></div>
