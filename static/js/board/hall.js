@@ -70,7 +70,7 @@
       const pl = m.players ? (m.players[0] === m.players[1] ? `${m.players[0]}명` : `${m.players[0]}~${m.players[1]}명`) : '2명';
       return `<button type="button" class="bg-card${on ? ' on' : ''}" data-bgame="${d.id}" ${dis}>
         <span class="bg-ic">${d.icon || ''}</span><b class="disp">${esc(d.name)}</b><span>${pl}${m.ai ? ' · AI' : ''}</span></button>`;
-    }).join('');
+    }).join('') + cardLinks(dis);
     const vsSeg = `<div class="seg bg-vs">
       <button type="button" data-bvs="ai" class="${cfg.vs === 'ai' ? 'on' : ''}" ${dis}>🤖 AI와 대결</button>
       <button type="button" data-bvs="pvp" class="${cfg.vs !== 'ai' ? 'on' : ''}" ${dis}>👪 사람끼리 1:1</button></div>`;
@@ -96,6 +96,17 @@
         ${B.howto && B.howto[def.id] ? `<button type="button" class="btn btn-ghost bg-guide-btn" data-bhowto="${def.id}">📜 규칙 보기</button>` : ''}
         ${B.guides[def.id] ? `<button type="button" class="btn btn-ghost bg-guide-btn" data-bguide="${def.id}">📖 따라하기</button>` : ''}
       </div>`;
+  }
+
+  // 카드로 하는 게임이지만 보드게임관에서도 찾을 수 있게 (누르면 카드게임관으로 옮겨 가요)
+  const LINKS = [{ card: 'dobble', sub: '다 같이 · AI' }];
+  function cardLinks(dis) {
+    const C = window.Cards;
+    if (!C) return '';
+    return LINKS.map((l) => {
+      const d = C.get(l.card);
+      return d ? `<button type="button" class="bg-card bg-link" data-blink="${l.card}" ${dis}><span class="bg-ic">${d.icon || ''}</span><b class="disp">${esc(d.name)}</b><span>${l.sub} →</span></button>` : '';
+    }).join('');
   }
 
   function lobbyMain() {
@@ -126,6 +137,7 @@
     const cfg = boardCfg();
     const def = B.get(cfg.game);
     let b;
+    if ((b = t.closest('[data-blink]')) && !b.disabled) { SND.SFX.click(); App.send({ t: 'settings', mode: 'card', card: b.dataset.blink }); return; }
     if ((b = t.closest('[data-bgame]')) && !b.disabled) { SND.SFX.click(); App.send({ t: 'settings', board: b.dataset.bgame }); return; }
     if ((b = t.closest('[data-bvs]')) && !b.disabled) { SND.SFX.click(); App.send({ t: 'settings', bvs: b.dataset.bvs }); return; }
     if ((b = t.closest('[data-bai]')) && !b.disabled) { SND.SFX.click(); App.send({ t: 'settings', bai: Number(b.dataset.bai) }); return; }

@@ -176,6 +176,11 @@ def table_record(cs: dict, res: dict) -> Optional[dict]:
     if not n_ai:
         return None
     lv = int(cs.get("ai") or 1)
+    if res.get("rec"):
+        # 게임이 정한 점수 (도블: 모은 카드·빠르기)
+        r = res["rec"]
+        return {"pid": seats[w], "score": LEVEL_BASE.get(lv, 100) * n_ai + int(r.get("pts", 0)) * lv,
+                "detail": f"AI {lv}단계 {n_ai}명 · {r.get('detail', '')}"}
     hands = int(res.get("hands") or 0)
     bonus = max(0, 400 - hands * 8) * lv // 2
     return {"pid": seats[w], "score": LEVEL_BASE.get(lv, 100) * n_ai + bonus,
