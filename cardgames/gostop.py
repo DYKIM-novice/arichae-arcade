@@ -104,7 +104,7 @@ def score_detail(cards: List[int]) -> dict:
         d["piCount"] = piv
         d["gwangCount"] = n
         d["cupAsPi"] = cup_as_pi
-        if best is None or d["total"] > best["total"]:
+        if best is None or d["total"] >= best["total"]:     # 같으면 쌍피로 (피박 막기에 좋아요)
             best = d
     return best
 
