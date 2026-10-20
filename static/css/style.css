@@ -1815,21 +1815,34 @@ button.cd-chip { border: 0; color: var(--text); font-family: var(--body); cursor
 .gs-o-tot.neg { color: #FF8B95; }
 .gs-floor { position: relative; flex: 1 1 auto; min-height: 120px; display: flex; gap: 8px; align-items: center; padding: 8px; border-radius: 16px; background: radial-gradient(ellipse at 50% 40%, #2A8F67, #135A3E 80%); box-shadow: inset 0 0 0 2px rgba(0,0,0,.2); }
 .gs-deck { position: relative; flex: 0 0 50px; }
-.gs-deck .hw { width: 50px; height: auto; display: block; filter: drop-shadow(2px 2px 0 #7A0F1A) drop-shadow(2px 2px 0 #7A0F1A); }
+.gs-deck .gs-card { width: 50px; }
+.gs-deck .hw { filter: drop-shadow(2px 2px 0 #4A0A10) drop-shadow(2px 2px 0 #4A0A10); }
 .gs-deck span { position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); font-size: 11px; padding: 0 6px; border-radius: 8px; background: rgba(0,0,0,.6); color: #fff; }
-.gs-fl { flex: 1; display: flex; flex-wrap: wrap; gap: 6px; align-content: center; justify-content: center; }
+.gs-fl { flex: 1; display: flex; flex-wrap: wrap; gap: 8px 10px; align-content: center; justify-content: center; }
 .gs-grp { display: flex; padding: 2px; border-radius: 7px; }
-.gs-grp .gs-card { width: 46px; margin-left: -28px; }
+.gs-grp .gs-card { width: 58px; margin-left: -38px; }
 .gs-grp .gs-card:first-child { margin-left: 0; }
-.gs-grp.spread .gs-card { width: 54px; margin-left: 4px; }
+.gs-grp.spread .gs-card { width: 62px; margin-left: 4px; }
 .gs-grp.spread .gs-card:first-child { margin-left: 0; }
 .gs-grp.hit { background: rgba(255,210,63,.45); box-shadow: 0 0 0 2px var(--yellow); }
 .gs-grp.ppeok { box-shadow: 0 0 0 2px #FF4757; }
 .gs-grp.pend { opacity: .8; }
-.gs-card { position: relative; aspect-ratio: 60 / 92; }
-.gs-card .hw { display: block; width: 100%; height: auto; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.4)); }
+.gs-card { position: relative; aspect-ratio: 200 / 328; }
+.gs-card .hw { display: block; width: 100%; height: 100%; border-radius: 3px; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.45)); -webkit-user-drag: none; }
+.hw-gw { position: absolute; right: 4%; top: 3%; width: 30%; aspect-ratio: 1; border-radius: 50%; background: #D7263D; color: #fff; font-style: normal; font-weight: 700; font-size: clamp(6px, 1.9vw, 12px); line-height: 1; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 1px #fff; font-family: 'Noto Serif KR', serif; }
+.gs-cr-c .hw-gw, .gs-o-b .hw-gw { display: none; }
+.gs-card.land { animation: gsLand .5s cubic-bezier(.3,1.5,.5,1); }
+@keyframes gsLand { from { transform: translateY(70px) scale(1.25); opacity: .2; } to { transform: none; opacity: 1; } }
+.gs-card.flip { animation: gsFlip .55s cubic-bezier(.3,1.4,.5,1); }
+@keyframes gsFlip { 0% { transform: translateX(-60px) rotateY(90deg); } 60% { transform: translateX(0) rotateY(0) scale(1.15); } 100% { transform: none; } }
+.gs-card.land .hw, .gs-card.flip .hw { filter: drop-shadow(0 0 5px #FFD23F) drop-shadow(0 2px 3px rgba(0,0,0,.5)); }
+.gs-grp.taking { background: rgba(255,210,63,.35); box-shadow: 0 0 0 2px var(--yellow); }
+.gs-card.taking { animation: gsTake .75s ease-in forwards; }
+@keyframes gsTake { 0% { transform: none; } 45% { transform: translateY(-6px) scale(1.12); } 100% { transform: translateY(40px) scale(.5); opacity: 0; } }
+.gs-card.got .hw { animation: gsGot 1.2s ease-out; }
+@keyframes gsGot { 0%, 40% { filter: drop-shadow(0 0 4px #FFD23F) drop-shadow(0 0 3px #FFD23F); } 100% { filter: none; } }
+.gs-credit { font-size: 10px; color: var(--muted2); }
 .gs-card.choose .hw { filter: drop-shadow(0 0 4px #FFD23F) drop-shadow(0 0 3px #FFD23F); animation: targetPulse 1s ease-in-out infinite; }
-.gs-card.flip { animation: hdFlip .45s cubic-bezier(.3,1.4,.5,1); }
 .gs-pop { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(.5); padding: 6px 16px; border-radius: 16px; background: var(--yellow); color: var(--ink); font-size: 26px; white-space: nowrap; opacity: 0; pointer-events: none; box-shadow: 0 5px 0 var(--yellowS); }
 .gs-pop.show { animation: gsPop 1.5s ease-out forwards; }
 @keyframes gsPop { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.4); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); } 25% { transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -70%) scale(1); } }

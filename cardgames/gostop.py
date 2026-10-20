@@ -541,7 +541,8 @@ class GoStop:
 
     # ---------------- AI ----------------
     def ai_delay(self, i: int) -> float:
-        return self.rng.uniform(0.8, 1.5) if self.phase != "gostop" else self.rng.uniform(1.0, 1.8)
+        # 화면이 한 차례를 천천히(2초쯤) 보여 주니까 그동안 기다려요
+        return self.rng.uniform(2.2, 2.9) if self.phase == "play" else self.rng.uniform(1.2, 1.9)
 
     def _need_bonus(self, i: int, c: int) -> float:
         """이 카드를 가져가면 무리(광·고도리·단·피)가 얼마나 가까워지나"""

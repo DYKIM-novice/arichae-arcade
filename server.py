@@ -91,6 +91,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefm
 mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
 mimetypes.add_type("image/svg+xml", ".svg")
+mimetypes.add_type("image/webp", ".webp")
 
 
 def now_ms() -> int:

@@ -1,0 +1,9 @@
+화투 그림 (0.webp ~ 47.webp, back.webp)
+
+원작: Louie Mantia 의 하나후다 그림 (위키백과 Hanafuda 문서에 쓰인 전통 그림 세트)
+라이선스: Creative Commons 저작자표시-동일조건변경허락 4.0 (CC BY-SA 4.0)
+         https://creativecommons.org/licenses/by-sa/4.0/
+가져온 곳: https://github.com/c-w-z/hanafuda (imgs/, CC-BY-SA-4.0, credited to Louie Mantia)
+
+바꾼 점: 크기를 200×328 로 줄이고, 우리 화투 달 순서(11월 오동 · 12월 비)에 맞게 번호를 바꿨어요.
+이 폴더의 그림도 같은 CC BY-SA 4.0 으로 나눠요.
