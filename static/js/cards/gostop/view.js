@@ -15,12 +15,13 @@
   const EV = { jjok: '쪽!', ppeok: '뻑!', ttadak: '따닥!', sweep: '싹쓸이!', bomb: '폭탄!', shake: '흔들기!', ppeok_eat: '뻑 먹기!', nagari: '나가리!', bonus: '보너스 쌍피!' };
   const STEP_MS = { land: 700, flip: 750, take: 750 };
 
-  function groups(cards) {
+  const CUP = 32;   // 9월 국진(술잔): 쌍피로 쓰는 게 나으면 피 쪽으로 (서버가 정해서 cupPi 로 알려 줘요)
+  function groups(cards, cupPi) {
     const g = { gwang: [], yeol: [], tti: [], pi: [] };
-    cards.forEach((c) => { const k = kind(c); (g[k === 'ssang' || k === 'bonus' ? 'pi' : k] || g.pi).push(c); });
+    cards.forEach((c) => { const k = kind(c); (g[k === 'ssang' || k === 'bonus' || (cupPi && c === CUP) ? 'pi' : k] || g.pi).push(c); });
     return g;
   }
-  const piCount = (cards) => cards.reduce((a, c) => a + (kind(c) === 'ssang' || kind(c) === 'bonus' ? 2 : kind(c) === 'pi' ? 1 : 0), 0);
+  const piCount = (cards, cupPi) => cards.reduce((a, c) => a + (kind(c) === 'ssang' || kind(c) === 'bonus' || (cupPi && c === CUP) ? 2 : kind(c) === 'pi' ? 1 : 0), 0);
 
   function mount(el, api) {
     W.preload();
@@ -29,7 +30,7 @@
       <div class="gs-floor"><div class="gs-deck"></div><div class="gs-fl"></div><div class="gs-pop disp"></div></div>
       <div class="gs-mycap"></div>
       <div class="gs-me"><div class="gs-hand"></div><div class="gs-acts"></div></div>
-      <div class="gs-gostop"></div><div class="gs-end"></div></div>`;
+      <div class="gs-gostop"></div><div class="gs-end"></div><div class="gs-peek"></div></div>`;
     const $ = (s) => el.querySelector(s);
     let v = null;          // 지금 화면에 다 그린 정보
     let shown = null;      // 마지막으로 끝까지 보여 준 정보 (다음 차례 그림의 출발점)
@@ -37,9 +38,23 @@
     const queue = []; let busy = false; let timers = [];
     const card = (id, cls, attrs) => `<div class="gs-card${cls ? ' ' + cls : ''}" ${attrs || ''}>${W.svg(id)}</div>`;
 
-    function capSummary(cards) {
-      const g = groups(cards);
-      return `<span class="gs-cs"><i class="k-g">광</i>${g.gwang.length}</span><span class="gs-cs"><i class="k-y">열</i>${g.yeol.length}</span><span class="gs-cs"><i class="k-t">띠</i>${g.tti.length}</span><span class="gs-cs"><i class="k-p">피</i>${piCount(cards)}</span>`;
+    // 가져간 카드 줄 (광 · 열 · 띠 · 피) — 나와 상대 모두 같은 모양
+    function capRows(cap, cupPi, fresh) {
+      const g = groups(cap, cupPi);
+      const f = fresh || new Set();
+      const row = (lbl, cs, cls, extra) => `<div class="gs-cr ${cls}"><i>${lbl}</i><div class="gs-cr-c">${cs.map((c) => card(c, `${f.has(c) ? 'got' : ''}${cupPi && c === CUP ? ' cup' : ''}`)).join('')}</div><b>${extra}</b></div>`;
+      return `${row('광', g.gwang, 'k-g', g.gwang.length)}${row('열', g.yeol, 'k-y', g.yeol.length)}${row('띠', g.tti, 'k-t', g.tti.length)}${row('피', g.pi, 'k-p', piCount(cap, cupPi))}`;
+    }
+    // 상대 칸을 누르면 가져간 카드를 크게
+    function peek(i) {
+      const s = (shown || v).seats[i]; const info = api.seat(i);
+      const g = groups(s.cap, s.cupPi);
+      const sec = (lbl, cs, cls, n) => `<div class="gs-pk-row ${cls}"><i>${lbl} ${n}</i><div>${cs.length ? cs.map((c) => card(c, s.cupPi && c === CUP ? 'cup' : '')).join('') : '<span class="hint-sm">없음</span>'}</div></div>`;
+      const box = $('.gs-peek');
+      box.innerHTML = `<div class="gs-pk-card"><div class="gs-pk-h"><span class="av">${info.av}</span><b>${esc(info.name)}</b><span>${s.score}점${s.go ? ` · ${s.go}고` : ''}</span></div>
+        ${sec('광', g.gwang, 'k-g', g.gwang.length)}${sec('열끗', g.yeol, 'k-y', g.yeol.length)}${sec('띠', g.tti, 'k-t', g.tti.length)}${sec('피', g.pi, 'k-p', piCount(s.cap, s.cupPi))}
+        <div class="hint-sm">아무 곳이나 누르면 닫혀요</div></div>`;
+      box.className = 'gs-peek show';
     }
 
     /* ---------- 그리기 (o.floor: 중간 바닥 · o.hl: 카드별 강조 · o.base: 가져간 카드는 이 정보로) ---------- */
@@ -55,9 +70,9 @@
         const s = capV.seats[i]; const info = api.seat(i);
         const seller = view.seller === i;
         const act = (opt.actor != null ? opt.actor : view.toAct) === i;
-        oh += `<div class="gs-opp${act ? ' turn' : ''}${seller ? ' rest' : ''}"><span class="av">${info.av}</span>
+        oh += `<div class="gs-opp${act ? ' turn' : ''}${seller ? ' rest' : ''}" data-peek="${i}"><span class="av">${info.av}</span>
           <div class="gs-o-t"><b>${esc(info.name)}</b><span class="gs-o-sc">${seller ? '광 팔고 쉬어요' : `${s.score}점${s.go ? ` · <em>${s.go}고</em>` : ''}${s.shake ? ' · 흔듦' : ''}${s.bomb ? ' · 폭탄' : ''}`}</span></div>
-          ${seller ? '' : `<div class="gs-o-b"><span class="gs-hn">🂠 ${view.seats[i].n}</span>${capSummary(s.cap)}</div>`}
+          ${seller ? '' : `<span class="gs-hn">🂠 ${view.seats[i].n}</span><div class="gs-o-cap">${capRows(s.cap, s.cupPi)}</div>`}
           <span class="gs-o-tot${s.total < 0 ? ' neg' : ''}">${s.total > 0 ? '+' : ''}${s.total}</span></div>`;
       }
       $('.gs-opps').innerHTML = oh;
@@ -79,11 +94,9 @@
       // 내가 가져간 카드
       if (me >= 0 && view.seller !== me) {
         const cap = capV.seats[me].cap;
-        const g = groups(cap);
         const d = opt.base ? (opt.base.myDetail || {}) : (view.myDetail || {});
         const fresh = new Set(opt.fresh || []);
-        const row = (lbl, cs, cls, extra) => `<div class="gs-cr ${cls}"><i>${lbl}</i><div class="gs-cr-c">${cs.map((c) => card(c, fresh.has(c) ? 'got' : '')).join('')}</div><b>${extra}</b></div>`;
-        $('.gs-mycap').innerHTML = `<div class="gs-cap-rows">${row('광', g.gwang, 'k-g', g.gwang.length)}${row('열', g.yeol, 'k-y', g.yeol.length)}${row('띠', g.tti, 'k-t', g.tti.length)}${row('피', g.pi, 'k-p', piCount(cap))}</div>
+        $('.gs-mycap').innerHTML = `<div class="gs-cap-rows">${capRows(cap, capV.seats[me].cupPi, fresh)}</div>
           <div class="gs-myscore"><b class="disp">${d.total || 0}</b><span>점</span><small>${view.threshold}점부터 고·스톱</small><small class="gs-tot">합계 ${capV.seats[me].total > 0 ? '+' : ''}${capV.seats[me].total}</small></div>`;
       } else $('.gs-mycap').innerHTML = me >= 0 && view.seller === me ? '<div class="gs-rest">이번 판은 광을 팔고 쉬어요 🍵</div>' : '<div class="gs-rest">구경 중</div>';
       // 내 손패
@@ -248,6 +261,9 @@
 
     function play(c) { api.act({ k: 'play', c }); sel = -1; api.sfx('pop'); }
     el.addEventListener('click', (ev) => {
+      if (ev.target.closest('.gs-peek.show')) { $('.gs-peek').className = 'gs-peek'; return; }
+      const pk = ev.target.closest('[data-peek]');
+      if (pk && v) { peek(Number(pk.dataset.peek)); api.tick(); return; }
       if (!v || busy) return;
       const myTurn = v.me != null && v.toAct === v.me;
       const fc = ev.target.closest('[data-fc]');

@@ -679,15 +679,20 @@ class GoStop:
         return {"k": "play", "c": self._ai_pick_card(i, lv)}
 
     # ---------------- 화면 ----------------
+    def _seat_view(self, j: int) -> dict:
+        d = score_detail(self.captured[j])
+        return {
+            "n": len(self.hands[j]), "cap": self.captured[j][:], "score": d["total"] if j in self.players else 0,
+            "cupPi": d["cupAsPi"],     # 9월 국진(술잔)을 쌍피로 쓰는 중
+            "go": self.go[j], "shake": self.shake[j], "bomb": self.bomb[j], "total": self.total[j], "flipOnly": self.bomb_turns[j],
+        }
+
     def view(self, seat: Optional[int]) -> dict:
         v = {
             "round": self.round, "rounds": ROUNDS, "phase": self.phase, "turn": self.turn, "toAct": self.actor(),
             "deadline": int(self.deadline * 1000) if self.deadline else 0, "threshold": self.threshold(),
             "deck": len(self.deck), "floor": self.floor[:], "players": self.players, "seller": self.seller,
-            "seats": [{
-                "n": len(self.hands[j]), "cap": self.captured[j][:], "score": score_detail(self.captured[j])["total"] if j in self.players else 0,
-                "go": self.go[j], "shake": self.shake[j], "bomb": self.bomb[j], "total": self.total[j], "flipOnly": self.bomb_turns[j],
-            } for j in range(self.n)],
+            "seats": [self._seat_view(j) for j in range(self.n)],
             "me": seat, "log": self.log[-6:], "events": self.events[-6:], "over": self.over,
             "nagari": self.nagari, "pending": self.pending["card"] if self.pending else None,
             "end": self.end if self.phase in ("roundover", "done") else None,
