@@ -1008,10 +1008,13 @@ def game_script_paths() -> List[str]:
         for g in items:
             if group == "board":
                 # 보드게임: 규칙·화면·따라하기 파일 (AI 는 워커가 따로 불러요)
-                games += [f"js/board/{g['id']}/{f}.js" for f in g.get("files", ["rules", "view"])]
+                # "dir" 이 있으면 그 폴더를 같이 써요 (바둑 9줄·13줄처럼 판 크기만 다른 게임)
+                d = g.get("dir", g["id"])
+                games += [f"js/board/{d}/{f}.js" for f in g.get("files", ["rules", "view"])]
             else:
                 games.append(f"js/games/{group}/{g['id']}.js")
-    return list(sc.get("before", [])) + games + list(sc.get("after", []))
+    out = list(sc.get("before", [])) + games + list(sc.get("after", []))
+    return list(dict.fromkeys(out))   # 같은 파일은 한 번만
 
 
 def worker_script_paths() -> List[str]:
@@ -1019,8 +1022,9 @@ def worker_script_paths() -> List[str]:
     out = ["js/board/worker.js", "js/board/aikit.js"]
     for g in MANIFEST["games"].get("board", []):
         if g.get("ai"):
-            out += [f"js/board/{g['id']}/rules.js", f"js/board/{g['id']}/ai.js"]
-    return out
+            d = g.get("dir", g["id"])
+            out += [f"js/board/{d}/rules.js", f"js/board/{d}/ai.js"]
+    return list(dict.fromkeys(out))
 
 
 _index_cache: Dict[str, object] = {"key": None, "body": b""}

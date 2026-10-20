@@ -92,7 +92,10 @@
       <div class="list-head sub"><span>자리</span><span class="hint-sm">${isHost ? '눌러서 사람을 바꿔요' : ''}</span></div>
       <div class="bg-seats">${seatHTML}</div>
       <div class="bg-rules">${esc(def.rulesText || '')}</div>
-      ${B.guides[def.id] ? `<button type="button" class="btn btn-ghost bg-guide-btn" data-bguide="${def.id}">📖 따라하기로 배우기</button>` : ''}`;
+      <div class="bg-help">
+        ${B.howto && B.howto[def.id] ? `<button type="button" class="btn btn-ghost bg-guide-btn" data-bhowto="${def.id}">📜 규칙 보기</button>` : ''}
+        ${B.guides[def.id] ? `<button type="button" class="btn btn-ghost bg-guide-btn" data-bguide="${def.id}">📖 따라하기</button>` : ''}
+      </div>`;
   }
 
   function lobbyMain() {
@@ -117,6 +120,8 @@
     const isHost = room.hostPid === S.pid;
     const g = t.closest('[data-bguide]');
     if (g) { SND.SFX.click(); openGuide(g.dataset.bguide); return; }
+    const hw = t.closest('[data-bhowto]');
+    if (hw) { SND.SFX.click(); openHowto(hw.dataset.bhowto); return; }
     if (!isHost) return;
     const cfg = boardCfg();
     const def = B.get(cfg.game);
@@ -184,6 +189,7 @@
     $('#bd-title').innerHTML = `${H.def.icon || ''}<span>${esc(H.def.name)}</span>`;
     $('#bd-result').className = 'bd-result';
     $('#bd-guide-btn').style.display = B.guides[bs.game] ? '' : 'none';
+    $('#bd-howto-btn').style.display = B.howto && B.howto[bs.game] ? '' : 'none';
     return true;
   }
 
@@ -268,6 +274,12 @@
     const box = $('#bd-actions');
     if (o.over) { box.innerHTML = ''; return; }
     const btns = [];
+    // 게임마다 따로 있는 버튼 (바둑의 '패스' 등)
+    if (o.mine.length && H.def.actions) {
+      H.def.actions(H.st, bs).forEach((a) => {
+        btns.push(`<button type="button" class="btn btn-ghost${armed === 'x:' + a.key && Date.now() - armT < 2500 ? ' arm' : ''}" data-bact="x:${a.key}" ${o.myTurn ? '' : 'disabled'}>${a.label}</button>`);
+      });
+    }
     if (bs.vs === 'ai' && o.mine.length) {
       btns.push(`<button type="button" class="btn btn-ghost" data-bact="undo" ${bs.moves.some((m) => o.mine.includes(m.s)) ? '' : 'disabled'}>↶ 무르기</button>`);
       btns.push(`<button type="button" class="btn btn-ghost${H.hintArm ? ' arm' : ''}" data-bact="hint" ${o.myTurn ? '' : 'disabled'}>${H.hintArm ? '한 번 더 → 힌트' : '💡 힌트'}</button>`);
@@ -290,7 +302,7 @@
     if (r.winner < 0) title = '무승부!';
     else if (iWon) title = '이겼어요!';
     else title = `${esc(seatName(bs, r.winner))} 승리!`;
-    const sub = r.reason === 'resign' ? '기권으로 끝났어요' : '';
+    const sub = r.reason === 'resign' ? '기권으로 끝났어요' : (fin && fin.note) || '';
     let rec = '';
     if (r.rec) {
       const p = seatPerson(r.rec.pid);
@@ -367,6 +379,13 @@
     if (!bs) return;
     const mine = mySeats(bs);
     SND.SFX.click();
+    if (act.startsWith('x:') && H.def.actions) {
+      const a = H.def.actions(H.st, bs).find((x) => 'x:' + x.key === act);
+      if (!a) return;
+      if (a.confirm && !confirmTwice(act)) { App.toast(a.confirm, 2200); render(); return; }
+      playMove(a.move);
+      return;
+    }
     if (act === 'undo') {
       // 내가 마지막으로 둔 수 앞까지 되돌려요
       let k = -1;
@@ -403,6 +422,23 @@
   }
 
   /* ================================================================
+     규칙 보기
+     ================================================================ */
+  function openHowto(gid) {
+    const def = B.get(gid);
+    const secs = B.howto && B.howto[gid];
+    if (!def || !secs) return;
+    $('#howto-title').innerHTML = `${def.icon || ''}<span>${esc(def.name)} 규칙</span>`;
+    $('#howto-body').innerHTML = secs.map(([h, lines]) => `<section><h3>${esc(h)}</h3><ul>${lines.map((l) => `<li>${l}</li>`).join('')}</ul></section>`).join('');
+    const inGame = (document.querySelector('.screen.active') || {}).id === 's-board';
+    $('#howto-btns').innerHTML = `${B.guides[gid] && !inGame ? `<button type="button" class="btn btn-ghost" data-hguide="${gid}">📖 따라하기</button>` : ''}<button type="button" class="btn btn-yellow" data-hclose="1">알겠어요!</button>`;
+    $('#howto-body').scrollTop = 0;
+    const m = $('#howto-modal');
+    m.classList.add('show'); m.setAttribute('aria-hidden', 'false');
+  }
+  function closeHowto() { const m = $('#howto-modal'); m.classList.remove('show'); m.setAttribute('aria-hidden', 'true'); }
+
+  /* ================================================================
      따라하기 (혼자, 서버 없이)
      ================================================================ */
   function openGuide(gid) {
@@ -410,18 +446,21 @@
     const lessons = B.guides[gid];
     if (!def || !lessons) return;
     H.prevScreen = (document.querySelector('.screen.active') || {}).id || 's-lobby';
-    H.guide = { gid, def, lessons, li: 0, si: 0, st: null, done: false };
+    // kit: 게임이 따라하기용 함수를 주면 그걸 써요 (장기·바둑). 없으면 오목 방식
+    H.guide = { gid, def, lessons, li: 0, si: 0, st: null, done: false, kit: def.guideKit || null, busy: false };
     H.sessKey = '';
     if (H.view) H.view.destroy();
     H.view = def.mount($('#bd-stage'), viewApi());
     $('#bd-title').innerHTML = `${def.icon || ''}<span>${esc(def.name)} 따라하기</span>`;
     $('#bd-guide-btn').style.display = 'none';
+    $('#bd-howto-btn').style.display = B.howto && B.howto[gid] ? '' : 'none';
     $('#bd-result').className = 'bd-result';
     App.showScreen('s-board');
     startLesson(0);
   }
 
   function guideState(lesson) {
+    if (H.guide.kit) return H.guide.kit.state(lesson);
     const R = window.BoardRules[H.guide.gid];
     const st = R.init();
     const N = R.N;
@@ -433,7 +472,7 @@
 
   function startLesson(li) {
     const g = H.guide;
-    g.li = li; g.si = 0; g.done = false;
+    g.li = li; g.si = 0; g.done = false; g.busy = false; g.seq = (g.seq || 0) + 1;
     g.st = guideState(g.lessons[li]);
     g.msg = '';
     renderGuide();
@@ -441,6 +480,7 @@
 
   function expectList(step) {
     const g = H.guide;
+    if (g.kit) return step.expect === 'any' ? null : g.kit.expect(step, g.st);
     const R = window.BoardRules[g.gid];
     const N = R.N;
     if (step.expect === 'five') {
@@ -466,7 +506,9 @@
     $('#bd-status').innerHTML = `<b>${esc(lesson.title)}</b>`;
     const exp = step && !g.done ? expectList(step) : [];
     const targets = step && !g.done && step.show && exp ? exp : [];
-    const vctx = { canPlay: !g.done, forbidden: g.done ? [] : R.forbiddenList(g.st), targets };
+    const vctx = g.kit
+      ? Object.assign({ canPlay: !g.done && !g.busy, targets, mySeat: g.kit.seat ? g.kit.seat(lesson) : 0, guide: true }, g.kit.vctx ? g.kit.vctx(g.st, step, g.done) : {})
+      : { canPlay: !g.done, forbidden: g.done ? [] : R.forbiddenList(g.st), targets };
     H.view.render(g.st, vctx);
     const isLast = g.li === g.lessons.length - 1;
     const text = g.done ? (lesson.steps[lesson.steps.length - 1].done || '') : (g.msg || (step ? step.say : ''));
@@ -481,7 +523,8 @@
 
   function guidePick(m) {
     const g = H.guide;
-    if (!g || g.done) return;
+    if (!g || g.done || g.busy) return;
+    if (g.kit) { guidePickKit(m); return; }
     const lesson = g.lessons[g.li];
     const step = lesson.steps[g.si];
     const R = window.BoardRules[g.gid];
@@ -518,6 +561,48 @@
       g.si++;
       const nextSay = lesson.steps[g.si].say;
       g.msg = `${step.done ? step.done + '<br>' : ''}${nextSay}`;
+    }
+    renderGuide();
+  }
+
+  // 장기·바둑 따라하기: 규칙은 게임이 준 kit 으로 (상태를 바꾸지 않고 새 상태를 받아요)
+  function guidePickKit(m) {
+    const g = H.guide;
+    const K = g.kit;
+    const lesson = g.lessons[g.li];
+    const step = lesson.steps[g.si];
+    const exp = expectList(step);
+    if (exp && !exp.some((e) => B.same(e, m))) {
+      g.msg = step.wrong || '노란 표시가 있는 곳을 찾아보세요!';
+      SND.SFX.bad && SND.SFX.bad();
+      renderGuide();
+      return;
+    }
+    const nx = K.play(g.st, m);
+    if (!nx) { g.msg = '거기는 둘 수 없어요'; SND.SFX.bad && SND.SFX.bad(); renderGuide(); return; }
+    g.st = nx;
+    SND.SFX.pop && SND.SFX.pop();
+    const last = g.si === lesson.steps.length - 1;
+    if (last) {
+      g.done = true;
+      setTimeout(() => { SND.SFX.fanfare && SND.SFX.fanfare(); App.confetti && App.confetti('bd-confetti', 40, true); }, 300);
+    } else {
+      g.si++;
+      g.msg = `${step.done ? step.done + '<br>' : ''}${lesson.steps[g.si].say}`;
+    }
+    // 상대(스크립트) 응수
+    const rm = step.reply != null && !last ? (K.reply ? K.reply(step, g.st) : step.reply) : null;
+    if (rm != null) {
+      g.busy = true;
+      const seq = g.seq;
+      setTimeout(() => {
+        if (H.guide !== g || g.seq !== seq) return;
+        const after = K.play(g.st, rm);
+        if (after) g.st = after;
+        g.busy = false;
+        SND.SFX.pop && SND.SFX.pop();
+        renderGuide();
+      }, 650);
     }
     renderGuide();
   }
@@ -570,6 +655,12 @@
       const b = e.target.closest('[data-glesson]');
       if (b && H.guide) { SND.SFX.click(); startLesson(Number(b.dataset.glesson)); }
     });
+    $('#bd-howto-btn').addEventListener('click', () => { const id = H.guide ? H.guide.gid : (sess() || {}).game; if (id) { SND.SFX.click(); openHowto(id); } });
+    $('#howto-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'howto-modal' || e.target.closest('[data-hclose]') || e.target.closest('#howto-close')) { SND.SFX.click(); closeHowto(); return; }
+      const g = e.target.closest('[data-hguide]');
+      if (g) { SND.SFX.click(); closeHowto(); openGuide(g.dataset.hguide); }
+    });
     $('#bd-guide-btn').addEventListener('click', () => { const bs = sess(); if (bs) { SND.SFX.click(); openGuide(bs.game); } });
     $('#bd-confirm').addEventListener('click', (e) => {
       if (e.target.closest('[data-bconfirm]') && H.view) H.view.commit();
@@ -579,6 +670,6 @@
     App.hooks.message.push(onMessage);
   }
 
-  window.BoardHall = { renderLobby, lobbyMain, openGuide, H, play: (m) => playMove(m) };
+  window.BoardHall = { renderLobby, lobbyMain, openGuide, openHowto, H, play: (m) => playMove(m) };
   setup();
 })();

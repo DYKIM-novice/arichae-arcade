@@ -63,7 +63,9 @@
   function think(game, moves, level, opts, minMs) {
     const id = ++seq;
     const t0 = Date.now();
-    const scripts = [scriptUrl(`js/board/${game}/rules.js`), scriptUrl('js/board/aikit.js'), scriptUrl(`js/board/${game}/ai.js`)];
+    const m = (window.Games && window.Games.META && window.Games.META[game]) || {};
+    const dir = m.dir || game;   // 여러 게임이 한 폴더를 같이 쓸 수 있어요 (바둑 9줄·13줄)
+    const scripts = [scriptUrl(`js/board/${dir}/rules.js`), scriptUrl('js/board/aikit.js'), scriptUrl(`js/board/${dir}/ai.js`)];
     return new Promise((resolve, reject) => {
       waiting[id] = { resolve, reject };
       getWorker().postMessage({ id, game, scripts, moves, level, opts: opts || {} });

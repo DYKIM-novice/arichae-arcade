@@ -1,7 +1,7 @@
 {
   "_설명": "게임 목록은 여기 한 곳에만 적어요. 서버(server.py)와 화면(kit.js)이 같이 읽어요. 게임 파일은 static/js/games/<무리>/<id>.js",
   "scripts": {
-    "before": ["js/animals.js", "js/audio.js", "js/kit.js", "js/data/songs.js", "js/data/creatures.js", "js/board/kit.js"],
+    "before": ["js/animals.js", "js/audio.js", "js/kit.js", "js/data/songs.js", "js/data/creatures.js", "js/board/kit.js", "js/board/howto.js"],
     "after": ["js/app.js", "js/records.js", "js/board/hall.js"]
   },
   "games": {
@@ -36,6 +36,10 @@
     ],
     "board": [
       {"id": "omok", "name": "오목", "players": [2, 2], "ai": true, "files": ["rules", "view", "guide"]},
+      {"id": "janggi", "name": "장기", "players": [2, 2], "ai": true, "files": ["rules", "view", "guide"]},
+      {"id": "go9", "name": "바둑 9줄", "dir": "go", "players": [2, 2], "ai": true, "files": ["rules", "view", "guide"]},
+      {"id": "go13", "name": "바둑 13줄", "dir": "go", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
+      {"id": "chess", "name": "체스", "players": [2, 2], "ai": true, "files": ["art", "rules", "view"]},
       {"id": "othello", "name": "오델로", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
       {"id": "connect4", "name": "사목", "players": [2, 2], "ai": true, "files": ["rules", "view"]},
       {"id": "checkers", "name": "체커", "players": [2, 2], "ai": true, "files": ["rules", "view"]},

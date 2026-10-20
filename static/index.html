@@ -28,6 +28,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@700&text=%E6%A5%9A%E6%BC%A2%E5%A3%AB%E8%B1%A1%E9%A6%AC%E5%8C%85%E8%BB%8A%E5%8D%92%E5%85%B5&display=swap">
 <link rel="stylesheet" href="static/css/style.css?v=@css">
 </head>
 <body>
@@ -237,6 +238,7 @@
     <div class="topbar">
       <h1 class="disp page-title bd-title" id="bd-title"></h1>
       <div class="topbar-right">
+        <button class="icon-btn bd-guide-ic" id="bd-howto-btn" type="button" aria-label="규칙 보기">📜</button>
         <button class="icon-btn bd-guide-ic" id="bd-guide-btn" type="button" aria-label="따라하기">📖</button>
         <button class="icon-btn btn-records rec-ic" type="button" aria-label="기록실"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/><path d="M12 14v3M8 21h8M9 17h6v4H9z"/></svg></button>
       </div>
@@ -270,6 +272,15 @@
     <div class="rec-list" id="rec-list"></div>
     <div class="hint-sm center rec-foot">매주 일요일 밤 12시에 Top 10이 초기화되고, 게임별 1위는 명예의 전당에 영원히 남아요</div>
   </section>
+
+  <!-- 보드게임 규칙 보기 -->
+  <div class="modal" id="howto-modal" aria-hidden="true">
+    <div class="modal-box card howto-box">
+      <div class="list-head"><span class="disp modal-title" id="howto-title">규칙</span><button class="icon-btn" id="howto-close" type="button" aria-label="닫기"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F6F3FF" stroke-width="2.6" stroke-linecap="round"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button></div>
+      <div class="howto-body" id="howto-body"></div>
+      <div class="howto-btns" id="howto-btns"></div>
+    </div>
+  </div>
 
   <!-- 기록 남기기 창 -->
   <div class="modal" id="rec-modal" aria-hidden="true">
