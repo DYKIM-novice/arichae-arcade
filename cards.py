@@ -113,3 +113,70 @@ def race_ranking(cs: dict) -> List[dict]:
 def freecell_record(ms: int, moves: int, deal: int) -> dict:
     sec = ms // 1000
     return {"score": max(1, 100000 - ms // 100), "detail": f"{sec // 60}분 {sec % 60}초 · {moves}수 · {deal}번 판"}
+
+
+# =====================================================================
+# table 방식 (서버가 규칙을 계산)
+# =====================================================================
+LEVEL_NAMES = {1: "병아리", 2: "토끼", 3: "여우", 4: "호랑이", 5: "용"}
+LEVEL_BASE = {1: 100, 2: 300, 3: 700, 4: 1500, 5: 3000}
+
+
+def default_fill(cfg: CardConfig, gid: str) -> int:
+    return int((cfg.games.get(gid) or {}).get("fill", 2))
+
+
+def table_seats(room, cfg: CardConfig) -> Optional[List[str]]:
+    """자리: 방장이 정한 목록, 없으면 접속한 사람 모두 + AI 로 기본 인원 채우기"""
+    c = room.card
+    gid = c.get("game")
+    lo, hi = cfg.players(gid)
+    humans = [p.pid for p in room.ordered_players() if p.connected]
+    want = [s for s in (c.get("seats") or []) if s == "ai" or s in humans]
+    if not want:
+        want = humans[:hi]
+        while len(want) < max(lo, default_fill(cfg, gid)) and len(want) < hi:
+            want.append("ai")
+    want = want[:hi]
+    if len(want) < lo or not any(s != "ai" for s in want):
+        return None
+    return want
+
+
+def new_table(room, cfg: CardConfig, seats: List[str], engines: dict):
+    gid = room.card.get("game")
+    lv = int(room.card.get("ai") or 2)
+    names = []
+    k = 0
+    n_ai = seats.count("ai")
+    for s in seats:
+        if s == "ai":
+            k += 1
+            names.append(f"AI {LEVEL_NAMES.get(lv, '')}{k if n_ai > 1 else ''}")
+        else:
+            p = room.players.get(s)
+            names.append(p.name if p else "?")
+    rng = random.Random()
+    eng = engines[gid](len(seats), names, [i for i, s in enumerate(seats) if s == "ai"], lv, rng)
+    cs = {
+        "game": gid, "kind": "table", "seats": seats, "names": names, "ai": lv,
+        "status": "play", "result": None, "startAt": now_ms(),
+        "round": (room.csess or {}).get("round", 0) + 1 if room.csess else 1,
+    }
+    return cs, eng
+
+
+def table_record(cs: dict, res: dict) -> Optional[dict]:
+    """AI 와 함께 한 판에서 사람이 1등이면 기록"""
+    w = res.get("winner", -1)
+    seats = cs["seats"]
+    if w is None or w < 0 or w >= len(seats) or seats[w] == "ai":
+        return None
+    n_ai = seats.count("ai")
+    if not n_ai:
+        return None
+    lv = int(cs.get("ai") or 1)
+    hands = int(res.get("hands") or 0)
+    bonus = max(0, 400 - hands * 8) * lv // 2
+    return {"pid": seats[w], "score": LEVEL_BASE.get(lv, 100) * n_ai + bonus,
+            "detail": f"AI {lv}단계 {n_ai}명 · {hands}판"}

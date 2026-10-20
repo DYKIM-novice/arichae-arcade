@@ -36,10 +36,38 @@
     if (def.kind === 'race') {
       mid = `<div class="list-head sub"><span>참가</span><span class="hint-sm">방에 있는 모두가 같은 판으로</span></div>
         <div class="cd-who">${players.map((p) => `<span class="cd-chip"><span class="av">${A.svg(p.animal)}</span>${esc(p.name)}</span>`).join('')}</div>`;
+    } else {
+      const seats = previewSeats(def);
+      const B = window.Boards;
+      const L = B.levelInfo(c.ai);
+      const m = def.meta || {};
+      const maxN = (m.players || [2, 8])[1];
+      const nAi = seats.filter((x) => x === 'ai').length;
+      const humansIn = seats.filter((x) => x !== 'ai');
+      mid = `<div class="list-head sub"><span>참가</span><span class="hint-sm">${host ? '눌러서 빼거나 넣어요' : ''} · ${seats.length}명</span></div>
+        <div class="cd-who">${players.map((p) => `<button type="button" class="cd-chip${humansIn.includes(p.pid) ? ' on' : ' off'}" data-chum="${p.pid}" ${dis}><span class="av">${A.svg(p.animal)}</span>${esc(p.name)}</button>`).join('')}</div>
+        ${m.ai ? `<div class="list-head sub"><span>AI 친구</span><span class="hint-sm">${esc(L.name)} · ${esc(L.desc)}</span></div>
+        <div class="cd-ai-row"><button type="button" class="cd-step" data-cai-n="-1" ${dis || (nAi <= 0 ? 'disabled' : '')}>−</button>
+          <span class="cd-ai-list">${nAi ? Array.from({ length: nAi }, () => `<span class="av">${B.levelAvatar(c.ai)}</span>`).join('') : '<span class="hint-sm">없음</span>'}</span>
+          <button type="button" class="cd-step" data-cai-n="1" ${dis || (seats.length >= maxN ? 'disabled' : '')}>+</button></div>
+        ${nAi ? `<div class="bg-levels">${B.LEVELS.map((l) => `<button type="button" data-cai="${l.n}" class="${c.ai === l.n ? 'on' : ''}" ${dis}><span class="av">${B.levelAvatar(l.n)}</span><b>${l.n}</b><span>${esc(l.name)}</span></button>`).join('')}</div>` : ''}` : ''}`;
     }
     $('#card-panel').innerHTML = `<div class="bg-cards">${cards}</div>${mid}
       <div class="bg-rules">${esc(def.rulesText || '')}</div>
       <div class="bg-help">${C.howto && C.howto[def.id] ? `<button type="button" class="btn btn-ghost bg-guide-btn" data-chowto="${def.id}">📜 규칙 보기</button>` : ''}</div>`;
+  }
+  // 자리 미리 보기 (서버와 같은 방식): 방장이 정한 목록, 없으면 접속한 사람 모두 + AI 로 기본 인원
+  function previewSeats(def) {
+    const c = cfg();
+    const m = def.meta || {};
+    const [lo, hi] = m.players || [2, 8];
+    const humans = (S.room.players || []).filter((p) => p.connected).map((p) => p.pid);
+    let want = (c.seats || []).filter((x) => x === 'ai' || humans.includes(x));
+    if (!want.length) {
+      want = humans.slice(0, hi);
+      while (want.length < Math.max(lo, m.fill || 2) && want.length < hi) want.push('ai');
+    }
+    return want.slice(0, hi);
   }
   function lobbyMain() {
     const def = C.get(cfg().game);
@@ -48,7 +76,11 @@
       const n = (S.room.players || []).filter((p) => p.connected).length;
       return { label: `${def.name} 시작${n > 1 ? ` · ${n}명 시합` : ''}`, help: n > 1 ? '같은 판을 누가 먼저 푸나 시합해요' : '혼자 풀어도 기록실에 올라가요' };
     }
-    return { label: `${def.name} 시작`, help: '' };
+    const seats = previewSeats(def);
+    const lo = ((def.meta || {}).players || [2])[0];
+    const ok = seats.length >= lo && seats.some((x) => x !== 'ai');
+    return ok ? { label: `${def.name} 시작 · ${seats.length}명`, help: seats.includes('ai') ? 'AI를 이기고 1등 하면 기록실에 올라가요' : '나머지 사람은 구경할 수 있어요' }
+      : { wait: true, label: '사람이 더 필요해요', help: 'AI 친구를 넣거나 가족을 초대해요' };
   }
   function onLobbyClick(e) {
     const t = e.target;
@@ -56,7 +88,28 @@
     if (hw) { SND.SFX.click(); openHowto(hw.dataset.chowto); return; }
     if (!isHost()) return;
     const b = t.closest('[data-cgame]');
-    if (b && !b.disabled) { SND.SFX.click(); App.send({ t: 'settings', card: b.dataset.cgame }); }
+    if (b && !b.disabled) { SND.SFX.click(); App.send({ t: 'settings', card: b.dataset.cgame }); return; }
+    const def = C.get(cfg().game);
+    if (!def || def.kind === 'race') return;
+    let seats = previewSeats(def);
+    let x;
+    if ((x = t.closest('[data-chum]'))) {
+      const pid = x.dataset.chum;
+      seats = seats.includes(pid) ? seats.filter((s) => s !== pid) : [pid].concat(seats);
+      if (!seats.some((s) => s !== 'ai')) { App.toast('사람이 한 명은 있어야 해요'); return; }
+    } else if ((x = t.closest('[data-cai-n]')) && !x.disabled) {
+      const d = Number(x.dataset.caiN);
+      if (d > 0) seats = seats.concat(['ai']);
+      else { const k = seats.lastIndexOf('ai'); if (k >= 0) seats.splice(k, 1); }
+    } else if ((x = t.closest('[data-cai]')) && !x.disabled) {
+      SND.SFX.click(); App.send({ t: 'settings', cai: Number(x.dataset.cai) }); return;
+    } else return;
+    SND.SFX.click();
+    // 사람과 AI 를 번갈아 앉혀요
+    const hs = seats.filter((s) => s !== 'ai'); const ai = seats.filter((s) => s === 'ai');
+    const mixed = [];
+    while (hs.length || ai.length) { if (hs.length) mixed.push(hs.shift()); if (ai.length) mixed.push(ai.shift()); }
+    App.send({ t: 'settings', cseats: mixed.length ? mixed : ['ai'] });
   }
 
   function openHowto(gid) {
@@ -163,9 +216,86 @@
     if (H.resultKey !== key) { H.resultKey = key; if (won && !solo) { App.confetti && App.confetti('cd-confetti', 60, true); SND.SFX.victory && SND.SFX.victory(); } }
   }
 
+  /* ================================================================
+     게임 화면 (table) — 서버가 보내 준 내 화면 정보(cview)로 그려요
+     ================================================================ */
+  function seatInfo(cs, i) {
+    const s = cs.seats[i];
+    const B = window.Boards;
+    if (s === 'ai') return { name: cs.names[i], av: B.levelAvatar(cs.ai), ai: true, me: false };
+    const p = person(s);
+    return { name: p ? p.name : cs.names[i], av: p ? A.svg(p.animal) : '', ai: false, me: s === S.pid, off: p && !p.connected };
+  }
+  function ensureTable(cs) {
+    const key = `${cs.game}#${cs.round}#${cs.startAt}`;
+    if (H.key === key && H.view) return;
+    H.key = key;
+    H.def = C.get(cs.game);
+    if (H.view) H.view.destroy();
+    H.cview = null;
+    $('#cd-title').innerHTML = `${H.def.icon || ''}<span>${esc(H.def.name)}</span>`;
+    $('#cd-result').className = 'cd-result';
+    $('#cd-rivals').innerHTML = '';
+    H.view = H.def.mount($('#cd-stage'), {
+      act: (a) => { App.send({ t: 'cact', a }); },
+      seat: (i) => seatInfo(sess(), i),
+      say: (txt) => App.toast(txt, 1800),
+      tick: () => { SND.SFX.soft && SND.SFX.soft(); SND.vibrate(6); },
+      sfx: (k) => { const f = SND.SFX[k]; if (f) f(); },
+      vibrate: (p) => SND.vibrate(p),
+      now: () => App.serverNow()
+    });
+  }
+  function renderTable(cs) {
+    ensureTable(cs);
+    if (H.pendingView && H.pendingView.round === cs.round) { H.cview = H.pendingView.v; H.pendingView = null; }
+    if (H.cview && H.view) H.view.render(H.cview);
+    $('#cd-bar').innerHTML = H.def.bar && H.cview ? H.def.bar(H.cview) : '';
+    const acts = [];
+    if (isHost() && cs.status === 'play') acts.push('<button type="button" class="btn btn-ghost" data-cact="lobby">대기실로</button>');
+    const html = acts.join('');
+    if ($('#cd-actions').dataset.html !== html) { $('#cd-actions').innerHTML = html; $('#cd-actions').dataset.html = html; }
+    $('#cd-count').classList.remove('show');
+    if (cs.status === 'over') { if (!$('#cd-result').classList.contains('mini')) renderTableResult(cs); } else $('#cd-result').className = 'cd-result';
+  }
+  function renderTableResult(cs) {
+    const r = cs.result || {};
+    const box = $('#cd-result');
+    const mySeat = cs.seats.indexOf(S.pid);
+    const won = mySeat >= 0 && r.winner === mySeat;
+    const rows = (r.rank || []).map((i, k) => {
+      const si = seatInfo(cs, i);
+      return `<div class="cd-r-row${si.me ? ' me' : ''}"><b class="cd-r-n disp">${k + 1}</b><span class="av">${si.av}</span><span class="cd-r-nm">${esc(si.name)}</span>
+        <span class="cd-r-v">${H.def.rankLabel ? H.def.rankLabel(H.cview, i, k) : ''}</span></div>`;
+    }).join('');
+    let rec = '';
+    if (r.rec) {
+      const p = person(r.rec.pid);
+      if (r.rec.pid === S.pid) {
+        window.Records && window.Records.addMine({ board: r.rec.board, rank: r.rec.rank, id: r.rec.id, name: p ? p.name : '', comment: '' });
+        rec = `<div class="rr me"><span class="rr-txt">🏆 <b>${App.fmtNum(r.score)}점</b><br>이번 주 <b class="hl">${r.rec.rank}위</b> 기록!</span><button type="button" class="rr-btn" data-rec="${r.rec.id}">한마디 남기기</button></div>`;
+      } else rec = `<div class="rr"><span class="rr-txt">🏆 ${esc(p ? p.name : '')}님 이번 주 Top 10 <b class="hl">${r.rec.rank}위</b>!</span></div>`;
+    }
+    const wi = r.winner >= 0 ? seatInfo(cs, r.winner) : null;
+    box.innerHTML = `<div class="bd-r-card"><div class="bd-r-emoji">${won ? '🏆' : '🃏'}</div>
+      <h2 class="disp">${won ? '우승!' : wi ? esc(wi.name) + ' 우승!' : '끝!'}</h2>
+      <div class="cd-r-list">${rows}</div>${rec}
+      ${H.def.learn ? `<p class="bd-learn">${esc(H.def.learn)}</p>` : ''}
+      <div class="bd-r-btns">${isHost() ? '<button type="button" class="btn btn-yellow" data-cact="rematch">한 판 더!</button>' : '<div class="hint-md">방장이 한 판 더 할 수 있어요</div>'}
+        <div class="bd-r-row"><button type="button" class="btn btn-ghost" data-cact="review">판 보기</button>
+        ${isHost() ? '<button type="button" class="btn btn-ghost" data-cact="lobby">대기실로</button>' : '<button type="button" class="btn btn-ghost btn-records">🏆 기록실</button>'}</div></div></div>`;
+    box.className = 'cd-result show';
+    const key = `${H.key}|${r.at}`;
+    if (H.resultKey !== key) {
+      H.resultKey = key;
+      if (won) { App.confetti && App.confetti('cd-confetti', 70, true); SND.SFX.fanfare && SND.SFX.fanfare(); SND.vibrate([60, 40, 120]); } else SND.SFX.end && SND.SFX.end();
+    }
+  }
+
   function render() {
     const cs = sess();
     if (!cs) return;
+    if (cs.kind === 'table') { renderTable(cs); return; }
     ensureView(cs);
     renderBar();
     if (cs.status === 'over') { if (!$('#cd-result').classList.contains('mini')) renderResult(cs); } else $('#cd-result').className = 'cd-result';
@@ -179,7 +309,7 @@
     else if (act === 'restart') { if (confirmTwice('restart')) H.view && H.view.restart(); else App.toast('한 번 더 누르면 처음 모양으로 돌아가요 (시간은 계속 가요)'); }
     else if (act === 'give') { if (confirmTwice('give')) App.send({ t: 'cprog', f: H.mine.found || 0, m: H.mine.moves || 0, gave: true }); else App.toast('한 번 더 누르면 포기해요'); }
     else if (act === 'end') { if (confirmTwice('end')) App.send({ t: 'cend' }); else App.toast('한 번 더 누르면 시합을 끝내요'); }
-    else if (act === 'lobby') App.send({ t: 'again' });
+    else if (act === 'lobby') { if (cs.kind !== 'table' || cs.status === 'over' || confirmTwice('lobby')) App.send({ t: 'again' }); else App.toast('한 번 더 누르면 게임을 끝내고 대기실로 가요'); }
     else if (act === 'rematch') App.send({ t: 'crematch' });
     else if (act === 'review') { $('#cd-result').className = 'cd-result mini'; $('#cd-result').innerHTML = `<div class="bd-r-card"><div class="bd-r-row">${isHost() ? '<button type="button" class="btn btn-yellow" data-cact="rematch">한 판 더!</button><button type="button" class="btn btn-ghost" data-cact="lobby">대기실로</button>' : '<button type="button" class="btn btn-ghost btn-records">🏆 기록실</button>'}</div></div>`; }
   }
@@ -193,7 +323,7 @@
       render();
       App.wakeLock && App.wakeLock(true);
       clearInterval(H.timerT);
-      H.timerT = setInterval(() => { if (sess() && sess().status === 'play') renderBar(); }, 500);
+      H.timerT = setInterval(() => { const c = sess(); if (c && c.status === 'play') { if (c.kind === 'table') { if (H.view && H.view.tick) H.view.tick(); } else renderBar(); } }, 500);
     } else if (H.view) {
       H.view.destroy(); H.view = null; H.key = '';
       clearInterval(H.timerT);
@@ -208,6 +338,13 @@
     }));
     $('#cd-howto-btn').addEventListener('click', () => { const cs = sess(); if (cs) { SND.SFX.click(); openHowto(cs.game); } });
     App.hooks.state.push(onState);
+    App.hooks.message.push((msg) => {
+      if (msg.t !== 'cview') return;
+      const cs = sess();
+      if (!cs || cs.kind !== 'table' || msg.round !== cs.round) { H.pendingView = msg; return; }
+      H.cview = msg.v;
+      render();
+    });
   }
 
   window.CardHall = { renderLobby, lobbyMain, openHowto, H };

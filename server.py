@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))   # 같은 폴더의 re
 from records import RecordStore  # noqa: E402
 import boards as BG  # noqa: E402
 import cards as CG  # noqa: E402
+from cardgames import ENGINES as CARD_ENGINES  # noqa: E402
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = (BASE_DIR / "static").resolve()
@@ -325,6 +326,7 @@ class Room:
         self.card = CG.default_card(CARD_CFG)      # 카드게임관 설정
         self.csess: Optional[dict] = None          # 진행 중인 카드게임 판 (모두에게 보이는 부분)
         self.ctask: Optional[asyncio.Task] = None  # 카드게임 시간 재기·AI
+        self.cengine = None                        # table 카드게임 규칙 (서버만 알아요: 모든 패)
 
     # ---------- 공통 ----------
     def connected_players(self) -> List[Player]:
@@ -581,6 +583,7 @@ class Room:
         self.sequence = []
         self.bsess = None
         self.csess = None
+        self.cengine = None
         if self.ctask and not self.ctask.done():
             self.ctask.cancel()
         self.ctask = None
@@ -661,10 +664,141 @@ async def handle_board(room: "Room", player: "Player", msg: dict, reply, is_host
         await room.broadcast_state()
 
 
+async def push_card(room: "Room", only: Optional["Player"] = None) -> None:
+    """table 카드게임: 각자에게 자기 패가 보이는 화면 정보를 보내요"""
+    eng = room.cengine
+    cs = room.csess
+    if not eng or not cs or cs.get("kind") != "table":
+        return
+    targets = [only] if only else [p for p in list(room.players.values()) if p.ws is not None]
+    sends = []
+    for p in targets:
+        seat = cs["seats"].index(p.pid) if p.pid in cs["seats"] else None
+        try:
+            v = eng.view(seat)
+        except Exception:
+            log.exception("카드 화면 만들기 오류")
+            continue
+        sends.append(p.send({"t": "cview", "v": v, "round": cs["round"]}))
+    if sends:
+        await asyncio.gather(*sends)
+
+
+def start_table_loop(room: "Room") -> None:
+    """table 카드게임: AI 차례 두기 · 시간 초과 · 저절로 다음 판"""
+    if room.ctask and not room.ctask.done():
+        room.ctask.cancel()
+    eng = room.cengine
+
+    def sig():
+        # 모두에게 보이는 화면이 바뀌었나 (바뀌었으면 다시 보내요)
+        try:
+            v = eng.view(None)
+            v.pop("deadline", None)
+            return json.dumps(v, sort_keys=True, default=str)
+        except Exception:
+            return str(time.time())
+
+    async def run() -> None:
+        try:
+            while room.cengine is eng and room.csess and room.csess["status"] == "play":
+                before = sig()
+                try:
+                    eng.step()
+                except Exception:
+                    log.exception("카드게임 진행 오류")
+                if eng.over:
+                    await finish_table(room)
+                    return
+                if sig() != before:
+                    await push_card(room)
+                a = eng.actor()
+                seats = room.csess["seats"]
+                if a >= 0 and seats[a] == "ai":
+                    await asyncio.sleep(eng.ai_delay(a))
+                    if room.cengine is not eng or eng.actor() != a:
+                        continue
+                    try:
+                        err = eng.act(a, eng.ai_action(a))
+                    except Exception:
+                        log.exception("카드게임 AI 오류")
+                        err = "ai"
+                    if err:
+                        eng.act(a, eng.timeout_action(a))
+                    await push_card(room)
+                    continue
+                if a >= 0 and getattr(eng, "deadline", 0) and time.time() > eng.deadline:
+                    eng.act(a, eng.timeout_action(a))
+                    await push_card(room)
+                    continue
+                await asyncio.sleep(0.15)
+        except asyncio.CancelledError:
+            pass
+    room.ctask = asyncio.ensure_future(run())
+
+
+async def finish_table(room: "Room") -> None:
+    cs = room.csess
+    eng = room.cengine
+    if not cs or cs["status"] != "play":
+        return
+    res = eng.result()
+    cs["status"] = "over"
+    out = {"winner": res.get("winner", -1), "rank": res.get("rank", []), "at": now_ms()}
+    rec = CG.table_record(cs, res) if RECORDS_ON else None
+    if rec:
+        p = room.players.get(rec["pid"])
+        if p:
+            got = STORE.submit(cs["game"], rec["score"], p.name, p.animal, p.pid, rec["detail"])
+            if got:
+                out["rec"] = {"board": cs["game"], "rank": got[0], "id": got[1]["id"], "pid": p.pid, "score": rec["score"]}
+        out["score"] = rec["score"]
+    cs["result"] = out
+    log.info("[%s] 카드게임 끝 %s 승자=%s", room.code, cs["game"], out["winner"])
+    await room.broadcast_state()
+    await push_card(room)
+
+
 async def handle_card(room: "Room", player: "Player", msg: dict, reply, is_host: bool) -> None:
     """카드게임관 메시지"""
     t = msg.get("t")
     cs = room.csess
+    if cs["kind"] == "table":
+        eng = room.cengine
+        if t == "cact" and cs["status"] == "play" and eng:
+            if player.pid not in cs["seats"]:
+                return
+            seat = cs["seats"].index(player.pid)
+            a = msg.get("a")
+            if not isinstance(a, dict) or len(json.dumps(a)) > 300:
+                return
+            try:
+                err = eng.act(seat, a)
+            except Exception:
+                log.exception("카드게임 수 오류")
+                err = "잠깐 문제가 생겼어요"
+            if err:
+                await reply({"t": "error", "code": "card", "msg": err})
+                await push_card(room, player)
+                return
+            await push_card(room)
+            if eng.over:
+                await finish_table(room)
+        elif t == "crematch" and is_host and cs["status"] == "over":
+            seats = cs["seats"][1:] + cs["seats"][:1]
+            seats = [s for s in seats if s == "ai" or (room.players.get(s) and room.players[s].connected)]
+            if len([s for s in seats if s != "ai"]) < 1 or len(seats) < CARD_CFG.players(cs["game"])[0]:
+                await reply({"t": "error", "code": "no_players", "msg": "같이 할 사람이 더 필요해요"})
+                return
+            room.card["seats"] = seats
+            room.csess, room.cengine = CG.new_table(room, CARD_CFG, seats, CARD_ENGINES)
+            start_table_loop(room)
+            await room.broadcast_state()
+            await push_card(room)
+        elif t == "cend" and is_host and cs["status"] == "play":
+            room.cengine.over = True
+            await finish_table(room)
+        return
     if cs["kind"] == "race":
         if t == "cprog":
             pr = CG.race_progress(cs, player.pid, msg)
@@ -845,6 +979,8 @@ async def ws_session(ws: WebSocketConn) -> None:
                     await reply({"t": "joined", "pid": player.pid, "token": player.token, "code": room.code})
                     await room.broadcast_state()
                     await room.broadcast({"t": "event", "kind": "join", "pid": player.pid})
+                    if room.phase == "card":
+                        await push_card(room, player)
                 elif t == "rejoin":
                     code = str(msg.get("room") or "")
                     r = rooms.get(code)
@@ -860,6 +996,8 @@ async def ws_session(ws: WebSocketConn) -> None:
                     log.info("[%s] 재접속: %s", room.code, player.name)
                     await reply({"t": "joined", "pid": player.pid, "token": player.token, "code": room.code})
                     await room.broadcast_state()
+                    if room.phase == "card":
+                        await push_card(room, player)
                     if room.phase == "play":
                         await room.broadcast_live()
                 continue
@@ -963,15 +1101,21 @@ async def ws_session(ws: WebSocketConn) -> None:
                     gid = room.card.get("game")
                     if CARD_CFG.kind(gid) == "race":
                         room.csess = CG.new_race(room, CARD_CFG)
+                        room.cengine = None
                         start_card_timer(room)
                     else:
-                        await reply({"t": "error", "code": "soon", "msg": "곧 열려요!"})
-                        continue
+                        seats = CG.table_seats(room, CARD_CFG)
+                        if not seats or gid not in CARD_ENGINES:
+                            await reply({"t": "error", "code": "no_players", "msg": "같이 할 사람이 더 필요해요 (AI 를 넣을 수 있어요)"})
+                            continue
+                        room.csess, room.cengine = CG.new_table(room, CARD_CFG, seats, CARD_ENGINES)
+                        start_table_loop(room)
                     room.phase = "card"
                     for p in room.players.values():
                         p.ready = False
                     log.info("[%s] 카드게임 시작 %s", room.code, gid)
                     await room.broadcast_state()
+                    await push_card(room)
                     continue
                 log.info("[%s] 게임 시작 (%s)", room.code,
                          "과학관 " + ",".join(room.picks) if room.mode == "edu"
