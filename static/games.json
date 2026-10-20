@@ -51,6 +51,7 @@
     "card": [
       {"id": "holdem", "name": "텍사스 홀덤", "kind": "table", "players": [2, 8], "fill": 4, "ai": true, "files": ["view"]},
       {"id": "hulla", "name": "훌라", "kind": "table", "players": [2, 4], "fill": 3, "ai": true, "files": ["view"]},
+      {"id": "gostop", "name": "맞고·고스톱", "kind": "table", "players": [2, 4], "fill": 2, "ai": true, "files": ["art", "view"]},
       {"id": "freecell", "name": "프리첼", "kind": "race", "players": [1, 8], "files": ["view"]}
     ]
   },

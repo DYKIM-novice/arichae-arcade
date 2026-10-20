@@ -15,5 +15,6 @@
 """
 from .holdem import Holdem
 from .hulla import Hulla
+from .gostop import GoStop
 
-ENGINES = {"holdem": Holdem, "hulla": Hulla}
+ENGINES = {"holdem": Holdem, "hulla": Hulla, "gostop": GoStop}
