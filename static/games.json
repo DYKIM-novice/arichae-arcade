@@ -75,7 +75,9 @@
        "options": {"ends": [3, 2, 4]}},
       {"id": "pool", "name": "미니 당구", "kind": "table", "players": [2, 4], "fill": 2, "ai": true, "files": ["view"]},
       {"id": "ddakji", "name": "딱지치기", "kind": "table", "players": [2, 2], "fill": 2, "ai": true, "files": ["view"],
-       "options": {"goal": [3, 5, 1]}}
+       "options": {"goal": [3, 5, 1]}},
+      {"id": "gonggi", "name": "공기놀이", "kind": "table", "players": [1, 6], "fill": 2, "ai": true, "files": ["view"],
+       "options": {"goal": [10, 5, 20], "speed": ["normal", "easy", "hard"]}}
     ]
   },
   "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]
