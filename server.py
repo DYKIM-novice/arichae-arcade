@@ -18,6 +18,8 @@ Render(클라우드)에 올려서 쓰고, 노트북에서도 똑같이 실행해
 
 import asyncio
 import base64
+import concurrent.futures as cfut
+import multiprocessing as mp
 import hashlib
 import json
 import logging
@@ -42,6 +44,7 @@ import boards as BG  # noqa: E402
 import cards as CG  # noqa: E402
 from cardgames import ENGINES as _CARD_ENGINES  # noqa: E402
 from partygames import ENGINES as _PARTY_ENGINES  # noqa: E402
+import aiworker  # noqa: E402
 CARD_ENGINES = {**_CARD_ENGINES, **_PARTY_ENGINES}   # 카드게임관 + 놀이마당 (서버가 규칙을 계산하는 게임)
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -344,6 +347,7 @@ class Room:
         self.csess: Optional[dict] = None          # 진행 중인 카드게임 판 (모두에게 보이는 부분)
         self.ctask: Optional[asyncio.Task] = None  # 카드게임 시간 재기·AI
         self.cengine = None                        # table 카드게임 규칙 (서버만 알아요: 모든 패)
+        self.cmoves = 0                            # 사람이 둔 수 세기 (AI 가 따로 생각하는 동안 판이 바뀌었나)
 
     # 방 저장용: 돌아가는 작업(task)은 빼고, 게임 규칙(cengine)은 따로 묶어요
     def __getstate__(self) -> dict:
@@ -714,6 +718,49 @@ async def push_card(room: "Room", only: Optional["Player"] = None) -> None:
         await asyncio.gather(*sends)
 
 
+# ---------- AI 생각은 따로 (서버가 멈추지 않게) ----------
+# 칠 곳을 여러 번 시험해 보는 AI(물리 게임·홀덤·다이아몬드)는 판을 복사해 다른 프로세스에서 생각해요.
+# 그동안 서버는 다른 방들을 계속 돌려요. (리눅스에서만 · 안 되면 예전처럼 서버 안에서)
+AI_HEAVY = {"alkkagi", "pool", "curling", "tumble", "diamond", "holdem"}
+AI_WORKERS = int(os.environ.get("ARICHAE_AI_WORKERS", "2") or "2")
+AI_POOL: Optional[cfut.ProcessPoolExecutor] = None
+
+
+def start_ai_pool() -> None:
+    """서버가 켜질 때 (다른 스레드가 생기기 전에) 일꾼 프로세스를 미리 만들어요"""
+    global AI_POOL
+    if AI_WORKERS <= 0 or "fork" not in mp.get_all_start_methods():
+        return
+    try:
+        pool = cfut.ProcessPoolExecutor(max_workers=AI_WORKERS, mp_context=mp.get_context("fork"), initializer=aiworker.init)
+        pool.submit(aiworker.ping).result(timeout=10)   # fork 방식은 이때 일꾼을 모두 한꺼번에 만들어요
+        AI_POOL = pool
+        log.info("AI 일꾼 %d개 준비", AI_WORKERS)
+    except Exception:
+        log.exception("AI 일꾼을 만들 수 없어요 — 서버 안에서 생각해요")
+        AI_POOL = None
+
+
+async def engine_think(room: "Room", eng, method: str, seat: int):
+    """eng.<method>(seat) — 무거운 AI 는 일꾼 프로세스에서"""
+    global AI_POOL
+    pool = AI_POOL
+    if pool is None or (room.csess or {}).get("game") not in AI_HEAVY:
+        return getattr(eng, method)(seat)
+    try:
+        blob = pickle.dumps(eng, protocol=pickle.HIGHEST_PROTOCOL)
+        fut = asyncio.get_running_loop().run_in_executor(pool, aiworker.think, blob, method, seat)
+        return await asyncio.wait_for(fut, timeout=15)
+    except asyncio.CancelledError:
+        raise
+    except cfut.process.BrokenProcessPool:
+        log.exception("AI 일꾼이 멈췄어요 — 이제부터 서버 안에서 생각해요")
+        AI_POOL = None
+    except Exception:
+        log.exception("AI 일꾼 오류 — 이번 수는 서버 안에서")
+    return getattr(eng, method)(seat)
+
+
 def start_table_loop(room: "Room") -> None:
     """table 카드게임: AI 차례 두기 · 시간 초과 · 저절로 다음 판"""
     if room.ctask and not room.ctask.done():
@@ -745,20 +792,42 @@ def start_table_loop(room: "Room") -> None:
                 a = eng.actor()
                 seats = room.csess["seats"]
                 if a >= 0 and seats[a] == "ai":
-                    await asyncio.sleep(eng.ai_delay(a))
-                    if room.cengine is not eng or eng.actor() != a:
-                        continue
+                    if (room.csess or {}).get("game") in AI_HEAVY and AI_POOL is not None:
+                        # 무거운 AI: 기다리는 동안 따로 생각해 두고, 판이 그대로면 그 수를 둬요
+                        snap = room.cmoves
+                        t_end = time.time() + eng.ai_delay(a)
+                        try:
+                            move = await engine_think(room, eng, "ai_action", a)
+                        except Exception:
+                            log.exception("카드게임 AI 오류")
+                            move = None
+                        left = t_end - time.time()
+                        if left > 0:
+                            await asyncio.sleep(left)
+                        if room.cengine is not eng or eng.actor() != a or room.cmoves != snap:
+                            continue
+                    else:
+                        await asyncio.sleep(eng.ai_delay(a))
+                        if room.cengine is not eng or eng.actor() != a:
+                            continue
+                        try:
+                            move = eng.ai_action(a)
+                        except Exception:
+                            log.exception("카드게임 AI 오류")
+                            move = None
                     try:
-                        err = eng.act(a, eng.ai_action(a))
+                        err = eng.act(a, move) if move is not None else "ai"
                     except Exception:
                         log.exception("카드게임 AI 오류")
                         err = "ai"
                     if err:
-                        eng.act(a, eng.timeout_action(a))
+                        eng.act(a, await engine_think(room, eng, "timeout_action", a))
                     await push_card(room)
                     continue
                 if a >= 0 and getattr(eng, "deadline", 0) and time.time() > eng.deadline:
-                    eng.act(a, eng.timeout_action(a))
+                    move = await engine_think(room, eng, "timeout_action", a)
+                    if room.cengine is eng and eng.actor() == a:
+                        eng.act(a, move)
                     await push_card(room)
                     continue
                 await asyncio.sleep(0.15)
@@ -811,6 +880,7 @@ async def handle_card(room: "Room", player: "Player", msg: dict, reply, is_host:
                 await reply({"t": "error", "code": "card", "msg": err})
                 await push_card(room, player)
                 return
+            room.cmoves += 1
             await push_card(room)
             if eng.over:
                 await finish_table(room)
@@ -1641,6 +1711,7 @@ def print_banner() -> None:
 
 
 async def main() -> None:
+    start_ai_pool()   # 가장 먼저 (다른 스레드가 생기기 전에)
     restore_rooms()
     server = await asyncio.start_server(handle_http, host="0.0.0.0", port=PORT, limit=64 * 1024)
     asyncio.ensure_future(cleanup_rooms())
@@ -1658,6 +1729,8 @@ async def main() -> None:
     save_rooms(force=True)
     log.info("방 %d개 저장하고 꺼요", len(rooms))
     server.close()   # 열린 연결은 기다리지 않아요 (기기들은 새 서버에 다시 연결돼요)
+    if AI_POOL is not None:
+        AI_POOL.shutdown(wait=False, cancel_futures=True)
 
 
 if __name__ == "__main__":
