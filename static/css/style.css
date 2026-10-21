@@ -2443,3 +2443,25 @@ button.cd-chip { border: 0; color: var(--text); font-family: var(--body); cursor
 .mg-go { min-height: 56px; font-size: 20px; }
 @keyframes mgDrop { from { transform: scale(1.8); opacity: .3; } to { transform: none; opacity: 1; } }
 @keyframes mgPull { to { transform: translate(var(--dx), var(--dy)); } }
+
+/* ---------- 놀이마당 · 땅따먹기 ---------- */
+.qx { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 5px; user-select: none; -webkit-user-select: none; }
+.qx-top { flex-shrink: 0; display: flex; gap: 10px; justify-content: center; align-items: center; font-size: 14px; color: var(--muted); }
+.qx-pct b { color: var(--yellow); font-size: 17px; }
+.qx-lives { color: #FF4F7B; letter-spacing: 1px; }
+.qx-time { color: var(--text); }
+.qx-rivals { flex-shrink: 0; display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; }
+.qx-rivals:empty { display: none; }
+.qx-rv { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px 2px 2px; border-radius: 999px; background: var(--panel); font-size: 11.5px; }
+.qx-rv.me { box-shadow: inset 0 0 0 2px #A98BFF; }
+.qx-rv.done { opacity: .6; }
+.qx-rv .av { width: 20px; height: 20px; border-radius: 50%; overflow: hidden; display: inline-block; }
+.qx-rv .av svg { width: 100%; height: 100%; }
+.qx-wrap { position: relative; flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.qx-cv { border-radius: 6px; box-shadow: 0 0 0 2px rgba(255,255,255,.15), 0 8px 20px rgba(0,0,0,.5); touch-action: none; }
+.qx-banner { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%) scale(.8); padding: 10px 22px; border-radius: 18px; background: rgba(28,23,51,.85); color: var(--yellow); font-size: 34px; white-space: nowrap; opacity: 0; transition: opacity .2s, transform .25s; pointer-events: none; }
+.qx-banner.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.qx-pad { flex-shrink: 0; display: grid; grid-template-columns: repeat(3, 64px); grid-template-rows: 46px 46px; gap: 4px 8px; justify-content: center; grid-template-areas: ". up ." "lt dn rt"; }
+.qx-pad button { border: 0; border-radius: 14px; background: var(--panel2); color: var(--text); font-size: 20px; touch-action: none; box-shadow: 0 4px 0 var(--deep); }
+.qx-pad button.on { background: var(--yellow); color: var(--ink); transform: translateY(2px); box-shadow: 0 2px 0 var(--yellowS); }
+.qx-pad .up { grid-area: up; } .qx-pad .lt { grid-area: lt; } .qx-pad .rt { grid-area: rt; } .qx-pad .dn { grid-area: dn; }

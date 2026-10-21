@@ -81,7 +81,9 @@
       {"id": "tumble", "name": "계단 주사위", "kind": "table", "players": [2, 4], "fill": 2, "ai": true, "files": ["view"],
        "options": {"rounds": [3, 2, 5]}},
       {"id": "magnet", "name": "자석돌", "kind": "table", "players": [2, 4], "fill": 2, "ai": true, "files": ["view"],
-       "options": {"hint": ["off", "on"]}}
+       "options": {"hint": ["off", "on"]}},
+      {"id": "qix", "name": "땅따먹기", "kind": "table", "players": [1, 6], "fill": 1, "ai": false, "files": ["view"],
+       "options": {"diff": ["normal", "easy", "hard"]}}
     ]
   },
   "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]

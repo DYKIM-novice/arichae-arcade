@@ -19,5 +19,6 @@ from .ddakji import Ddakji
 from .gonggi import Gonggi
 from .tumble import Tumble
 from .magnet import Magnet
+from .qix import Qix
 
-ENGINES = {"magnet": Magnet, "tumble": Tumble, "gonggi": Gonggi, "ddakji": Ddakji, "alkkagi": Alkkagi, "curling": Curling, "pool": Pool, "liar": Liar, "tele": Tele, "yut": Yut, "bell": Bell, "snake": Snake, "ship": Ship, "diamond": Diamond}
+ENGINES = {"qix": Qix, "magnet": Magnet, "tumble": Tumble, "gonggi": Gonggi, "ddakji": Ddakji, "alkkagi": Alkkagi, "curling": Curling, "pool": Pool, "liar": Liar, "tele": Tele, "yut": Yut, "bell": Bell, "snake": Snake, "ship": Ship, "diamond": Diamond}

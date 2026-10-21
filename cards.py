@@ -203,9 +203,12 @@ def new_table(room, cfg: CardConfig, seats: List[str], engines: dict):
 
 
 def table_record(cs: dict, res: dict) -> Optional[dict]:
-    """AI 와 함께 한 판에서 사람이 1등이면 기록"""
+    """AI 와 함께 한 판에서 사람이 1등이면 기록 (혼자 점수를 겨루는 게임은 recAny 로 가장 잘한 사람)"""
     w = res.get("winner", -1)
     seats = cs["seats"]
+    ra = res.get("recAny")
+    if ra and 0 <= ra.get("seat", -1) < len(seats) and seats[ra["seat"]] != "ai" and ra.get("score", 0) > 0:
+        return {"pid": seats[ra["seat"]], "score": int(ra["score"]), "detail": str(ra.get("detail", ""))[:60]}
     if w is None or w < 0 or w >= len(seats) or seats[w] == "ai":
         return None
     n_ai = seats.count("ai")
