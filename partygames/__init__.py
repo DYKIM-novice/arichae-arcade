@@ -6,5 +6,6 @@
   MAX_ACT            → 한 번에 받는 수(cact)의 최대 크기 (그림처럼 큰 것)
 """
 from .liar import Liar
+from .tele import Tele
 
-ENGINES = {"liar": Liar}
+ENGINES = {"liar": Liar, "tele": Tele}

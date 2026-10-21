@@ -57,7 +57,9 @@
     ],
     "party": [
       {"id": "liar", "name": "라이어 게임", "kind": "table", "players": [3, 8], "fill": 3, "ai": false, "files": ["view"],
-       "options": {"talk": ["voice", "text"], "topic": ["any", "animal", "food", "fruit", "job", "place", "vehicle", "sport", "thing"], "rounds": [3, 5, 1]}}
+       "options": {"talk": ["voice", "text"], "topic": ["any", "animal", "food", "fruit", "job", "place", "vehicle", "sport", "thing"], "rounds": [3, 5, 1]}},
+      {"id": "tele", "name": "그림 전달", "kind": "table", "players": [3, 8], "fill": 3, "ai": false, "files": ["view"],
+       "options": {"drawSec": [60, 90, 45]}}
     ]
   },
   "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]

@@ -2088,3 +2088,49 @@ button.cd-chip { border: 0; color: var(--text); font-family: var(--body); cursor
 .lr-t .av { width: 20px; height: 20px; border-radius: 50%; overflow: hidden; display: inline-block; }
 .lr-t .av svg { width: 100%; height: 100%; }
 .lr-gain { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; color: #2ED573; font-size: 15px; }
+
+/* ---------- 놀이마당 · 그림 전달 ---------- */
+.tl { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 6px; }
+.tl-top { flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; }
+.tl-title { font-size: 17px; text-align: center; }
+.tl-prog { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; }
+.tl-pp { display: inline-flex; align-items: center; gap: 2px; padding: 2px 6px 2px 2px; border-radius: 999px; background: var(--panel); font-size: 12px; color: #2ED573; }
+.tl-pp .av { width: 22px; height: 22px; border-radius: 50%; overflow: hidden; background: var(--ink); }
+.tl-pp .av svg { width: 100%; height: 100%; }
+.tl-pp b { color: var(--yellow); }
+.tl-pp.ok { box-shadow: inset 0 0 0 2px #2ED573; }
+.tl-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.tl-what { flex-shrink: 0; display: flex; align-items: baseline; justify-content: center; gap: 6px; flex-wrap: wrap; text-align: center; }
+.tl-what b { font-size: 24px; color: var(--yellow); }
+.tl-k { font-size: 13px; color: var(--muted); }
+.tl-board { flex: 1 1 auto; min-height: 120px; display: flex; align-items: center; justify-content: center; }
+.tl-canvas { border-radius: 14px; box-shadow: 0 6px 18px rgba(0,0,0,.4); touch-action: none; background: #fff; }
+.tl-view .tl-svg { height: 100%; max-width: 100%; aspect-ratio: 1; border-radius: 14px; box-shadow: 0 6px 18px rgba(0,0,0,.4); }
+.tl-tools { flex-shrink: 0; display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap; }
+.tl-col { width: 30px; height: 30px; border-radius: 50%; border: 3px solid rgba(255,255,255,.25); cursor: pointer; padding: 0; font-size: 15px; }
+.tl-col.er { background: #fff; }
+.tl-col.on { border-color: var(--yellow); transform: scale(1.15); }
+.tl-w { width: 36px; height: 32px; border-radius: 10px; border: 0; background: var(--panel2); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.tl-w i { display: block; border-radius: 50%; background: var(--text); }
+.tl-w.on { box-shadow: inset 0 0 0 2px var(--yellow); }
+.tl-t { height: 32px; padding: 0 10px; border: 0; border-radius: 10px; background: var(--panel2); color: var(--text); font-size: 13px; font-family: var(--body); cursor: pointer; }
+.tl-send { flex-shrink: 0; min-height: 54px; font-size: 19px; }
+.tl-wait { margin: auto; text-align: center; color: var(--muted); font-size: 16px; }
+.tl-wait-ic { font-size: 54px; animation: dbGlow 1s infinite alternate; }
+.tl-book { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 6px; border-radius: 16px; background: rgba(0,0,0,.22); }
+.tl-start { align-self: center; display: flex; flex-direction: column; align-items: center; padding: 8px 18px; border-radius: 14px; background: #FFF6D6; color: var(--ink); }
+.tl-start b { font-size: 22px; }
+.tl-page { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+.tl-page.new { animation: dbPop .45s cubic-bezier(.2,1.4,.4,1); }
+.tl-ph { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+.tl-ph .av { width: 24px; height: 24px; border-radius: 50%; overflow: hidden; background: var(--ink); }
+.tl-ph .av svg { width: 100%; height: 100%; }
+.tl-ph b { color: var(--text); }
+.tl-heart { height: 28px; min-width: 44px; padding: 0 8px; border: 0; border-radius: 999px; background: var(--panel2); color: #FF8BA7; font-size: 14px; cursor: pointer; }
+.tl-heart.on { background: #FF4F7B; color: #fff; }
+.tl-heart:disabled { opacity: .5; }
+.tl-pic .tl-svg { width: min(78vw, 300px); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,.35); display: block; }
+.tl-guess { font-size: 22px; padding: 8px 18px; border-radius: 14px; background: #fff; color: var(--ink); }
+.tl-guess i { color: #9A93B8; font-style: normal; font-size: 16px; }
+.tl-verdict { align-self: center; padding: 8px 14px; border-radius: 12px; background: var(--panel); font-size: 15px; text-align: center; }
+.tl-verdict.ok { background: #2ED573; color: #0B3A1F; }
