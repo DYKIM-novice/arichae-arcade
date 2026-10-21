@@ -25,8 +25,25 @@ def now_ms() -> int:
 
 
 class CardConfig:
-    def __init__(self, games: List[dict]):
-        self.games: Dict[str, dict] = {g["id"]: g for g in games}
+    """카드게임관(card)과 놀이마당(party) 게임 목록. 둘 다 같은 방식(race/table)으로 돌아가요"""
+    def __init__(self, games: List[dict], party: Optional[List[dict]] = None):
+        self.games: Dict[str, dict] = {g["id"]: dict(g, hall="card") for g in games}
+        for g in party or []:
+            self.games[g["id"]] = dict(g, hall="party")
+
+    def hall(self, gid: str) -> str:
+        return (self.games.get(gid) or {}).get("hall", "")
+
+    def first(self, hall: str) -> str:
+        return next((g for g, m in self.games.items() if m["hall"] == hall), "")
+
+    def default_opts(self, gid: str) -> dict:
+        """games.json "options": {키: [고를 수 있는 값들...]} → 첫 값이 기본"""
+        return {k: v[0] for k, v in ((self.games.get(gid) or {}).get("options") or {}).items() if v}
+
+    def clean_opts(self, gid: str, raw: dict) -> dict:
+        spec = (self.games.get(gid) or {}).get("options") or {}
+        return {k: raw[k] for k in raw if k in spec and raw[k] in spec[k]}
 
     def kind(self, gid: str) -> str:
         return (self.games.get(gid) or {}).get("kind", "table")
@@ -135,8 +152,11 @@ def table_seats(room, cfg: CardConfig) -> Optional[List[str]]:
     want = [s for s in (c.get("seats") or []) if s == "ai" or s in humans]
     if not want:
         want = humans[:hi]
-        while len(want) < max(lo, default_fill(cfg, gid)) and len(want) < hi:
+        can_ai = (cfg.games.get(gid) or {}).get("ai", True)
+        while can_ai and len(want) < max(lo, default_fill(cfg, gid)) and len(want) < hi:
             want.append("ai")
+    if not (cfg.games.get(gid) or {}).get("ai", True):
+        want = [s for s in want if s != "ai"]     # 사람끼리만 하는 게임
     want = want[:hi]
     if len(want) < lo or not any(s != "ai" for s in want):
         return None
@@ -167,7 +187,13 @@ def new_table(room, cfg: CardConfig, seats: List[str], engines: dict):
             p = room.players.get(s)
             names.append(p.name if p else "?")
     rng = random.Random()
-    eng = engines[gid](len(seats), names, [i for i, s in enumerate(seats) if s == "ai"], lv, rng)
+    cls = engines[gid]
+    kw = {}
+    if getattr(cls, "TAKES_OPTS", False):
+        opts = cfg.default_opts(gid)
+        opts.update(cfg.clean_opts(gid, room.card.get("opts") or {}))
+        kw["opts"] = opts
+    eng = cls(len(seats), names, [i for i, s in enumerate(seats) if s == "ai"], lv, rng, **kw)
     cs = {
         "game": gid, "kind": "table", "seats": seats, "names": names, "ai": lv, "aiAnimals": ai_animals,
         "status": "play", "result": None, "startAt": now_ms(),

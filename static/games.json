@@ -54,6 +54,10 @@
       {"id": "gostop", "name": "맞고·고스톱", "kind": "table", "players": [2, 4], "fill": 2, "ai": true, "files": ["art", "view"]},
       {"id": "freecell", "name": "프리첼", "kind": "race", "players": [1, 8], "files": ["view"]},
       {"id": "dobble", "name": "도블", "kind": "table", "players": [2, 8], "fill": 3, "ai": true, "files": ["view"]}
+    ],
+    "party": [
+      {"id": "liar", "name": "라이어 게임", "kind": "table", "players": [3, 8], "fill": 3, "ai": false, "files": ["view"],
+       "options": {"talk": ["voice", "text"], "topic": ["any", "animal", "food", "fruit", "job", "place", "vehicle", "sport", "thing"], "rounds": [3, 5, 1]}}
     ]
   },
   "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]

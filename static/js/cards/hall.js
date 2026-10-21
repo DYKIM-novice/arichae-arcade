@@ -11,6 +11,20 @@
   const H = { key: '', view: null, def: null, lastProg: '', resultKey: '', timerT: 0, mine: { found: 0, moves: 0 } };
 
   function cfg() { return (S.room && S.room.card) || { game: 'freecell', ai: 2, seats: [] }; }
+  // 카드게임관(card) · 놀이마당(party) — 같은 틀로 그려요
+  function group() { return S.room && S.room.mode === 'party' ? 'party' : 'card'; }
+  function curDef() { const list = C.list(group()); return C.get(cfg().game) && list.includes(C.get(cfg().game)) ? C.get(cfg().game) : list[0]; }
+  // 게임별 설정 (games.json "options" + 화면 이름 def.optionsUI)
+  function optsHTML(def, dis) {
+    const spec = (def.meta && def.meta.options) || {};
+    const cur = Object.assign({}, cfg().opts || {});
+    return (def.optionsUI || []).filter((o) => spec[o.key]).map((o) => {
+      const vals = spec[o.key];
+      const now = vals.includes(cur[o.key]) ? cur[o.key] : vals[0];
+      return `<div class="list-head sub"><span>${esc(o.label)}</span>${o.help ? `<span class="hint-sm">${esc(o.help)}</span>` : ''}</div>
+        <div class="seg cd-opt${vals.length > 3 ? ' wrap' : ''}">${vals.map((x, k) => `<button type="button" data-copt="${o.key}" data-ci="${k}" class="${x === now ? 'on' : ''}" ${dis}>${esc((o.names && o.names[x]) || String(x))}</button>`).join('')}</div>`;
+    }).join('');
+  }
   function sess() { return S.room && S.room.csess; }
   function isHost() { return S.room && S.room.hostPid === S.pid; }
   function person(pid) { return (S.room.players || []).find((p) => p.pid === pid) || null; }
@@ -22,9 +36,9 @@
   function renderLobby(host) {
     const c = cfg();
     const dis = host ? '' : 'disabled';
-    const list = C.list();
-    const def = C.get(c.game) || list[0];
-    if (!def) { $('#card-panel').innerHTML = '<div class="hint-md">카드게임을 불러오는 중…</div>'; return; }
+    const list = C.list(group());
+    const def = curDef();
+    if (!def) { $('#card-panel').innerHTML = '<div class="hint-md">게임을 불러오는 중…</div>'; return; }
     const cards = list.map((d) => {
       const m = d.meta || {};
       const pl = m.players ? (m.players[0] === m.players[1] ? `${m.players[0]}명` : `${m.players[0]}~${m.players[1]}명`) : '';
@@ -52,7 +66,7 @@
           <button type="button" class="cd-step" data-cai-n="1" ${dis || (seats.length >= maxN ? 'disabled' : '')}>+</button></div>
         ${nAi ? `<div class="bg-levels">${B.LEVELS.map((l) => `<button type="button" data-cai="${l.n}" class="${c.ai === l.n ? 'on' : ''}" ${dis}><span class="av">${B.levelAvatar(l.n)}</span><b>${l.n}</b><span>${esc(l.name)}</span></button>`).join('')}</div>` : ''}` : ''}`;
     }
-    $('#card-panel').innerHTML = `<div class="bg-cards">${cards}</div>${mid}
+    $('#card-panel').innerHTML = `<div class="bg-cards">${cards}</div>${optsHTML(def, dis)}${mid}
       <div class="bg-rules">${esc(def.rulesText || '')}</div>
       <div class="bg-help">${C.howto && C.howto[def.id] ? `<button type="button" class="btn btn-ghost bg-guide-btn" data-chowto="${def.id}">📜 규칙 보기</button>` : ''}</div>`;
   }
@@ -65,13 +79,14 @@
     let want = (c.seats || []).filter((x) => x === 'ai' || humans.includes(x));
     if (!want.length) {
       want = humans.slice(0, hi);
-      while (want.length < Math.max(lo, m.fill || 2) && want.length < hi) want.push('ai');
+      while (m.ai && want.length < Math.max(lo, m.fill || 2) && want.length < hi) want.push('ai');
     }
+    if (!m.ai) want = want.filter((x) => x !== 'ai');   // 사람끼리만 하는 게임
     return want.slice(0, hi);
   }
   function lobbyMain() {
-    const def = C.get(cfg().game);
-    if (!def) return { label: '카드게임', help: '' };
+    const def = curDef();
+    if (!def) return { label: group() === 'party' ? '놀이마당' : '카드게임', help: '' };
     if (def.kind === 'race') {
       const n = (S.room.players || []).filter((p) => p.connected).length;
       return { label: `${def.name} 시작${n > 1 ? ` · ${n}명 시합` : ''}`, help: n > 1 ? '같은 판을 누가 먼저 푸나 시합해요' : '혼자 풀어도 기록실에 올라가요' };
@@ -80,7 +95,7 @@
     const lo = ((def.meta || {}).players || [2])[0];
     const ok = seats.length >= lo && seats.some((x) => x !== 'ai');
     return ok ? { label: `${def.name} 시작 · ${seats.length}명`, help: seats.includes('ai') ? 'AI를 이기고 1등 하면 기록실에 올라가요' : '나머지 사람은 구경할 수 있어요' }
-      : { wait: true, label: '사람이 더 필요해요', help: 'AI 친구를 넣거나 가족을 초대해요' };
+      : { wait: true, label: '사람이 더 필요해요', help: (def.meta || {}).ai ? 'AI 친구를 넣거나 가족을 초대해요' : `${lo}명부터 할 수 있어요 · 가족을 초대해요` };
   }
   function onLobbyClick(e) {
     const t = e.target;
@@ -89,7 +104,12 @@
     if (!isHost()) return;
     const b = t.closest('[data-cgame]');
     if (b && !b.disabled) { SND.SFX.click(); App.send({ t: 'settings', card: b.dataset.cgame }); return; }
-    const def = C.get(cfg().game);
+    const def = curDef();
+    const ob = t.closest('[data-copt]');
+    if (ob && !ob.disabled && def) {
+      const vals = ((def.meta && def.meta.options) || {})[ob.dataset.copt] || [];
+      SND.SFX.click(); App.send({ t: 'settings', copts: { [ob.dataset.copt]: vals[Number(ob.dataset.ci)] } }); return;
+    }
     if (!def || def.kind === 'race') return;
     let seats = previewSeats(def);
     let x;

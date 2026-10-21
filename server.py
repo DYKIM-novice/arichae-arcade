@@ -37,7 +37,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))   # 같은 폴더의 re
 from records import RecordStore  # noqa: E402
 import boards as BG  # noqa: E402
 import cards as CG  # noqa: E402
-from cardgames import ENGINES as CARD_ENGINES  # noqa: E402
+from cardgames import ENGINES as _CARD_ENGINES  # noqa: E402
+from partygames import ENGINES as _PARTY_ENGINES  # noqa: E402
+CARD_ENGINES = {**_CARD_ENGINES, **_PARTY_ENGINES}   # 카드게임관 + 놀이마당 (서버가 규칙을 계산하는 게임)
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = (BASE_DIR / "static").resolve()
@@ -70,7 +72,7 @@ ALL_GAMES: Dict[str, int] = {**GAMES, **EDU_GAMES}
 EDU_PICKABLE = [g["id"] for g in MANIFEST["games"]["edu"] if g.get("pick", True)]   # 과학관에서 고를 수 있는 게임
 MUSIC_SONGS = tuple(MANIFEST["songs"])   # 음악관: 방장이 곡을 골라 순서대로 오르골 연주회
 BOARD_CFG = BG.BoardConfig(MANIFEST["games"].get("board", []))   # 보드게임관
-CARD_CFG = CG.CardConfig(MANIFEST["games"].get("card", []))       # 카드게임관
+CARD_CFG = CG.CardConfig(MANIFEST["games"].get("card", []), MANIFEST["games"].get("party", []))   # 카드게임관 + 놀이마당
 LEVELS = ("e", "m", "h", "x")     # 초·중·고 (+ 음악관 특상)
 MAX_PICKS = 10
 
@@ -771,7 +773,7 @@ async def handle_card(room: "Room", player: "Player", msg: dict, reply, is_host:
                 return
             seat = cs["seats"].index(player.pid)
             a = msg.get("a")
-            if not isinstance(a, dict) or len(json.dumps(a)) > 300:
+            if not isinstance(a, dict) or len(json.dumps(a)) > getattr(eng, "MAX_ACT", 300):
                 return
             try:
                 err = eng.act(seat, a)
@@ -1032,7 +1034,7 @@ async def ws_session(ws: WebSocketConn) -> None:
                     if length in (3, 5, 10):
                         room.length = length
                         changed = True
-                if msg.get("mode") in ("arcade", "edu", "music", "board", "card"):
+                if msg.get("mode") in ("arcade", "edu", "music", "board", "card", "party"):
                     room.mode = msg["mode"]
                     changed = True
                 if msg.get("level") in LEVELS:
@@ -1071,6 +1073,17 @@ async def ws_session(ws: WebSocketConn) -> None:
                     ok = {p.pid for p in room.players.values()} | {"ai"}
                     room.card["seats"] = [str(s) for s in msg["cseats"][:8] if str(s) in ok]
                     changed = True
+                if isinstance(msg.get("copts"), dict):
+                    # 게임별 설정 (games.json 의 "options" 에 적힌 값만)
+                    got = CARD_CFG.clean_opts(room.card.get("game"), msg["copts"])
+                    if got:
+                        room.card.setdefault("opts", {}).update(got)
+                        changed = True
+                # 카드게임관 ↔ 놀이마당: 고른 게임이 그 관 게임이 되게
+                if room.mode in ("card", "party") and CARD_CFG.hall(room.card.get("game")) != room.mode:
+                    room.card["game"] = CARD_CFG.first(room.mode)
+                    room.card["seats"] = []
+                    changed = True
                 # 특상(x)은 음악관에만 있어요 → 다른 모드에서는 고등으로
                 if room.mode != "music" and room.level == "x":
                     room.level = "h"
@@ -1098,7 +1111,7 @@ async def ws_session(ws: WebSocketConn) -> None:
                     log.info("[%s] 보드게임 시작 %s %s", room.code, room.bsess["game"], seats)
                     await room.broadcast_state()
                     continue
-                if room.mode == "card":
+                if room.mode in ("card", "party"):
                     gid = room.card.get("game")
                     if CARD_CFG.kind(gid) == "race":
                         room.csess = CG.new_race(room, CARD_CFG)
@@ -1244,6 +1257,9 @@ def game_script_paths() -> List[str]:
             if group == "card":
                 d = g.get("dir", g["id"])
                 games += [f"js/cards/{d}/{f}.js" for f in g.get("files", ["view"])]
+            elif group == "party":
+                d = g.get("dir", g["id"])
+                games += [f"js/party/{d}/{f}.js" for f in g.get("files", ["view"])]
             elif group == "board":
                 # 보드게임: 규칙·화면·따라하기 파일 (AI 는 워커가 따로 불러요)
                 # "dir" 이 있으면 그 폴더를 같이 써요 (바둑 9줄·13줄처럼 판 크기만 다른 게임)

@@ -64,11 +64,12 @@
         const info = api.seat(i);
         const [x, y] = pos(k, n);
         const turn = v.toAct === i;
-        const cls = ['hd-seat', k === 0 ? 'mine' : '', turn ? 'turn' : '', s.folded ? 'folded' : '', s.out ? 'out' : '', winners.includes(i) ? 'win' : ''].join(' ');
-        const cards = k === 0 ? '' : s.cards.length ? `<div class="hd-sc${s.cards[0] !== '??' ? ' open' : ''}">${s.cards.map((c) => cardHTML(c, best.has(c) ? 'best' : '')).join('')}</div>` : '';
+        const cls = ['hd-seat', x < 50 ? 'cl' : 'cr', k === 0 ? 'mine' : '', turn ? 'turn' : '', s.folded ? 'folded' : '', s.out ? 'out' : '', winners.includes(i) ? 'win' : ''].join(' ');
+        // 족보 이름은 카드 바로 밑에 (바닥 카드를 가리지 않게 얼굴 옆 상자 안에)
         const hand = v.show && !v.show.fold && v.show.hands[i] && k !== 0 ? `<div class="hd-hn">${v.show.hands[i].name}</div>` : '';
+        const cards = k === 0 ? '' : s.cards.length ? `<div class="hd-sc${s.cards[0] !== '??' ? ' open' : ''}">${s.cards.map((c) => cardHTML(c, best.has(c) ? 'best' : '')).join('')}${hand}</div>` : '';
         html += `<div class="${cls}" style="left:${x}%;top:${y}%" data-seat="${i}">
-          ${k === 0 ? '' : `<div class="hd-av"><span class="hd-ring"></span>${info.av}</div><div class="hd-nm">${esc(info.name)}</div><div class="hd-chips">💰 ${s.chips}</div>${turn ? '<div class="hd-think">생각 중…</div>' : ''}${cards}${hand}`}
+          ${k === 0 ? '' : `<div class="hd-av"><span class="hd-ring"></span>${info.av}</div><div class="hd-nm">${esc(info.name)}</div><div class="hd-chips">💰 ${s.chips}</div>${turn ? '<div class="hd-think">생각 중…</div>' : ''}${cards}`}
           ${s.last && !s.out ? `<div class="hd-last ${actKind(s.last)}${changed[i] ? ' new' : ''}">${s.last}</div>` : ''}
           ${v.dealer === i ? '<div class="hd-dealer">D</div>' : ''}</div>`;
         if (s.bet > 0) {

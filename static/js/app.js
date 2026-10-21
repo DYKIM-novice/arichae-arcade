@@ -648,7 +648,7 @@
     const readyCount = others.filter((p) => p.ready).length + 1;
     const total = others.length + 1;
     const mainBtn = $('#btn-main');
-    const hall = room.mode === 'board' ? window.BoardHall : room.mode === 'card' ? window.CardHall : null;
+    const hall = room.mode === 'board' ? window.BoardHall : room.mode === 'card' || room.mode === 'party' ? window.CardHall : null;
     if (isHost && hall) {
       const bm = hall.lobbyMain();
       mainBtn.className = 'btn btn-green' + (bm.wait ? ' wait' : '');
@@ -699,13 +699,13 @@
 
     const music = room.mode === 'music';
     const board = room.mode === 'board';
-    const card = room.mode === 'card';
+    const card = room.mode === 'card' || room.mode === 'party';   // 놀이마당도 카드게임관 틀로
     $('#settings').classList.toggle('edu', edu);
     $('#settings').classList.toggle('music', music);
     $('#settings').classList.toggle('board', board);
     $('#settings-note').textContent = isHost ? '눌러서 바꿀 수 있어요' : '방장만 바꿀 수 있어요';
     $$('#mode-seg button').forEach((b) => {
-      const on = b.dataset.mode === (card ? 'card' : board ? 'board' : music ? 'music' : edu ? 'edu' : 'arcade');
+      const on = b.dataset.mode === (card ? room.mode : board ? 'board' : music ? 'music' : edu ? 'edu' : 'arcade');
       b.classList.toggle('on', on);
       b.disabled = !isHost;
       b.setAttribute('aria-pressed', String(on));

@@ -13,7 +13,8 @@
     { k: 'edu', name: '과학관' },
     { k: 'music', name: '음악관' },
     { k: 'board', name: '보드게임' },
-    { k: 'card', name: '카드게임' }
+    { k: 'card', name: '카드게임' },
+    { k: 'party', name: '놀이마당' }
   ];
   const LV_SHORT = { e: '초등', m: '중등', h: '고등' };
   const MLV = { e: '하', m: '중', h: '상', x: '특상' };

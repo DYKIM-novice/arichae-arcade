@@ -101,6 +101,7 @@
   window.Cards = {
     RANKS, SUITS, RED, BLACK, parse, svg, name, suitShape, register, defs,
     get: (id) => defs[id],
-    list: () => ((window.Games && window.Games.MANIFEST && window.Games.MANIFEST.games.card) || []).map((m) => defs[m.id]).filter(Boolean)
+    // group: 'card' (카드게임관) · 'party' (놀이마당)
+    list: (group) => ((window.Games && window.Games.MANIFEST && window.Games.MANIFEST.games[group || 'card']) || []).map((m) => defs[m.id]).filter(Boolean)
   };
 })();
