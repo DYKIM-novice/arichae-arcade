@@ -14,7 +14,7 @@ services:
         value: "1"
       - key: ARICHAE_DATA_DIR
         value: /var/data
-    # 기록실(Top 10·명예의 전당)을 보관하는 디스크 — 다시 배포해도 지워지지 않아요 (1GB, 월 약 $0.25)
+    # 기록실(Top 10·명예의 전당)과 방 저장(rooms.pkl)을 보관하는 디스크 — 다시 배포해도 지워지지 않아요 (1GB, 월 약 $0.25)
     disk:
       name: arichae-data
       mountPath: /var/data

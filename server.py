@@ -13,6 +13,7 @@ Render(클라우드)에 올려서 쓰고, 노트북에서도 똑같이 실행해
   ARICHAE_PUBLIC_URL  외부 접속용 터널 주소 (예: https://xxxx.trycloudflare.com)
   ARICHAE_ONLY        특정 게임만 나오게 (테스트용, 예: race,stop)
   ARICHAE_TIME_SCALE  시간 배율 (테스트용, 기본 1)
+  ARICHAE_DATA_DIR    기록실·방 저장 폴더 (Render 에서는 디스크 /var/data)
 """
 
 import asyncio
@@ -22,8 +23,10 @@ import json
 import logging
 import mimetypes
 import os
+import pickle
 import random
 import secrets
+import signal
 import socket
 import struct
 import sys
@@ -290,6 +293,17 @@ class Player:
             "offSince": self.disconnected_at if not self.connected else 0,
         }
 
+    # 방 저장용: 연결(ws)은 빼고 저장 → 되살리면 '연결 끊김' 상태로 시작해요
+    def __getstate__(self) -> dict:
+        d = self.__dict__.copy()
+        d["ws"] = None
+        d["connected"] = False
+        return d
+
+    def __setstate__(self, d: dict) -> None:
+        self.__init__(d.get("pid", ""), d.get("name", ""), d.get("animal", ""), d.get("device", ""), d.get("order", 0))
+        self.__dict__.update(d)   # 새 버전에서 생긴 값은 기본값 그대로
+
     async def send(self, payload: dict) -> None:
         ws = self.ws
         if ws is None:
@@ -330,6 +344,19 @@ class Room:
         self.csess: Optional[dict] = None          # 진행 중인 카드게임 판 (모두에게 보이는 부분)
         self.ctask: Optional[asyncio.Task] = None  # 카드게임 시간 재기·AI
         self.cengine = None                        # table 카드게임 규칙 (서버만 알아요: 모든 패)
+
+    # 방 저장용: 돌아가는 작업(task)은 빼고, 게임 규칙(cengine)은 따로 묶어요
+    def __getstate__(self) -> dict:
+        d = self.__dict__.copy()
+        d["task"] = None
+        d["ctask"] = None
+        eng = d.pop("cengine", None)
+        d["_eng"] = (engine_sig(eng), pickle.dumps(eng, protocol=pickle.HIGHEST_PROTOCOL)) if eng is not None else None
+        return d
+
+    def __setstate__(self, d: dict) -> None:
+        self.__init__(d.get("code", ""))
+        self.__dict__.update(d)
 
     # ---------- 공통 ----------
     def connected_players(self) -> List[Player]:
@@ -895,6 +922,162 @@ async def cleanup_rooms() -> None:
                 log.info("[%s] 빈 방 정리", code)
 
 
+# =====================================================================
+#  방 저장 · 되살리기 — 서버가 다시 켜져도(새 버전 배포 등) 방과 하던 판이 그대로
+#  - 몇 초마다 바뀐 게 있으면 디스크(DATA_DIR/rooms.pkl)에 저장, 꺼질 때(SIGTERM)도 저장
+#  - 켜질 때 되살리고, 기기들은 저절로 다시 연결(rejoin)돼요
+#  - 꺼져 있던 동안 흐른 시간만큼 차례 시간 등을 뒤로 밀어줘요
+#  - 게임 규칙 코드가 바뀐 판은 안전하게 대기실로 (방·사람은 그대로)
+# =====================================================================
+ROOMS_PATH = DATA_DIR / "rooms.pkl"
+SAVE_EVERY_SEC = 3
+RESTORE_MAX_AGE_SEC = 6 * 3600
+_SIG_CACHE: Dict[str, str] = {}
+_NOT_TIME = {"seed", "deal", "id", "pid", "seeds"}   # 시각처럼 큰 숫자지만 시각이 아닌 값
+_last_saved: Optional[dict] = None
+
+
+def engine_sig(eng) -> str:
+    """게임 규칙 파일 내용의 지문 — 배포 뒤 규칙이 바뀌었으면 옛 판은 되살리지 않아요"""
+    mod = sys.modules.get(type(eng).__module__)
+    path = getattr(mod, "__file__", "") or ""
+    if path not in _SIG_CACHE:
+        try:
+            _SIG_CACHE[path] = hashlib.sha1(Path(path).read_bytes()).hexdigest()[:16]
+        except OSError:
+            _SIG_CACHE[path] = "?"
+    return f"{type(eng).__module__}.{type(eng).__name__}:{_SIG_CACHE[path]}"
+
+
+def shift_times(obj, at: float, dt: float, seen: Optional[set] = None, depth: int = 0):
+    """저장 시각(at) 근처의 시각 값(초·밀리초)을 dt 초만큼 뒤로 — 꺼져 있던 시간을 빼줘요"""
+    if seen is None:
+        seen = set()
+    if depth > 8 or id(obj) in seen:
+        return obj
+    near = 2 * 86400
+
+    def fix(v):
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            return shift_times(v, at, dt, seen, depth + 1)
+        if abs(v - at) < near:
+            return v + dt
+        if abs(v - at * 1000) < near * 1000:
+            return v + (int(dt * 1000) if isinstance(v, int) else dt * 1000)
+        return v
+    if isinstance(obj, dict):
+        seen.add(id(obj))
+        for k in list(obj.keys()):
+            if k not in _NOT_TIME:
+                obj[k] = fix(obj[k])
+    elif isinstance(obj, list):
+        seen.add(id(obj))
+        for k in range(len(obj)):
+            obj[k] = fix(obj[k])
+    elif hasattr(obj, "__dict__") and not isinstance(obj, (random.Random, type)):
+        seen.add(id(obj))
+        for k, v in list(vars(obj).items()):
+            if k not in _NOT_TIME:
+                setattr(obj, k, fix(v))
+    return obj
+
+
+def save_rooms(force: bool = False) -> None:
+    global _last_saved
+    blobs: Dict[str, bytes] = {}
+    for code, room in list(rooms.items()):
+        if not room.players:
+            continue
+        try:
+            blobs[code] = pickle.dumps(room, protocol=pickle.HIGHEST_PROTOCOL)
+        except Exception:
+            log.exception("[%s] 방 저장 실패", code)
+    if not force and blobs == _last_saved:
+        return
+    try:
+        ROOMS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = ROOMS_PATH.with_suffix(".tmp")
+        tmp.write_bytes(pickle.dumps({"v": 1, "at": time.time(), "rooms": blobs}, protocol=pickle.HIGHEST_PROTOCOL))
+        os.replace(tmp, ROOMS_PATH)
+        _last_saved = blobs
+    except OSError:
+        log.exception("방 저장 파일 쓰기 실패")
+
+
+async def save_rooms_loop() -> None:
+    while True:
+        await asyncio.sleep(SAVE_EVERY_SEC)
+        try:
+            save_rooms()
+        except Exception:
+            log.exception("방 저장 오류")
+
+
+def restore_rooms() -> None:
+    try:
+        data = pickle.loads(ROOMS_PATH.read_bytes())
+    except FileNotFoundError:
+        return
+    except Exception:
+        log.exception("저장된 방을 읽을 수 없어요")
+        return
+    at = float(data.get("at") or 0)
+    dt = time.time() - at
+    if not at or dt > RESTORE_MAX_AGE_SEC or dt < -60:
+        log.info("저장된 방이 너무 오래돼서 되살리지 않아요")
+        return
+    dt = max(0.0, dt)
+    t = now_ms()
+    for code, blob in (data.get("rooms") or {}).items():
+        try:
+            room: Room = pickle.loads(blob)
+        except Exception:
+            log.exception("[%s] 방 되살리기 실패", code)
+            continue
+        eng = None
+        packed = room.__dict__.pop("_eng", None)
+        if packed:
+            sig, eb = packed
+            try:
+                eng = pickle.loads(eb)
+                if engine_sig(eng) != sig:
+                    log.info("[%s] 게임 규칙이 바뀌어서 판은 대기실로", code)
+                    eng = None
+            except Exception:
+                log.exception("[%s] 판 되살리기 실패", code)
+                eng = None
+        for p in room.players.values():
+            p.ws = None
+            p.connected = False
+            p.disconnected_at = t
+        room.empty_since = t
+        # 오락실·과학관·음악관 미니게임은 진행 중이던 것만 끝내고 대기실로 (최종 결과 화면은 그대로)
+        if room.phase in ("intro", "play", "result"):
+            room.phase, room.index, room.current, room.sequence = "lobby", -1, {}, []
+        if room.bsess:
+            shift_times(room.bsess, at, dt)
+        if room.csess:
+            shift_times(room.csess, at, dt)
+            cs = room.csess
+            if cs.get("kind") == "table":
+                if eng is None:
+                    room.phase, room.csess = ("lobby" if room.phase == "card" else room.phase), None
+                else:
+                    shift_times(eng, at, dt)
+                    room.cengine = eng
+        if room.phase == "card" and room.csess:
+            if room.csess.get("kind") == "table" and room.csess["status"] == "play":
+                start_table_loop(room)
+            elif room.csess.get("kind") == "race" and room.csess["status"] == "play":
+                start_card_timer(room)
+        elif room.phase == "card":
+            room.phase = "lobby"
+        if room.host_pid:
+            asyncio.ensure_future(handover_host_later(room, room.host_pid))
+        rooms[code] = room
+        log.info("[%s] 방 되살림 (%s, %d명, %.0f초 쉬었음)", code, room.phase, len(room.players), dt)
+
+
 def attach(room: Room, player: Player, ws: WebSocketConn) -> None:
     player.ws = ws
     player.connected = True
@@ -1458,17 +1641,34 @@ def print_banner() -> None:
 
 
 async def main() -> None:
+    restore_rooms()
     server = await asyncio.start_server(handle_http, host="0.0.0.0", port=PORT, limit=64 * 1024)
     asyncio.ensure_future(cleanup_rooms())
+    asyncio.ensure_future(save_rooms_loop())
     print_banner()
-    async with server:
-        await server.serve_forever()
+    # Render 는 새 버전을 올리기 전에 SIGTERM 을 보내요 → 방을 저장하고 꺼져요
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig_ in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig_, stop.set)
+        except (NotImplementedError, RuntimeError, ValueError):
+            pass   # 윈도우: Ctrl+C 는 아래 KeyboardInterrupt 에서 저장해요
+    await stop.wait()
+    save_rooms(force=True)
+    log.info("방 %d개 저장하고 꺼요", len(rooms))
+    server.close()   # 열린 연결은 기다리지 않아요 (기기들은 새 서버에 다시 연결돼요)
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
+        print("\n서버를 껐어요. 다음에 또 만나요!")
     except KeyboardInterrupt:
+        try:
+            save_rooms(force=True)
+        except Exception:
+            pass
         print("\n서버를 껐어요. 다음에 또 만나요!")
     except OSError as e:
         print(f"\n서버를 켤 수 없어요: {e}")
