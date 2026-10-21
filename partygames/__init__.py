@@ -10,5 +10,6 @@ from .tele import Tele
 from .yut import Yut
 from .bell import Bell
 from .snake import Snake
+from .ship import Ship
 
-ENGINES = {"liar": Liar, "tele": Tele, "yut": Yut, "bell": Bell, "snake": Snake}
+ENGINES = {"liar": Liar, "tele": Tele, "yut": Yut, "bell": Bell, "snake": Snake, "ship": Ship}

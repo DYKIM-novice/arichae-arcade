@@ -65,7 +65,9 @@
       {"id": "bell", "name": "과일 종 치기", "kind": "table", "players": [2, 6], "fill": 3, "ai": true, "files": ["view"],
        "options": {"time": [180, 300, 120]}},
       {"id": "snake", "name": "뱀과 사다리", "kind": "table", "players": [2, 6], "fill": 2, "ai": true, "files": ["view"],
-       "options": {"six": ["again", "none"]}}
+       "options": {"six": ["again", "none"]}},
+      {"id": "ship", "name": "바다 대결", "kind": "table", "players": [2, 2], "fill": 2, "ai": true, "files": ["view"],
+       "options": {"hit": ["again", "pass"]}}
     ]
   },
   "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]

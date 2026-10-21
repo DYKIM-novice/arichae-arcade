@@ -2253,3 +2253,37 @@ button.cd-chip { border: 0; color: var(--text); font-family: var(--body); cursor
 .sn-act { flex: 1; }
 .sn-go { width: 100%; min-height: 56px; font-size: 20px; }
 @keyframes snRoll { 0% { transform: rotate(-360deg) scale(.4); } 100% { transform: none; } }
+
+/* ---------- 놀이마당 · 바다 대결 ---------- */
+.sh { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 6px; user-select: none; -webkit-user-select: none; }
+.sh-head { flex-shrink: 0; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.sh-pl { display: flex; align-items: center; gap: 5px; padding: 3px 10px 3px 3px; border-radius: 999px; background: var(--panel); font-size: 13px; }
+.sh-pl.turn { box-shadow: 0 0 0 2px var(--yellow), 0 0 10px rgba(255,210,63,.5); }
+.sh-pl .av { width: 26px; height: 26px; border-radius: 50%; overflow: hidden; background: var(--ink); }
+.sh-pl .av svg { width: 100%; height: 100%; }
+.sh-pl b { font-weight: 400; max-width: 5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sh-vs { color: var(--muted2); font-size: 14px; }
+.sh-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 5px; overflow: hidden; }
+.sh-title { font-size: 16px; text-align: center; }
+.sh-title.sm { font-size: 13px; color: var(--muted); }
+.sh-grid { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 2px; padding: 4px; border-radius: 10px; background: #0E4C85; width: min(94%, 40vh); aspect-ratio: 1; flex-shrink: 0; grid-template-rows: repeat(var(--n), 1fr); box-shadow: 0 6px 16px rgba(0,0,0,.4); }
+.sh-mine { flex-shrink: 0; display: flex; justify-content: center; width: 100%; }
+.sh-mine .sh-grid { width: min(50%, 20vh); gap: 1px; padding: 2px; }
+.sh-cell { position: relative; border: 0; padding: 0; border-radius: 3px; background: #2A7BC4; display: flex; align-items: center; justify-content: center; font-size: 0; }
+.sh-grid.fire .sh-cell[data-fire] { cursor: pointer; background: #3A8FD8; }
+.sh-grid.fire .sh-cell[data-fire]:active { background: #FFD23F; }
+.sh-cell.ship { background: #9AA7B4; }
+.sh-cell.ship.ha { border-radius: 40% 3px 3px 40%; } .sh-cell.ship.hz { border-radius: 3px 40% 40% 3px; }
+.sh-cell.ship.va { border-radius: 40% 40% 3px 3px; } .sh-cell.ship.vz { border-radius: 3px 3px 40% 40%; }
+.sh-cell.ship.sunk { background: #4B5563; }
+.sh-cell.hit { background: #7A1F1F; }
+.sh-cell.ship.hit { background: #8B3A3A; }
+.sh-cell i { font-style: normal; font-size: min(4.2vw, 22px); line-height: 1; }
+.sh-mine .sh-cell i { font-size: min(2.4vw, 12px); }
+.sh-cell .sp { display: block; width: 34%; aspect-ratio: 1; border-radius: 50%; background: #CFE8FF; box-shadow: 0 0 0 3px rgba(207,232,255,.35); }
+.sh-cell.last { box-shadow: 0 0 0 2px var(--yellow); z-index: 1; animation: targetPulse 1s ease-in-out 2; }
+.sh-cell.aim { background: var(--yellow) !important; }
+.sh-legend { font-size: 12px; color: var(--muted); text-align: center; }
+.sh-act { flex-shrink: 0; min-height: 54px; display: flex; flex-direction: column; justify-content: center; }
+.sh-btns { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; }
+.sh-btns .btn { min-height: 54px; font-size: 18px; }
