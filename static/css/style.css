@@ -2320,3 +2320,23 @@ button.cd-chip { border: 0; color: var(--text); font-family: var(--body); cursor
 .ak-board { width: 300px; height: 300px; flex-shrink: 0; }
 .ak-svg { width: 100%; height: 100%; display: block; touch-action: none; }
 .ak-act { flex-shrink: 0; min-height: 44px; display: flex; align-items: center; justify-content: center; }
+
+/* ---------- 놀이마당 · 컬링 ---------- */
+.cu { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 6px; user-select: none; -webkit-user-select: none; }
+.cu-score { flex-shrink: 0; display: flex; align-items: stretch; justify-content: center; gap: 6px; }
+.cu-team { flex: 1 1 0; max-width: 140px; display: flex; flex-direction: column; align-items: center; padding: 4px 6px; border-radius: 14px; background: var(--panel); border-top: 4px solid var(--c); }
+.cu-team.turn { box-shadow: 0 0 0 2px var(--yellow); }
+.cu-team b { font-size: 26px; line-height: 1.1; color: var(--c); }
+.cu-tn { font-size: 13px; }
+.cu-left { font-size: 11px; color: var(--c); letter-spacing: 1px; }
+.cu-mid { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 13px; color: var(--muted); min-width: 80px; }
+.cu-who { display: flex; align-items: center; gap: 4px; color: var(--text); }
+.cu-who .av { width: 22px; height: 22px; border-radius: 50%; overflow: hidden; display: inline-block; }
+.cu-who .av svg { width: 100%; height: 100%; }
+.cu-wrap { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.cu-sheet { flex-shrink: 0; border-radius: 6px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,.45); }
+.cu-svg { width: 100%; height: 100%; display: block; touch-action: none; }
+.cu-act { flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; align-items: center; }
+.cu-spin { grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; max-width: 360px; }
+.cu-spin button { height: 36px; font-size: 14px; }
+.cu-msg { min-height: 22px; font-size: 15px; text-align: center; }

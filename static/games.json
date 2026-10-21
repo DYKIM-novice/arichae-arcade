@@ -70,7 +70,9 @@
        "options": {"hit": ["again", "pass"]}},
       {"id": "diamond", "name": "다이아몬드 게임", "kind": "table", "players": [2, 3], "fill": 2, "ai": true, "files": ["view"]},
       {"id": "alkkagi", "name": "알까기", "kind": "table", "players": [2, 2], "fill": 2, "ai": true, "files": ["view"],
-       "options": {"stones": [8, 5, 3]}}
+       "options": {"stones": [8, 5, 3]}},
+      {"id": "curling", "name": "컬링", "kind": "table", "players": [2, 4], "fill": 2, "ai": true, "files": ["view"],
+       "options": {"ends": [3, 2, 4]}}
     ]
   },
   "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]

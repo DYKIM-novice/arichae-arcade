@@ -52,7 +52,7 @@
     const t0 = performance.now(); let raf = 0; let stopped = false;
     const tick = (now) => {
       if (stopped) return;
-      const t = (now - t0) / 1000 * fps;
+      const t = Math.max(0, (now - t0) / 1000 * fps);   // 첫 프레임 시각이 t0 보다 앞설 수 있어요
       const k = Math.floor(t);
       if (k >= fr.length - 1) { frameFn(fr[fr.length - 1], fr[fr.length - 1], 0); doneFn(); return; }
       frameFn(fr[k], fr[k + 1], t - k);
