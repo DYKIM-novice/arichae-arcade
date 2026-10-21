@@ -63,7 +63,9 @@
       {"id": "yut", "name": "윷놀이", "kind": "table", "players": [2, 4], "fill": 2, "ai": true, "files": ["view"],
        "options": {"pieces": [4, 3, 2]}},
       {"id": "bell", "name": "과일 종 치기", "kind": "table", "players": [2, 6], "fill": 3, "ai": true, "files": ["view"],
-       "options": {"time": [180, 300, 120]}}
+       "options": {"time": [180, 300, 120]}},
+      {"id": "snake", "name": "뱀과 사다리", "kind": "table", "players": [2, 6], "fill": 2, "ai": true, "files": ["view"],
+       "options": {"six": ["again", "none"]}}
     ]
   },
   "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]

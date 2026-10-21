@@ -2228,3 +2228,28 @@ button.cd-chip { border: 0; color: var(--text); font-family: var(--body); cursor
 @keyframes blFlip { from { transform: rotateY(90deg) scale(.8); } to { transform: none; } }
 @keyframes blPress { 0% { transform: translateY(0); } 40% { transform: translateY(6%) scaleY(.94); } 100% { transform: none; } }
 @keyframes blRing { from { transform: scale(.6); opacity: 1; } to { transform: scale(1.3); opacity: 0; } }
+
+/* ---------- 놀이마당 · 뱀과 사다리 ---------- */
+.sn { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 6px; user-select: none; -webkit-user-select: none; }
+.sn-players { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; }
+.sn-pl { display: flex; align-items: center; gap: 4px; padding: 3px 9px 3px 3px; border-radius: 999px; background: var(--panel); border: 2px solid var(--c); font-size: 13px; }
+.sn-pl.turn { box-shadow: 0 0 10px rgba(255,210,63,.7); background: #4A3A00; }
+.sn-pl .av { width: 24px; height: 24px; border-radius: 50%; overflow: hidden; background: #fff; }
+.sn-pl .av svg { width: 100%; height: 100%; }
+.sn-pl b { font-weight: 400; max-width: 4.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sn-pl span:last-child { color: var(--yellow); }
+.sn-wrap { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.sn-board { position: relative; width: 300px; height: 300px; flex-shrink: 0; border-radius: 8px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,.45); }
+.sn-svgbox, .sn-layer { position: absolute; inset: 0; }
+.sn-svg { width: 100%; height: 100%; display: block; }
+.sn-tok { position: absolute; width: 8.5%; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; background: var(--c); padding: 1.2%; box-shadow: 0 2px 0 rgba(0,0,0,.4), 0 0 0 1.5px #fff; transition: left .18s linear, top .18s linear; z-index: 2; }
+.sn-layer.slow .sn-tok { transition: left .65s ease-in-out, top .65s ease-in-out; }
+.sn-tok .av { display: block; width: 100%; height: 100%; border-radius: 50%; overflow: hidden; background: #fff; }
+.sn-tok .av svg { width: 100%; height: 100%; display: block; }
+.sn-bottom { flex-shrink: 0; display: flex; align-items: center; gap: 10px; min-height: 60px; }
+.sn-die { width: 54px; height: 54px; flex-shrink: 0; }
+.sn-die svg { width: 100%; height: 100%; }
+.sn-die.roll { animation: snRoll .6s cubic-bezier(.2,1.4,.4,1); }
+.sn-act { flex: 1; }
+.sn-go { width: 100%; min-height: 56px; font-size: 20px; }
+@keyframes snRoll { 0% { transform: rotate(-360deg) scale(.4); } 100% { transform: none; } }
