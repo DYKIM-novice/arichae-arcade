@@ -67,7 +67,8 @@
       {"id": "snake", "name": "뱀과 사다리", "kind": "table", "players": [2, 6], "fill": 2, "ai": true, "files": ["view"],
        "options": {"six": ["again", "none"]}},
       {"id": "ship", "name": "바다 대결", "kind": "table", "players": [2, 2], "fill": 2, "ai": true, "files": ["view"],
-       "options": {"hit": ["again", "pass"]}}
+       "options": {"hit": ["again", "pass"]}},
+      {"id": "diamond", "name": "다이아몬드 게임", "kind": "table", "players": [2, 3], "fill": 2, "ai": true, "files": ["view"]}
     ]
   },
   "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]
