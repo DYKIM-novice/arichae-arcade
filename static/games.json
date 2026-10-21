@@ -61,7 +61,9 @@
       {"id": "tele", "name": "그림 전달", "kind": "table", "players": [3, 8], "fill": 3, "ai": false, "files": ["view"],
        "options": {"drawSec": [60, 90, 45]}},
       {"id": "yut", "name": "윷놀이", "kind": "table", "players": [2, 4], "fill": 2, "ai": true, "files": ["view"],
-       "options": {"pieces": [4, 3, 2]}}
+       "options": {"pieces": [4, 3, 2]}},
+      {"id": "bell", "name": "과일 종 치기", "kind": "table", "players": [2, 6], "fill": 3, "ai": true, "files": ["view"],
+       "options": {"time": [180, 300, 120]}}
     ]
   },
   "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]
