@@ -77,7 +77,9 @@
       {"id": "ddakji", "name": "딱지치기", "kind": "table", "players": [2, 2], "fill": 2, "ai": true, "files": ["view"],
        "options": {"goal": [3, 5, 1]}},
       {"id": "gonggi", "name": "공기놀이", "kind": "table", "players": [1, 6], "fill": 2, "ai": true, "files": ["view"],
-       "options": {"goal": [10, 5, 20], "speed": ["normal", "easy", "hard"]}}
+       "options": {"goal": [10, 5, 20], "speed": ["normal", "easy", "hard"]}},
+      {"id": "tumble", "name": "계단 주사위", "kind": "table", "players": [2, 4], "fill": 2, "ai": true, "files": ["view"],
+       "options": {"rounds": [3, 2, 5]}}
     ]
   },
   "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]
