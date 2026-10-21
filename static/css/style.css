@@ -2149,7 +2149,7 @@ button.cd-chip { border: 0; color: var(--text); font-family: var(--body); cursor
 .yt-home i.off { background: transparent; border-color: rgba(255,255,255,.25); }
 .yt-pl.me .yt-home { cursor: pointer; }
 .yt-done { margin-left: auto; font-size: 13px; color: #2ED573; white-space: nowrap; }
-.yt-boardwrap { position: relative; flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.yt-boardwrap { position: relative; flex: 1 1 0; min-height: 0; display: flex; align-items: center; justify-content: center; }
 .yt-board { position: relative; width: 300px; height: 300px; flex-shrink: 0; }
 .yt-svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 6px 14px rgba(0,0,0,.4)); }
 .yt-layer, .yt-marks { position: absolute; inset: 0; }
@@ -2180,54 +2180,54 @@ button.cd-chip { border: 0; color: var(--text); font-family: var(--body); cursor
 .yt-left { position: absolute; right: 4px; top: -18px; font-size: 13px; color: #FF8B95; }
 @keyframes ytToss { 0% { transform: translateY(-40px) rotate(-30deg); opacity: 0; } 60% { opacity: 1; } 100% { } }
 
-/* ---------- 놀이마당 · 과일 종 치기 ---------- */
-.bl { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
-.bl-top { flex-shrink: 0; text-align: center; }
-.bl-clock { font-size: 20px; color: var(--yellow); }
-.bl-opps { flex-shrink: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.bl-opps[data-n="1"] { grid-template-columns: minmax(0, 200px); justify-content: center; }
-.bl-opps[data-n="2"], .bl-opps[data-n="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.bl-op { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px; border-radius: 14px; background: var(--panel); }
-.bl-op.turn { box-shadow: 0 0 0 2px var(--yellow), 0 0 12px rgba(255,210,63,.45); }
-.bl-op.empty { opacity: .6; }
-.bl-oh { display: flex; align-items: center; gap: 4px; width: 100%; font-size: 13px; min-width: 0; }
-.bl-oh .av { width: 24px; height: 24px; border-radius: 50%; overflow: hidden; background: var(--ink); flex-shrink: 0; }
-.bl-oh .av svg { width: 100%; height: 100%; }
-.bl-oh b { font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bl-n { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
-.bl-card { position: relative; width: 74px; aspect-ratio: 1; border-radius: 12px; background: #fff; box-shadow: 0 0 0 3px var(--fc, #ccc), 0 4px 10px rgba(0,0,0,.35); }
-.bl-card.empty { background: rgba(255,255,255,.08); box-shadow: inset 0 0 0 2px rgba(255,255,255,.2); }
-.bl-card span { position: absolute; transform: translate(-50%, -50%); font-size: 20px; line-height: 1; }
-.bl-card.big { width: 120px; }
-.bl-card.big span { font-size: 32px; }
-.bl-card.flip { animation: blFlip .35s ease-out; }
-.bl-mid { position: relative; flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
-.bl-bell { position: relative; width: min(46vw, 190px); aspect-ratio: 1; border: 0; background: none; padding: 0; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
-.bl-dome { position: absolute; left: 12%; right: 12%; top: 10%; bottom: 22%; border-radius: 50% 50% 8% 8% / 70% 70% 8% 8%; background: radial-gradient(circle at 35% 30%, #FFFFFF, #D9DEE6 40%, #8F98A6 85%); box-shadow: inset 0 -6px 0 rgba(0,0,0,.15); }
-.bl-dome::before { content: ''; position: absolute; left: 50%; top: -12%; width: 18%; aspect-ratio: 1; transform: translateX(-50%); border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #7A8392); }
-.bl-base { position: absolute; left: 4%; right: 4%; bottom: 8%; height: 16%; border-radius: 10px; background: linear-gradient(#A0663F, #6B3F22); box-shadow: 0 6px 0 #3E2412, 0 12px 20px rgba(0,0,0,.4); }
-.bl-bell b { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); font-size: 26px; color: #5B6470; opacity: .5; }
-.bl-bell.press .bl-dome { animation: blPress .25s; }
-.bl-bell.hit::after { content: ''; position: absolute; inset: -10%; border-radius: 50%; border: 6px solid var(--yellow); animation: blRing .6s ease-out forwards; }
-.bl-msg { position: absolute; left: 50%; bottom: 2%; transform: translateX(-50%) scale(.8); display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 999px; background: var(--ink); white-space: nowrap; font-size: 16px; opacity: 0; transition: opacity .15s, transform .2s; pointer-events: none; }
-.bl-msg.show { opacity: 1; transform: translateX(-50%) scale(1); }
-.bl-msg.good { background: #2ED573; color: #0B3A1F; }
-.bl-msg.bad { background: #FF4757; color: #fff; }
-.bl-msg .av { width: 24px; height: 24px; border-radius: 50%; overflow: hidden; display: inline-block; }
-.bl-msg .av svg { width: 100%; height: 100%; }
-.bl-me { flex-shrink: 0; display: flex; align-items: center; justify-content: center; gap: 18px; padding-bottom: 4px; }
-.bl-deck { position: relative; width: 96px; height: 120px; border: 0; border-radius: 14px; background: none; color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; cursor: pointer; font-family: var(--body); }
-.bl-back { position: absolute; left: 8px; right: 8px; top: 0; bottom: 34px; border-radius: 12px; background: repeating-linear-gradient(45deg, #F2B705 0 8px, #E0A400 8px 16px); box-shadow: 0 0 0 3px #fff, 3px 3px 0 3px rgba(0,0,0,.25); }
-.bl-deck b { font-size: 15px; }
-.bl-deck small { font-size: 12px; color: var(--muted); white-space: nowrap; }
-.bl-deck.turn .bl-back { animation: targetPulse 1s ease-in-out infinite; box-shadow: 0 0 0 3px var(--yellow), 0 0 16px rgba(255,210,63,.8); }
-.bl-deck.turn small { color: var(--yellow); font-weight: 700; }
-.bl-deck.none .bl-back { opacity: .25; }
-.bl-count { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; font-size: 110px; color: var(--yellow); background: rgba(8,6,20,.45); z-index: 9; pointer-events: none; }
-.bl-count.show { display: flex; }
-@keyframes blFlip { from { transform: rotateY(90deg) scale(.8); } to { transform: none; } }
-@keyframes blPress { 0% { transform: translateY(0); } 40% { transform: translateY(6%) scaleY(.94); } 100% { transform: none; } }
-@keyframes blRing { from { transform: scale(.6); opacity: 1; } to { transform: scale(1.3); opacity: 0; } }
+/* ---------- 놀이마당 · 할리갈리 ---------- */
+.hg { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.hg-top { flex-shrink: 0; text-align: center; }
+.hg-clock { font-size: 20px; color: var(--yellow); }
+.hg-opps { flex-shrink: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.hg-opps[data-n="1"] { grid-template-columns: minmax(0, 200px); justify-content: center; }
+.hg-opps[data-n="2"], .hg-opps[data-n="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.hg-op { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px; border-radius: 14px; background: var(--panel); }
+.hg-op.turn { box-shadow: 0 0 0 2px var(--yellow), 0 0 12px rgba(255,210,63,.45); }
+.hg-op.empty { opacity: .6; }
+.hg-oh { display: flex; align-items: center; gap: 4px; width: 100%; font-size: 13px; min-width: 0; }
+.hg-oh .av { width: 24px; height: 24px; border-radius: 50%; overflow: hidden; background: var(--ink); flex-shrink: 0; }
+.hg-oh .av svg { width: 100%; height: 100%; }
+.hg-oh b { font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hg-n { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.hg-card { position: relative; width: 74px; aspect-ratio: 1; border-radius: 12px; background: #fff; box-shadow: 0 0 0 3px var(--fc, #ccc), 0 4px 10px rgba(0,0,0,.35); }
+.hg-card.empty { background: rgba(255,255,255,.08); box-shadow: inset 0 0 0 2px rgba(255,255,255,.2); }
+.hg-card span { position: absolute; transform: translate(-50%, -50%); font-size: 20px; line-height: 1; }
+.hg-card.big { width: 120px; }
+.hg-card.big span { font-size: 32px; }
+.hg-card.flip { animation: hgFlip .35s ease-out; }
+.hg-mid { position: relative; flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.hg-bell { position: relative; width: min(46vw, 190px); aspect-ratio: 1; border: 0; background: none; padding: 0; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.hg-dome { position: absolute; left: 12%; right: 12%; top: 10%; bottom: 22%; border-radius: 50% 50% 8% 8% / 70% 70% 8% 8%; background: radial-gradient(circle at 35% 30%, #FFFFFF, #D9DEE6 40%, #8F98A6 85%); box-shadow: inset 0 -6px 0 rgba(0,0,0,.15); }
+.hg-dome::before { content: ''; position: absolute; left: 50%; top: -12%; width: 18%; aspect-ratio: 1; transform: translateX(-50%); border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #7A8392); }
+.hg-base { position: absolute; left: 4%; right: 4%; bottom: 8%; height: 16%; border-radius: 10px; background: linear-gradient(#A0663F, #6B3F22); box-shadow: 0 6px 0 #3E2412, 0 12px 20px rgba(0,0,0,.4); }
+.hg-bell b { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); font-size: 26px; color: #5B6470; opacity: .5; }
+.hg-bell.press .hg-dome { animation: hgPress .25s; }
+.hg-bell.hit::after { content: ''; position: absolute; inset: -10%; border-radius: 50%; border: 6px solid var(--yellow); animation: hgRing .6s ease-out forwards; }
+.hg-msg { position: absolute; left: 50%; bottom: 2%; transform: translateX(-50%) scale(.8); display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 999px; background: var(--ink); white-space: nowrap; font-size: 16px; opacity: 0; transition: opacity .15s, transform .2s; pointer-events: none; }
+.hg-msg.show { opacity: 1; transform: translateX(-50%) scale(1); }
+.hg-msg.good { background: #2ED573; color: #0B3A1F; }
+.hg-msg.bad { background: #FF4757; color: #fff; }
+.hg-msg .av { width: 24px; height: 24px; border-radius: 50%; overflow: hidden; display: inline-block; }
+.hg-msg .av svg { width: 100%; height: 100%; }
+.hg-me { flex-shrink: 0; display: flex; align-items: center; justify-content: center; gap: 18px; padding-bottom: 4px; }
+.hg-deck { position: relative; width: 96px; height: 120px; border: 0; border-radius: 14px; background: none; color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; cursor: pointer; font-family: var(--body); }
+.hg-back { position: absolute; left: 8px; right: 8px; top: 0; bottom: 34px; border-radius: 12px; background: repeating-linear-gradient(45deg, #F2B705 0 8px, #E0A400 8px 16px); box-shadow: 0 0 0 3px #fff, 3px 3px 0 3px rgba(0,0,0,.25); }
+.hg-deck b { font-size: 15px; }
+.hg-deck small { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.hg-deck.turn .hg-back { animation: targetPulse 1s ease-in-out infinite; box-shadow: 0 0 0 3px var(--yellow), 0 0 16px rgba(255,210,63,.8); }
+.hg-deck.turn small { color: var(--yellow); font-weight: 700; }
+.hg-deck.none .hg-back { opacity: .25; }
+.hg-count { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; font-size: 110px; color: var(--yellow); background: rgba(8,6,20,.45); z-index: 9; pointer-events: none; }
+.hg-count.show { display: flex; }
+@keyframes hgFlip { from { transform: rotateY(90deg) scale(.8); } to { transform: none; } }
+@keyframes hgPress { 0% { transform: translateY(0); } 40% { transform: translateY(6%) scaleY(.94); } 100% { transform: none; } }
+@keyframes hgRing { from { transform: scale(.6); opacity: 1; } to { transform: scale(1.3); opacity: 0; } }
 
 /* ---------- 놀이마당 · 뱀과 사다리 ---------- */
 .sn { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 6px; user-select: none; -webkit-user-select: none; }
@@ -2238,7 +2238,7 @@ button.cd-chip { border: 0; color: var(--text); font-family: var(--body); cursor
 .sn-pl .av svg { width: 100%; height: 100%; }
 .sn-pl b { font-weight: 400; max-width: 4.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sn-pl span:last-child { color: var(--yellow); }
-.sn-wrap { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.sn-wrap { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
 .sn-board { position: relative; width: 300px; height: 300px; flex-shrink: 0; border-radius: 8px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,.45); }
 .sn-svgbox, .sn-layer { position: absolute; inset: 0; }
 .sn-svg { width: 100%; height: 100%; display: block; }
@@ -2297,7 +2297,7 @@ button.cd-chip { border: 0; color: var(--text); font-family: var(--body); cursor
 .dm-pl .av svg { width: 100%; height: 100%; }
 .dm-pl b { font-weight: 400; max-width: 5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dm-pl span:last-child { color: var(--yellow); }
-.dm-wrap { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.dm-wrap { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
 .dm-board { height: 100%; max-height: calc(100vw * 1.12); aspect-ratio: 23.2 / 26.4; max-width: 100%; }
 .dm-svg { width: 100%; height: 100%; display: block; }
 .dm-peg.mine { cursor: pointer; }
@@ -2316,7 +2316,7 @@ button.cd-chip { border: 0; color: var(--text); font-family: var(--body); cursor
 .ak-dot { width: 14px; height: 14px; border-radius: 50%; margin-left: 4px; }
 .ak-dot.b { background: #111; box-shadow: 0 0 0 1.5px #888; }
 .ak-dot.w { background: #fff; }
-.ak-wrap { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.ak-wrap { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
 .ak-board { width: 300px; height: 300px; flex-shrink: 0; }
 .ak-svg { width: 100%; height: 100%; display: block; touch-action: none; }
 .ak-act { flex-shrink: 0; min-height: 44px; display: flex; align-items: center; justify-content: center; }
@@ -2333,10 +2333,26 @@ button.cd-chip { border: 0; color: var(--text); font-family: var(--body); cursor
 .cu-who { display: flex; align-items: center; gap: 4px; color: var(--text); }
 .cu-who .av { width: 22px; height: 22px; border-radius: 50%; overflow: hidden; display: inline-block; }
 .cu-who .av svg { width: 100%; height: 100%; }
-.cu-wrap { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.cu-wrap { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
 .cu-sheet { flex-shrink: 0; border-radius: 6px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,.45); }
 .cu-svg { width: 100%; height: 100%; display: block; touch-action: none; }
 .cu-act { flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; align-items: center; }
 .cu-spin { grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; max-width: 360px; }
 .cu-spin button { height: 36px; font-size: 14px; }
 .cu-msg { min-height: 22px; font-size: 15px; text-align: center; }
+
+/* ---------- 놀이마당 · 미니 당구 ---------- */
+.po { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 6px; user-select: none; -webkit-user-select: none; }
+.po-players { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; }
+.po-pl { display: flex; align-items: center; gap: 4px; padding: 3px 8px 3px 3px; border-radius: 999px; background: var(--panel); font-size: 13px; }
+.po-pl.turn { box-shadow: 0 0 0 2px var(--yellow), 0 0 10px rgba(255,210,63,.5); }
+.po-pl .av { width: 24px; height: 24px; border-radius: 50%; overflow: hidden; background: var(--ink); }
+.po-pl .av svg { width: 100%; height: 100%; }
+.po-pl b { font-weight: 400; max-width: 4.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.po-sc { color: var(--yellow); font-size: 17px; }
+.po-pot { display: flex; gap: 1px; }
+.po-pot i { width: 14px; height: 14px; border-radius: 50%; font-style: normal; font-size: 9px; line-height: 14px; text-align: center; color: #fff; font-weight: 800; }
+.po-wrap { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.po-table { flex-shrink: 0; }
+.po-svg { width: 100%; height: 100%; display: block; touch-action: none; filter: drop-shadow(0 8px 16px rgba(0,0,0,.45)); }
+.po-msg { flex-shrink: 0; min-height: 26px; text-align: center; font-size: 15px; }

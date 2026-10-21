@@ -14,18 +14,18 @@
     4: [[30, 30], [70, 30], [30, 70], [70, 70]], 5: [[28, 28], [72, 28], [50, 50], [28, 72], [72, 72]]
   };
   function cardHTML(top, cls) {
-    if (!top) return `<div class="bl-card empty${cls ? ' ' + cls : ''}"></div>`;
+    if (!top) return `<div class="hg-card empty${cls ? ' ' + cls : ''}"></div>`;
     const [f, n] = top;
-    return `<div class="bl-card${cls ? ' ' + cls : ''}" style="--fc:${FCOL[f]}">${SPOTS[n].map(([x, y]) => `<span style="left:${x}%;top:${y}%">${FRUIT[f]}</span>`).join('')}</div>`;
+    return `<div class="hg-card${cls ? ' ' + cls : ''}" style="--fc:${FCOL[f]}">${SPOTS[n].map(([x, y]) => `<span style="left:${x}%;top:${y}%">${FRUIT[f]}</span>`).join('')}</div>`;
   }
 
   function mount(el, api) {
-    el.innerHTML = `<div class="bl">
-      <div class="bl-top"><span class="bl-clock disp"></span></div>
-      <div class="bl-opps"></div>
-      <div class="bl-mid"><button type="button" class="bl-bell" aria-label="종 치기"><span class="bl-dome"></span><span class="bl-base"></span><b class="disp">딩!</b></button><div class="bl-msg"></div></div>
-      <div class="bl-me"><div class="bl-mypile"></div><button type="button" class="bl-deck"></button></div>
-      <div class="bl-count disp"></div>
+    el.innerHTML = `<div class="hg">
+      <div class="hg-top"><span class="hg-clock disp"></span></div>
+      <div class="hg-opps"></div>
+      <div class="hg-mid"><button type="button" class="hg-bell" aria-label="종 치기"><span class="hg-dome"></span><span class="hg-base"></span><b class="disp">딩!</b></button><div class="hg-msg"></div></div>
+      <div class="hg-me"><div class="hg-mypile"></div><button type="button" class="hg-deck"></button></div>
+      <div class="hg-count disp"></div>
     </div>`;
     const $ = (s) => el.querySelector(s);
     let v = null; let lastEv = 0; let msgT = 0; let flipKey = '';
@@ -33,35 +33,35 @@
     function oppHTML(i) {
       const s = api.seat(i);
       const turn = v.turn === i && v.phase === 'play';
-      return `<div class="bl-op${turn ? ' turn' : ''}${!v.deck[i] ? ' empty' : ''}" data-seat="${i}"><div class="bl-oh"><span class="av">${s.av}</span><b>${esc(s.name)}</b><span class="bl-n">🂠 ${v.deck[i]}</span></div>
+      return `<div class="hg-op${turn ? ' turn' : ''}${!v.deck[i] ? ' empty' : ''}" data-seat="${i}"><div class="hg-oh"><span class="av">${s.av}</span><b>${esc(s.name)}</b><span class="hg-n">🂠 ${v.deck[i]}</span></div>
         ${cardHTML(v.top[i], flipKey === `${i}` ? 'flip' : '')}</div>`;
     }
     function msg(html, cls) {
-      const m = $('.bl-msg');
-      m.innerHTML = html; m.className = `bl-msg show ${cls || ''}`;
-      clearTimeout(msgT); msgT = setTimeout(() => { m.className = 'bl-msg'; }, 1600);
+      const m = $('.hg-msg');
+      m.innerHTML = html; m.className = `hg-msg show ${cls || ''}`;
+      clearTimeout(msgT); msgT = setTimeout(() => { m.className = 'hg-msg'; }, 1600);
     }
     function draw() {
       const me = v.me;
       const n = v.deck.length;
       const others = me == null ? Array.from({ length: n }, (_, i) => i) : Array.from({ length: n - 1 }, (_, k) => (me + k + 1) % n);
-      $('.bl-opps').innerHTML = others.map(oppHTML).join('');
-      $('.bl-opps').dataset.n = others.length;
+      $('.hg-opps').innerHTML = others.map(oppHTML).join('');
+      $('.hg-opps').dataset.n = others.length;
       if (me != null) {
         const mine = v.turn === me && v.phase === 'play';
-        $('.bl-mypile').innerHTML = cardHTML(v.top[me], `big${flipKey === `${me}` ? ' flip' : ''}`);
-        const d = $('.bl-deck');
-        d.className = `bl-deck${mine ? ' turn' : ''}${!v.deck[me] ? ' none' : ''}`;
-        d.innerHTML = `<span class="bl-back"></span><b>${v.deck[me]}장</b><small>${mine ? '눌러서 뒤집기!' : v.deck[me] ? '' : '카드 없음 · 종은 칠 수 있어요'}</small>`;
-      } else { $('.bl-mypile').innerHTML = ''; $('.bl-deck').innerHTML = '<small>구경 중</small>'; }
+        $('.hg-mypile').innerHTML = cardHTML(v.top[me], `big${flipKey === `${me}` ? ' flip' : ''}`);
+        const d = $('.hg-deck');
+        d.className = `hg-deck${mine ? ' turn' : ''}${!v.deck[me] ? ' none' : ''}`;
+        d.innerHTML = `<span class="hg-back"></span><b>${v.deck[me]}장</b><small>${mine ? '눌러서 뒤집기!' : v.deck[me] ? '' : '카드 없음 · 종은 칠 수 있어요'}</small>`;
+      } else { $('.hg-mypile').innerHTML = ''; $('.hg-deck').innerHTML = '<small>구경 중</small>'; }
       tick();
     }
     function tick() {
       if (!v) return;
       const now = api.now();
       const left = Math.max(0, (v.endAt || 0) - Math.max(now, v.start));
-      $('.bl-clock').textContent = `⏱ ${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`;
-      const c = $('.bl-count');
+      $('.hg-clock').textContent = `⏱ ${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`;
+      const c = $('.hg-count');
       if (now < v.start) { c.textContent = Math.ceil((v.start - now) / 1000); c.classList.add('show'); } else c.classList.remove('show');
     }
 
@@ -78,7 +78,7 @@
           if (e.ok) {
             msg(`<span class="av">${s.av}</span><b>${esc(s.name)}</b> 딩! 카드 ${e.got}장 가져가요`, e.s === v.me ? 'good' : '');
             api.sfx(e.s === v.me ? 'perfect' : 'good'); if (e.s === v.me) api.vibrate([30, 30, 60]);
-            $('.bl-bell').classList.remove('hit'); void $('.bl-bell').offsetWidth; $('.bl-bell').classList.add('hit');
+            $('.hg-bell').classList.remove('hit'); void $('.hg-bell').offsetWidth; $('.hg-bell').classList.add('hit');
           } else {
             msg(`<span class="av">${s.av}</span><b>${esc(s.name)}</b> 땡! 틀렸어요 · 한 장씩 줘요`, 'bad');
             if (e.s === v.me) { api.sfx('bad'); api.vibrate([25, 25, 25]); }
@@ -91,7 +91,7 @@
 
     el.addEventListener('pointerdown', (e) => {
       if (!v || v.over) return;
-      const bell = e.target.closest('.bl-bell');
+      const bell = e.target.closest('.hg-bell');
       if (bell) {
         e.preventDefault();
         if (v.me == null || api.now() < v.start) return;
@@ -100,7 +100,7 @@
         api.sfx('lamp');
         return;
       }
-      const deck = e.target.closest('.bl-deck');
+      const deck = e.target.closest('.hg-deck');
       if (deck && v.me != null && v.turn === v.me && v.phase === 'play' && api.now() >= v.start) {
         e.preventDefault();
         api.act({ k: 'flip' });

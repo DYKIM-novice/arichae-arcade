@@ -72,7 +72,8 @@
       {"id": "alkkagi", "name": "알까기", "kind": "table", "players": [2, 2], "fill": 2, "ai": true, "files": ["view"],
        "options": {"stones": [8, 5, 3]}},
       {"id": "curling", "name": "컬링", "kind": "table", "players": [2, 4], "fill": 2, "ai": true, "files": ["view"],
-       "options": {"ends": [3, 2, 4]}}
+       "options": {"ends": [3, 2, 4]}},
+      {"id": "pool", "name": "미니 당구", "kind": "table", "players": [2, 4], "fill": 2, "ai": true, "files": ["view"]}
     ]
   },
   "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]
