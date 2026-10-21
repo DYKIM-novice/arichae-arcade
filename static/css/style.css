@@ -2134,3 +2134,48 @@ button.cd-chip { border: 0; color: var(--text); font-family: var(--body); cursor
 .tl-guess i { color: #9A93B8; font-style: normal; font-size: 16px; }
 .tl-verdict { align-self: center; padding: 8px 14px; border-radius: 12px; background: var(--panel); font-size: 15px; text-align: center; }
 .tl-verdict.ok { background: #2ED573; color: #0B3A1F; }
+
+/* ---------- 놀이마당 · 윷놀이 ---------- */
+.yt { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 6px; user-select: none; -webkit-user-select: none; }
+.yt-players { flex-shrink: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+.yt-pl { position: relative; display: flex; align-items: center; gap: 6px; padding: 4px 8px 4px 4px; border-radius: 14px; background: var(--panel); border-left: 5px solid var(--c); min-width: 0; }
+.yt-pl.turn { box-shadow: 0 0 0 2px var(--yellow), 0 0 12px rgba(255,210,63,.45); }
+.yt-pl .av { width: 30px; height: 30px; border-radius: 50%; overflow: hidden; background: var(--ink); flex-shrink: 0; }
+.yt-pl .av svg { width: 100%; height: 100%; }
+.yt-pi { min-width: 0; display: flex; flex-direction: column; }
+.yt-pi b { font-size: 13px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.yt-home { display: flex; gap: 3px; min-height: 12px; }
+.yt-home i { width: 11px; height: 11px; border-radius: 50%; background: var(--c); border: 1.5px solid #fff; }
+.yt-home i.off { background: transparent; border-color: rgba(255,255,255,.25); }
+.yt-pl.me .yt-home { cursor: pointer; }
+.yt-done { margin-left: auto; font-size: 13px; color: #2ED573; white-space: nowrap; }
+.yt-boardwrap { position: relative; flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.yt-board { position: relative; width: 300px; height: 300px; flex-shrink: 0; }
+.yt-svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 6px 14px rgba(0,0,0,.4)); }
+.yt-layer, .yt-marks { position: absolute; inset: 0; }
+.yt-marks { pointer-events: none; }
+.yt-at { position: absolute; width: 10%; aspect-ratio: 1; transform: translate(-50%, -50%); transition: left .16s linear, top .16s linear; z-index: 2; }
+.yt-at.moving { z-index: 4; transform: translate(-50%, -62%) scale(1.12); }
+.yt-tok { position: relative; width: 100%; height: 100%; border-radius: 50%; background: var(--c); padding: 9%; box-shadow: 0 3px 0 rgba(0,0,0,.35), 0 0 0 2px #fff; }
+.yt-tok .av { display: block; width: 100%; height: 100%; border-radius: 50%; overflow: hidden; background: #fff; }
+.yt-tok .av svg { width: 100%; height: 100%; display: block; }
+.yt-tok b { position: absolute; right: -18%; top: -18%; min-width: 50%; padding: 0 3px; border-radius: 999px; background: var(--yellow); color: var(--ink); font-size: 12px; line-height: 1.4; text-align: center; box-shadow: 0 1px 0 rgba(0,0,0,.3); }
+.yt-tok.mine { cursor: pointer; }
+.yt-mark { position: absolute; transform: translate(-50%, -50%); pointer-events: auto; z-index: 5; min-width: 11%; height: 9%; padding: 0 5px; border: 2px solid #fff; border-radius: 999px; background: #2ED573; color: #0B3A1F; font-size: 12px; font-weight: 800; font-family: var(--body); cursor: pointer; animation: targetPulse 1s ease-in-out infinite; }
+.yt-mark.new { background: #5DADEC; color: #08263D; }
+.yt-mark.out { background: var(--yellow); color: var(--ink); }
+.yt-throw { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(.6); z-index: 6; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 16px; border-radius: 18px; background: rgba(28,23,51,.88); opacity: 0; pointer-events: none; transition: opacity .2s, transform .35s cubic-bezier(.3,1.6,.5,1); }
+.yt-throw.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.yt-throw.show .yt-sticks { animation: ytToss .5s ease-out; }
+.yt-sticks { width: 150px; height: 110px; }
+.yt-res { font-size: 34px; color: var(--yellow); white-space: nowrap; }
+.yt-throw.big .yt-res { font-size: 44px; color: #FF8A3D; }
+.yt-me { flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; }
+.yt-results { display: flex; gap: 6px; justify-content: center; min-height: 40px; flex-wrap: wrap; }
+.yt-r { min-width: 56px; height: 40px; border: 2px solid transparent; border-radius: 12px; background: var(--panel2); color: var(--text); font-size: 19px; font-family: var(--disp); cursor: pointer; }
+.yt-r.on { border-color: var(--yellow); background: #4A3A00; color: var(--yellow); }
+.yt-r.back { color: #FF8B95; }
+.yt-act { position: relative; min-height: 56px; display: flex; flex-direction: column; justify-content: center; }
+.yt-go { min-height: 56px; font-size: 21px; }
+.yt-left { position: absolute; right: 4px; top: -18px; font-size: 13px; color: #FF8B95; }
+@keyframes ytToss { 0% { transform: translateY(-40px) rotate(-30deg); opacity: 0; } 60% { opacity: 1; } 100% { } }

@@ -7,5 +7,6 @@
 """
 from .liar import Liar
 from .tele import Tele
+from .yut import Yut
 
-ENGINES = {"liar": Liar, "tele": Tele}
+ENGINES = {"liar": Liar, "tele": Tele, "yut": Yut}
