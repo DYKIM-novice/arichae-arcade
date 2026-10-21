@@ -20,5 +20,6 @@ from .gonggi import Gonggi
 from .tumble import Tumble
 from .magnet import Magnet
 from .qix import Qix
+from .travel import Travel
 
-ENGINES = {"qix": Qix, "magnet": Magnet, "tumble": Tumble, "gonggi": Gonggi, "ddakji": Ddakji, "alkkagi": Alkkagi, "curling": Curling, "pool": Pool, "liar": Liar, "tele": Tele, "yut": Yut, "bell": Bell, "snake": Snake, "ship": Ship, "diamond": Diamond}
+ENGINES = {"travel": Travel, "qix": Qix, "magnet": Magnet, "tumble": Tumble, "gonggi": Gonggi, "ddakji": Ddakji, "alkkagi": Alkkagi, "curling": Curling, "pool": Pool, "liar": Liar, "tele": Tele, "yut": Yut, "bell": Bell, "snake": Snake, "ship": Ship, "diamond": Diamond}
