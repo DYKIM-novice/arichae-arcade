@@ -172,12 +172,12 @@
      입장 화면
      ================================================================ */
   const params = new URLSearchParams(location.search);
-  const inviteCode = (params.get('room') || '').replace(/\D/g, '').slice(0, 4);
+  let inviteCode = (params.get('room') || '').replace(/\D/g, '').slice(0, 4);
 
   function setMode(mode) {
     S.mode = mode;
     $$('#home-mode button').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
-    $('#code-field').style.display = mode === 'join' && !inviteCode ? '' : 'none';
+    $('#code-field').style.display = mode === 'join' ? '' : 'none';   // 초대 링크로 와도 코드를 고칠 수 있게 늘 보여요
     $('#enter-btn').textContent = mode === 'create' ? '방 만들기' : '입장하기';
     if (mode === 'create') {
       S.taken = [];
@@ -248,17 +248,15 @@
     $('#enter-btn').addEventListener('click', enter);
 
     if (inviteCode) {
-      $('#home-mode').style.display = 'none';
+      // 초대 링크: 코드를 미리 채워 두고, 방이 없어졌으면 다른 코드를 넣거나 새 방을 만들 수 있게
       $('#home-room').innerHTML = roomIcon() + ' 방 ' + inviteCode;
-      S.mode = 'join';
-      $('#code-field').style.display = 'none';
-      $('#enter-btn').textContent = '입장하기';
+      $('#code-input').value = inviteCode;
+      setMode('join');
       lookupRoom(inviteCode).then((ok) => {
         if (!ok) {
-          $('#home-mode').style.display = '';
           $('#home-room').textContent = '';
-          setMode('create');
-          $('#home-err').textContent = '초대받은 방이 없어졌어요. 새 방을 만들 수 있어요';
+          forgetInvite();
+          $('#home-err').textContent = '초대받은 방이 없어졌어요. 방 코드를 다시 넣거나 [방 만들기]로 새 방을 만들어요';
         }
       });
     } else {
@@ -278,7 +276,7 @@
     $('#home-err').textContent = '';
     let code = '';
     if (S.mode === 'join') {
-      code = inviteCode || $('#code-input').value;
+      code = $('#code-input').value.replace(/\D/g, '').slice(0, 4);
       if (code.length !== 4) {
         $('#home-err').textContent = '방 코드 4자리를 입력해 주세요';
         return;
@@ -301,6 +299,12 @@
     } catch (e) {
       failJoin('서버에 연결할 수 없어요. 인터넷 연결을 확인하고 잠시 뒤 다시 눌러 주세요');
     }
+  }
+
+  // 주소에 남은 초대 코드 지우기 (없어진 방으로 계속 들어가려 하지 않게)
+  function forgetInvite() {
+    inviteCode = '';
+    try { history.replaceState(null, '', location.pathname); } catch (e) { /* 무시 */ }
   }
 
   function failJoin(msg) {
@@ -521,6 +525,16 @@
       } else {
         renderHomePicker();
       }
+    }
+    if (!S.room && msg.code === 'no_room') {
+      // 방이 없어졌어요 (서버를 새로 올리면 방이 사라져요) → 코드 칸을 열어 다시 넣게
+      forgetInvite();
+      $('#home-room').textContent = '';
+      setMode('join');
+      failJoin('방을 찾을 수 없어요. 방장에게 지금 방 코드를 물어보고 다시 넣어 주세요 (또는 [방 만들기])');
+      const ci = $('#code-input');
+      ci.select && ci.select(); ci.focus();
+      return;
     }
     if (!S.room) failJoin(msg.msg || '입장할 수 없어요');
     else toast(msg.msg || '할 수 없어요');
