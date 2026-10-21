@@ -73,7 +73,9 @@
        "options": {"stones": [8, 5, 3]}},
       {"id": "curling", "name": "컬링", "kind": "table", "players": [2, 4], "fill": 2, "ai": true, "files": ["view"],
        "options": {"ends": [3, 2, 4]}},
-      {"id": "pool", "name": "미니 당구", "kind": "table", "players": [2, 4], "fill": 2, "ai": true, "files": ["view"]}
+      {"id": "pool", "name": "미니 당구", "kind": "table", "players": [2, 4], "fill": 2, "ai": true, "files": ["view"]},
+      {"id": "ddakji", "name": "딱지치기", "kind": "table", "players": [2, 2], "fill": 2, "ai": true, "files": ["view"],
+       "options": {"goal": [3, 5, 1]}}
     ]
   },
   "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]

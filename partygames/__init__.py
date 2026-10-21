@@ -15,5 +15,6 @@ from .diamond import Diamond
 from .alkkagi import Alkkagi
 from .curling import Curling
 from .pool import Pool
+from .ddakji import Ddakji
 
-ENGINES = {"alkkagi": Alkkagi, "curling": Curling, "pool": Pool, "liar": Liar, "tele": Tele, "yut": Yut, "bell": Bell, "snake": Snake, "ship": Ship, "diamond": Diamond}
+ENGINES = {"ddakji": Ddakji, "alkkagi": Alkkagi, "curling": Curling, "pool": Pool, "liar": Liar, "tele": Tele, "yut": Yut, "bell": Bell, "snake": Snake, "ship": Ship, "diamond": Diamond}
