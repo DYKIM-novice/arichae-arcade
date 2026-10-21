@@ -1607,6 +1607,7 @@ button { font-family: var(--body); color: inherit; }
 .cd-riv-bar { width: 40px; height: 6px; border-radius: 3px; background: var(--ink); overflow: hidden; }
 .cd-riv-bar i { display: block; height: 100%; background: linear-gradient(90deg, #2ED573, #7DF0AE); transition: width .4s; }
 .cd-stage { position: relative; flex: 1 1 auto; min-height: 0; width: 100%; isolation: isolate; z-index: 0; }   /* 카드 z-index 가 결과·규칙 창 위로 올라오지 않게 */
+.cd-mount { position: absolute; inset: 0; }
 .cd-count { position: absolute; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center; font-size: 120px; color: var(--yellow); background: rgba(8,6,20,.45); pointer-events: none; text-shadow: 0 6px 0 rgba(0,0,0,.35); }
 .cd-count.show { display: flex; }
 .cd-result { display: none; }

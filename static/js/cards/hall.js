@@ -123,6 +123,17 @@
     m.classList.add('show'); m.setAttribute('aria-hidden', 'false');
   }
 
+  // 판마다 새 상자에 그려요. 같은 상자를 다시 쓰면 지난 판 화면의 누르기 처리가 남아서
+  // 지난 판(끝난 판) 화면이 다시 그려지는 문제가 있었어요 (맞고 '한 판 더' 뒤 카드 낼 때마다 '끝' 화면)
+  function freshBox() {
+    const stage = $('#cd-stage');
+    stage.innerHTML = '';
+    const box = document.createElement('div');
+    box.className = 'cd-mount';
+    stage.appendChild(box);
+    return box;
+  }
+
   /* ================================================================
      게임 화면 (race)
      ================================================================ */
@@ -137,7 +148,7 @@
     $('#cd-title').innerHTML = `${H.def.icon || ''}<span>${esc(H.def.name)}</span>`;
     $('#cd-result').className = 'cd-result';
     const playing = cs.seats.includes(S.pid);
-    H.view = H.def.mount($('#cd-stage'), {
+    H.view = H.def.mount(freshBox(), {
       canPlay: () => { const c = sess(); return !!c && c.status === 'play' && playing && App.serverNow() >= c.startAt; },
       status: (o) => { H.mine = o; renderBar(); },
       progress: (f, m, done) => sendProg(f, m, done),
@@ -240,7 +251,7 @@
     $('#cd-title').innerHTML = `${H.def.icon || ''}<span>${esc(H.def.name)}</span>`;
     $('#cd-result').className = 'cd-result';
     $('#cd-rivals').innerHTML = '';
-    H.view = H.def.mount($('#cd-stage'), {
+    H.view = H.def.mount(freshBox(), {
       act: (a) => { App.send({ t: 'cact', a }); },
       seat: (i) => seatInfo(sess(), i),
       say: (txt) => App.toast(txt, 1800),
