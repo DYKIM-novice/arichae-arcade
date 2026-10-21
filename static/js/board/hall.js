@@ -99,13 +99,13 @@
   }
 
   // 카드로 하는 게임이지만 보드게임관에서도 찾을 수 있게 (누르면 카드게임관으로 옮겨 가요)
-  const LINKS = [{ card: 'dobble', sub: '다 같이 · AI' }];
+  const LINKS = [{ card: 'dobble', mode: 'card', sub: '다 같이 · AI' }, { card: 'bell', mode: 'party', sub: '다 같이 · AI' }];
   function cardLinks(dis) {
     const C = window.Cards;
     if (!C) return '';
     return LINKS.map((l) => {
       const d = C.get(l.card);
-      return d ? `<button type="button" class="bg-card bg-link" data-blink="${l.card}" ${dis}><span class="bg-ic">${d.icon || ''}</span><b class="disp">${esc(d.name)}</b><span>${l.sub} →</span></button>` : '';
+      return d ? `<button type="button" class="bg-card bg-link" data-blink="${l.card}" data-bmode="${l.mode}" ${dis}><span class="bg-ic">${d.icon || ''}</span><b class="disp">${esc(d.name)}</b><span>${l.sub} →</span></button>` : '';
     }).join('');
   }
 
@@ -137,7 +137,7 @@
     const cfg = boardCfg();
     const def = B.get(cfg.game);
     let b;
-    if ((b = t.closest('[data-blink]')) && !b.disabled) { SND.SFX.click(); App.send({ t: 'settings', mode: 'card', card: b.dataset.blink }); return; }
+    if ((b = t.closest('[data-blink]')) && !b.disabled) { SND.SFX.click(); App.send({ t: 'settings', mode: b.dataset.bmode || 'card', card: b.dataset.blink }); return; }
     if ((b = t.closest('[data-bgame]')) && !b.disabled) { SND.SFX.click(); App.send({ t: 'settings', board: b.dataset.bgame }); return; }
     if ((b = t.closest('[data-bvs]')) && !b.disabled) { SND.SFX.click(); App.send({ t: 'settings', bvs: b.dataset.bvs }); return; }
     if ((b = t.closest('[data-bai]')) && !b.disabled) { SND.SFX.click(); App.send({ t: 'settings', bai: Number(b.dataset.bai) }); return; }

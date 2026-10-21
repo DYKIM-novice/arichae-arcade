@@ -1,7 +1,7 @@
 {
   "_설명": "게임 목록은 여기 한 곳에만 적어요. 서버(server.py)와 화면(kit.js)이 같이 읽어요. 게임 파일은 static/js/games/<무리>/<id>.js",
   "scripts": {
-    "before": ["js/animals.js", "js/audio.js", "js/kit.js", "js/data/songs.js", "js/data/creatures.js", "js/board/kit.js", "js/board/howto.js", "js/cards/kit.js", "js/cards/howto.js"],
+    "before": ["js/animals.js", "js/audio.js", "js/kit.js", "js/data/songs.js", "js/data/creatures.js", "js/board/kit.js", "js/board/howto.js", "js/cards/kit.js", "js/cards/howto.js", "js/party/flick.js"],
     "after": ["js/app.js", "js/records.js", "js/board/hall.js", "js/cards/hall.js"]
   },
   "games": {
@@ -58,17 +58,19 @@
     "party": [
       {"id": "liar", "name": "라이어 게임", "kind": "table", "players": [3, 8], "fill": 3, "ai": false, "files": ["view"],
        "options": {"talk": ["voice", "text"], "topic": ["any", "animal", "food", "fruit", "job", "place", "vehicle", "sport", "thing"], "rounds": [3, 5, 1]}},
-      {"id": "tele", "name": "그림 전달", "kind": "table", "players": [3, 8], "fill": 3, "ai": false, "files": ["view"],
+      {"id": "tele", "name": "텔레스트레이션", "kind": "table", "players": [3, 8], "fill": 3, "ai": false, "files": ["view"],
        "options": {"drawSec": [60, 90, 45]}},
       {"id": "yut", "name": "윷놀이", "kind": "table", "players": [2, 4], "fill": 2, "ai": true, "files": ["view"],
        "options": {"pieces": [4, 3, 2]}},
-      {"id": "bell", "name": "과일 종 치기", "kind": "table", "players": [2, 6], "fill": 3, "ai": true, "files": ["view"],
+      {"id": "bell", "name": "할리갈리", "kind": "table", "players": [2, 6], "fill": 3, "ai": true, "files": ["view"],
        "options": {"time": [180, 300, 120]}},
       {"id": "snake", "name": "뱀과 사다리", "kind": "table", "players": [2, 6], "fill": 2, "ai": true, "files": ["view"],
        "options": {"six": ["again", "none"]}},
       {"id": "ship", "name": "바다 대결", "kind": "table", "players": [2, 2], "fill": 2, "ai": true, "files": ["view"],
        "options": {"hit": ["again", "pass"]}},
-      {"id": "diamond", "name": "다이아몬드 게임", "kind": "table", "players": [2, 3], "fill": 2, "ai": true, "files": ["view"]}
+      {"id": "diamond", "name": "다이아몬드 게임", "kind": "table", "players": [2, 3], "fill": 2, "ai": true, "files": ["view"]},
+      {"id": "alkkagi", "name": "알까기", "kind": "table", "players": [2, 2], "fill": 2, "ai": true, "files": ["view"],
+       "options": {"stones": [8, 5, 3]}}
     ]
   },
   "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]
