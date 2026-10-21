@@ -79,7 +79,9 @@
       {"id": "gonggi", "name": "공기놀이", "kind": "table", "players": [1, 6], "fill": 2, "ai": true, "files": ["view"],
        "options": {"goal": [10, 5, 20], "speed": ["normal", "easy", "hard"]}},
       {"id": "tumble", "name": "계단 주사위", "kind": "table", "players": [2, 4], "fill": 2, "ai": true, "files": ["view"],
-       "options": {"rounds": [3, 2, 5]}}
+       "options": {"rounds": [3, 2, 5]}},
+      {"id": "magnet", "name": "자석돌", "kind": "table", "players": [2, 4], "fill": 2, "ai": true, "files": ["view"],
+       "options": {"hint": ["off", "on"]}}
     ]
   },
   "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]

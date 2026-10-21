@@ -2424,3 +2424,22 @@ button.cd-chip { border: 0; color: var(--text); font-family: var(--body); cursor
 .tb-board { flex-shrink: 0; }
 .tb-svg { width: 100%; height: 100%; display: block; touch-action: none; filter: drop-shadow(0 8px 16px rgba(0,0,0,.45)); }
 .tb-msg { flex-shrink: 0; min-height: 26px; text-align: center; font-size: 15px; }
+
+/* ---------- 놀이마당 · 자석돌 ---------- */
+.mg { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 6px; user-select: none; -webkit-user-select: none; }
+.mg-players { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; }
+.mg-pl { display: flex; align-items: center; gap: 4px; padding: 3px 9px 3px 3px; border-radius: 999px; background: var(--panel); font-size: 13px; }
+.mg-pl.turn { box-shadow: 0 0 0 2px var(--yellow), 0 0 10px rgba(255,210,63,.5); }
+.mg-pl .av { width: 24px; height: 24px; border-radius: 50%; overflow: hidden; background: var(--ink); }
+.mg-pl .av svg { width: 100%; height: 100%; }
+.mg-pl b { font-weight: 400; max-width: 4.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg-h { color: var(--yellow); }
+.mg-wrap { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.mg-board { flex-shrink: 0; }
+.mg-svg { width: 100%; height: 100%; display: block; touch-action: none; border-radius: 14px; box-shadow: 0 8px 20px rgba(0,0,0,.45); }
+.mg-drop { animation: mgDrop .35s ease-in; }
+.mg-pull { animation: mgPull .35s ease-in forwards; }
+.mg-ctl { flex-shrink: 0; min-height: 56px; display: flex; flex-direction: column; justify-content: center; }
+.mg-go { min-height: 56px; font-size: 20px; }
+@keyframes mgDrop { from { transform: scale(1.8); opacity: .3; } to { transform: none; opacity: 1; } }
+@keyframes mgPull { to { transform: translate(var(--dx), var(--dy)); } }
