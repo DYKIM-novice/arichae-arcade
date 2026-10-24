@@ -114,7 +114,14 @@
   }
 
   function playerById(pid) {
-    return S.room ? S.room.players.find((p) => p.pid === pid) : null;
+    if (!S.room) return null;
+    return S.room.players.find((p) => p.pid === pid) || (S.room.bots || []).find((p) => p.pid === pid) || null;
+  }
+  // 올림픽관에서는 올림픽 선수 얼굴, 그 밖에는 동물 캐릭터
+  const isOly = () => !!(S.room && S.room.mode === 'olympic' && window.Oly);
+  function avatar(p) {
+    if (!p) return A.svg('rabbit');
+    return isOly() && p.athlete ? window.Oly.faceSVG(p.athlete) : A.svg(p.animal);
   }
 
   function fmtNum(n) { return Number(n || 0).toLocaleString('ko-KR'); }
@@ -643,7 +650,8 @@
 
     const edu = room.mode === 'edu';
     const musicMode = room.mode === 'music';
-    const picks = edu ? (room.picks || []) : musicMode ? (room.songs || []) : [];
+    const olyMode = room.mode === 'olympic';
+    const picks = edu ? (room.picks || []) : musicMode ? (room.songs || []) : olyMode ? (room.events || []) : [];
     const others = room.players.filter((p) => !p.isHost && p.connected);
     const readyCount = others.filter((p) => p.ready).length + 1;
     const total = others.length + 1;
@@ -655,12 +663,12 @@
       mainBtn.textContent = bm.label;
       $('#lobby-help').textContent = bm.help;
     } else if (isHost) {
-      const noPick = (edu || musicMode) && !picks.length;
+      const noPick = (edu || musicMode || olyMode) && !picks.length;
       mainBtn.className = 'btn btn-green' + (noPick ? ' wait' : '');
-      mainBtn.textContent = noPick ? (musicMode ? '곡을 골라주세요' : '게임을 골라주세요')
-        : edu ? `과학관 시작 · ${picks.length}게임` : musicMode ? `음악관 시작 · ${picks.length}곡` : '시작하기';
+      mainBtn.textContent = noPick ? (musicMode ? '곡을 골라주세요' : olyMode ? '종목을 골라주세요' : '게임을 골라주세요')
+        : edu ? `과학관 시작 · ${picks.length}게임` : musicMode ? `음악관 시작 · ${picks.length}곡` : olyMode ? `올림픽 개막 · ${picks.length}종목` : '시작하기';
       $('#lobby-help').innerHTML = noPick
-        ? (musicMode ? '위에서 연주할 곡을 눌러 주세요' : '위에서 하고 싶은 게임을 눌러 주세요')
+        ? (musicMode ? '위에서 연주할 곡을 눌러 주세요' : olyMode ? '위에서 겨룰 종목을 눌러 주세요' : '위에서 하고 싶은 게임을 눌러 주세요')
         : total === 1
           ? '가족을 초대하거나 혼자 연습할 수 있어요'
           : `준비 완료 <b>${readyCount}</b> / ${total}명 · ${readyCount === total ? '모두 준비됐어요!' : '그래도 시작할 수 있어요'}`;
@@ -700,20 +708,24 @@
     const music = room.mode === 'music';
     const board = room.mode === 'board';
     const card = room.mode === 'card' || room.mode === 'party';   // 놀이마당도 카드게임관 틀로
+    const oly = room.mode === 'olympic';
     $('#settings').classList.toggle('edu', edu);
+    $('#settings').classList.toggle('oly', oly);
     $('#settings').classList.toggle('music', music);
     $('#settings').classList.toggle('board', board);
     $('#settings-note').textContent = isHost ? '눌러서 바꿀 수 있어요' : '방장만 바꿀 수 있어요';
     $$('#mode-seg button').forEach((b) => {
-      const on = b.dataset.mode === (card ? room.mode : board ? 'board' : music ? 'music' : edu ? 'edu' : 'arcade');
+      const on = b.dataset.mode === (card || oly ? room.mode : board ? 'board' : music ? 'music' : edu ? 'edu' : 'arcade');
       b.classList.toggle('on', on);
       b.disabled = !isHost;
       b.setAttribute('aria-pressed', String(on));
     });
-    $('#arcade-panel').style.display = edu || music || board || card ? 'none' : '';
+    $('#arcade-panel').style.display = edu || music || board || card || oly ? 'none' : '';
     $('#board-panel').style.display = board ? '' : 'none';
     $('#card-panel').style.display = card ? '' : 'none';
-    if (board || card) { $('#edu-panel').style.display = 'none'; $('#music-panel').style.display = 'none'; }
+    $('#olympic-panel').style.display = oly ? '' : 'none';
+    if (board || card || oly) { $('#edu-panel').style.display = 'none'; $('#music-panel').style.display = 'none'; }
+    if (oly) { renderOlympicPanel(isHost); return; }
     if (board) { if (window.BoardHall) window.BoardHall.renderLobby(isHost); return; }
     if (card) { if (window.CardHall) window.CardHall.renderLobby(isHost); return; }
     $('#edu-panel').style.display = edu ? '' : 'none';
@@ -745,6 +757,50 @@
     $('#pick-note').textContent = picks.length
       ? `${picks.length}개 · 약 ${Math.max(1, Math.round(secs / 60))}분 · 누른 순서대로`
       : '누른 순서대로 진행해요';
+  }
+
+  // 올림픽관: 내 선수 · 종목 · AI 선수
+  const OLY_LV = [{ n: 1, name: '쉬움' }, { n: 2, name: '보통' }, { n: 3, name: '잘함' }, { n: 4, name: '선수' }, { n: 5, name: '국가대표' }];
+  function renderOlympicPanel(isHost) {
+    const room = S.room;
+    const O = window.Oly;
+    if (!O) return;
+    const dis = isHost ? '' : 'disabled';
+    const mine = me();
+    const taken = {};
+    room.players.forEach((p) => { if (p.pid !== S.pid && p.athlete) taken[p.athlete] = p.name; });
+    $('#oly-aths').innerHTML = O.ATH.map((a) => {
+      const on = mine && mine.athlete === a.id;
+      const who = taken[a.id];
+      return `<button type="button" class="oly-ath${on ? ' on' : ''}${who ? ' taken' : ''}" data-ath="${a.id}" ${who ? 'disabled' : ''} style="--jc:${a.jersey}">
+        <span class="oly-ath-f">${O.faceSVG(a.id, on ? 'h' : 'n')}</span><b>${esc(a.name)}</b><span>${who ? esc(who) : esc(a.note)}</span></button>`;
+    }).join('');
+    const evs = room.events || [];
+    const season = (room.oly && room.oly.season) || 'summer';
+    $('#oly-season').innerHTML = [['summer', '☀️ 하계 올림픽', '달리기·수영·양궁…'], ['winter', '❄️ 동계 올림픽', '스케이트·스키…']].map(([k, nm, sub]) =>
+      `<button type="button" data-oseason="${k}" class="${season === k ? 'on' : ''} ${k}" ${dis}><b class="disp">${nm}</b><span>${sub}</span></button>`).join('');
+    const list = ((G.MANIFEST && G.MANIFEST.games.olympic) || []).filter((m) => (m.season || 'summer') === season);
+    $('#oly-cards').innerHTML = list.map((m) => {
+      const d = G.get(m.id);
+      if (!d) return '';
+      const n = evs.indexOf(m.id) + 1;
+      return `<button type="button" class="ec ec-${d.catColor}${n ? ' on' : ''}" data-oev="${m.id}" ${dis} aria-pressed="${!!n}">
+        <span class="ec-ic">${d.icon || ''}</span>
+        <span class="ec-txt"><span class="ec-hall">${esc(d.cat)}</span><b class="disp">${esc(d.title)}</b>
+        <span class="ec-lv"><span class="ec-note">${esc(d.how || '')}</span></span></span>
+        <span class="ec-no">${n ? n : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'}</span>
+      </button>`;
+    }).join('');
+    if (!list.length) $('#oly-cards').innerHTML = '<div class="oly-soon">❄️ 동계 종목(스피드스케이팅·쇼트트랙·스키점프·봅슬레이·알파인 회전·바이애슬론)은 곧 나와요!</div>';
+    const secs = evs.reduce((t, id) => t + ((G.get(id) || {}).dur || 40) + 14, 0);
+    $('#oly-note').textContent = evs.length ? `${evs.length}종목 · 약 ${Math.max(1, Math.round(secs / 60))}분 · 누른 순서대로` : '누른 순서대로 진행해요';
+    const o = room.oly || { ai: 0, lv: 3 };
+    const maxAi = Math.max(0, 8 - room.players.length);
+    const nAi = Math.min(o.ai, maxAi);
+    $('#oly-ai-note').textContent = `레인 8개 · 사람 ${room.players.length}명${nAi ? ' + AI ' + nAi + '명' : ''}`;
+    $('#oly-ai').innerHTML = `<div class="oly-ai-row"><button type="button" class="cd-step" data-oai="-1" ${dis || (nAi <= 0 ? 'disabled' : '')}>−</button>
+        <b class="disp">AI ${nAi}명</b><button type="button" class="cd-step" data-oai="1" ${dis || (nAi >= maxAi ? 'disabled' : '')}>+</button></div>
+      ${nAi ? `<div class="oly-lv">${OLY_LV.map((l) => `<button type="button" data-olv="${l.n}" class="${o.lv === l.n ? 'on' : ''}" ${dis}><b>${l.n}</b><span>${l.name}</span></button>`).join('')}</div>` : ''}`;
   }
 
   // 음악관: 난이도(초·중) + 곡 고르기
@@ -849,6 +905,38 @@
       renderLobby();
       send({ t: 'settings', picks });
     });
+    $('#olympic-panel').addEventListener('click', (e) => {
+      const room = S.room;
+      if (!room) return;
+      let b;
+      if ((b = e.target.closest('button[data-ath]')) && !b.disabled) {
+        SND.SFX.pop();
+        SND.vibrate(10);
+        const m = me();
+        if (m) m.athlete = b.dataset.ath;
+        renderLobby();
+        send({ t: 'athlete', v: b.dataset.ath });
+      } else if ((b = e.target.closest('button[data-oev]')) && !b.disabled) {
+        const id = b.dataset.oev;
+        const evs = (room.events || []).slice();
+        const i = evs.indexOf(id);
+        if (i >= 0) { evs.splice(i, 1); SND.SFX.soft(); } else { evs.push(id); SND.SFX.pop(); SND.vibrate(10); }
+        room.events = evs;
+        renderLobby();
+        send({ t: 'settings', events: evs });
+      } else if ((b = e.target.closest('button[data-oai]')) && !b.disabled) {
+        SND.SFX.click();
+        const maxAi = Math.max(0, 8 - room.players.length);
+        const n = Math.max(0, Math.min(maxAi, Math.min((room.oly || {}).ai || 0, maxAi) + Number(b.dataset.oai)));
+        send({ t: 'settings', oai: n });
+      } else if ((b = e.target.closest('button[data-oseason]')) && !b.disabled) {
+        SND.SFX.click();
+        send({ t: 'settings', oseason: b.dataset.oseason });
+      } else if ((b = e.target.closest('button[data-olv]')) && !b.disabled) {
+        SND.SFX.click();
+        send({ t: 'settings', olv: Number(b.dataset.olv) });
+      }
+    });
     $('#player-list').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-kick]');
       if (!b) return;
@@ -860,11 +948,12 @@
       const room = S.room;
       if (!room) return;
       if (room.hostPid === S.pid) {
-        const needPick = (room.mode === 'edu' && !(room.picks || []).length) || (room.mode === 'music' && !(room.songs || []).length);
+        const needPick = (room.mode === 'edu' && !(room.picks || []).length) || (room.mode === 'music' && !(room.songs || []).length)
+          || (room.mode === 'olympic' && !(room.events || []).length);
         if (needPick) {
           SND.SFX.bad();
-          toast(room.mode === 'music' ? '연주할 곡을 하나 이상 골라주세요' : '과학관 게임을 하나 이상 골라주세요');
-          const box = $(room.mode === 'music' ? '#song-cards' : '#edu-cards');
+          toast(room.mode === 'music' ? '연주할 곡을 하나 이상 골라주세요' : room.mode === 'olympic' ? '올림픽 종목을 하나 이상 골라주세요' : '과학관 게임을 하나 이상 골라주세요');
+          const box = $(room.mode === 'music' ? '#song-cards' : room.mode === 'olympic' ? '#oly-cards' : '#edu-cards');
           box.classList.remove('nudge');
           void box.offsetWidth;
           box.classList.add('nudge');
@@ -960,7 +1049,7 @@
     const cur = room.current;
     const def = G.get(cur.game);
     const total = room.sequence.length;
-    $('#intro-no').textContent = `GAME ${cur.index + 1} / ${total}`;
+    $('#intro-no').textContent = def.olympic ? `종목 ${cur.index + 1} / ${total}` : `GAME ${cur.index + 1} / ${total}`;
     $('#intro-pips').innerHTML = room.sequence.map((_, i) =>
       `<span class="${i < cur.index ? 'done' : i === cur.index ? 'now' : ''}"></span>`).join('');
     const cs = CAT_STYLE[def.catColor] || CAT_STYLE.y;
@@ -972,6 +1061,8 @@
     const timeTxt = secs >= 90 ? `${Math.floor(secs / 60)}분 ${secs % 60 ? (secs % 60) + '초' : ''}`.trim() : `${secs}초`;
     pill.innerHTML = song
       ? `음악관 · ${esc(song.composer)} · 난이도 <b class="lv-pill lv-${lv}">${levelName(def, lv)}</b> · ${timeTxt}`
+      : def.olympic
+      ? `🏅 올림픽 · ${esc(def.cat)} · ${timeTxt}`
       : def.edu
       ? `${esc(def.hall)} · ${esc(def.cat)} · <b class="lv-pill lv-${lv}">${levelName(def, lv)}</b> · ${timeTxt}`
       : `${esc(def.cat)} 게임 · ${secs}초`;
@@ -1071,7 +1162,8 @@
      ================================================================ */
   function activePlayers() {
     const room = S.room;
-    return room.players.filter((p) => p.activeFrom <= room.index);
+    const humans = room.players.filter((p) => p.activeFrom <= room.index);
+    return room.mode === 'olympic' ? humans.concat(room.bots || []) : humans;
   }
 
   function cleanupGame() {
@@ -1112,6 +1204,7 @@
     stylePad(S.def, lv);
     setScore(0, true);
     setBadge(null);
+    $('.hud-score .hint-sm').textContent = S.def.hudLabel || (S.def.olympic ? '내 기록' : '내 점수');
     $('#hud-time').parentElement.classList.remove('hurry');
     $('#timebar-fill').classList.remove('hurry');
     renderRivals(true);
@@ -1127,7 +1220,7 @@
       return;
     }
 
-    const players = activePlayers().map((p) => ({ pid: p.pid, name: p.name, animal: p.animal, connected: p.connected }));
+    const players = activePlayers().map((p) => ({ pid: p.pid, name: p.name, animal: p.animal, connected: p.connected, athlete: p.athlete, bot: !!p.bot }));
     const ctx = {
       seed: cur.seed,
       level: lv,
@@ -1146,7 +1239,10 @@
       }),
       vibrate: SND.vibrate,
       lock: (ms) => lockPad(ms),
-      fx: { burst, float: floatText, shake, flash }
+      fx: { burst, float: floatText, shake, flash },
+      ev: cur.ev || {},
+      bots: cur.bots || {},
+      finish: () => { if (!S.ended) finishPlay(); }
     };
     S.inst = S.def.create(ctx);
     S.started = true;
@@ -1157,12 +1253,15 @@
       if (pe > 0 && cur.startAt + pe < cur.endAt) send({ t: 'cut', g: cur.index, at: Math.round(cur.startAt + pe) });
     }
     requestAnimationFrame(fitStage);
-    showGo();
-    SND.SFX.go();
-    SND.vibrate(60);
+    if (!S.def.noGo) {
+      showGo();
+      SND.SFX.go();
+      SND.vibrate(60);
+    }
     if (S.def.music !== false) SND.BGM.start(148);
     S.lastProg = 0;
     S.lastSentScore = -1;
+    S.lastSentVal = null;
   }
 
   function finishPlay() {
@@ -1170,16 +1269,20 @@
     S.ended = true;
     S.inst.end();
     const room = S.room;
-    send({ t: 'final', g: S.playIndex, score: S.inst.score(), v: S.inst.value() });
+    const fin = { t: 'final', g: S.playIndex, score: S.inst.score(), v: S.inst.value() };
+    if (S.inst.extra) fin.x = S.inst.extra();
+    if (S.inst.log) fin.log = S.inst.log().slice(0, 3000);   // 올림픽: 누른 기록 (서버가 다시 계산해 확인할 수 있게)
+    send(fin);
     SND.BGM.stop();
     SND.SFX.end();
     SND.vibrate([80, 50, 80]);
     $('#s-play').classList.remove('hurry');
     $('#pad').classList.add('disabled');
     const ov = $('#play-overlay');
-    ov.className = 'play-overlay show';
-    $('#play-overlay-text').textContent = '끝!';
-    $('#play-overlay-sub').textContent = `${fmtNum(S.inst.score())}점 · ${S.inst.summary()}`;
+    // 올림픽: 화면을 가리지 않고 위에 작게 (다른 선수가 들어오는 걸 계속 봐요)
+    ov.className = S.def.watch ? 'play-overlay show mini' : 'play-overlay show';
+    $('#play-overlay-text').textContent = S.def.watch ? '내 경기 끝!' : '끝!';
+    $('#play-overlay-sub').textContent = S.def.fmt ? `${S.def.fmt(S.inst.score())} · ${S.inst.summary()}` : `${fmtNum(S.inst.score())}점 · ${S.inst.summary()}`;
     if (room) renderRivals(true);
   }
 
@@ -1241,10 +1344,19 @@
     S.lastRivals = now;
     const room = S.room;
     if (!room || room.index < 0) return;
+    const def = S.def;
     const list = activePlayers().map((p) => {
       const isMe = p.pid === S.pid;
-      const score = isMe && !S.spectator ? S.myScore : (S.live[p.pid] ? S.live[p.pid][0] : 0);
-      return { p, isMe, score };
+      let score = isMe && !S.spectator ? S.myScore : (S.live[p.pid] ? S.live[p.pid][0] : 0);
+      let text = null;
+      // 올림픽: 종목마다 지금 보여줄 값 (간 거리·기록 등)
+      if (def && def.rival) {
+        const arr = isMe && S.inst && !S.spectator ? [S.inst.score(), S.inst.value(), S.inst.extra ? S.inst.extra() : null] : S.live[p.pid];
+        const r = def.rival(arr || [0, 0, null]);
+        score = r.sort;
+        text = r.text;
+      }
+      return { p, isMe, score, text };
     }).sort((a, b) => b.score - a.score);
     let rank = 0;
     let last = null;
@@ -1258,8 +1370,8 @@
     box.style.gridTemplateColumns = `repeat(${Math.max(1, cols)}, minmax(0, 1fr))`;
     box.innerHTML = list.map((x) => `<div class="rv${x.isMe ? ' me' : ''}${x.p.connected ? '' : ' off'}">
       <span class="rk${x.rank === 1 && x.score > 0 ? ' first' : ''}">${x.rank}</span>
-      <div class="av">${A.svg(x.p.animal)}</div>
-      <span class="nm">${x.isMe ? '나' : esc(x.p.name)}</span><span class="sc">${fmtNum(x.score)}</span></div>`).join('');
+      <div class="av">${avatar(x.p)}</div>
+      <span class="nm">${x.isMe ? '나' : esc(x.p.name)}</span><span class="sc">${x.text != null ? esc(x.text) : fmtNum(x.score)}</span></div>`).join('');
   }
 
   function tickPlay(t) {
@@ -1282,16 +1394,27 @@
       S.lastSecond = secs;
     }
     tickScore();
+    // 올림픽 AI 선수: 서버가 정해 준 기록대로 움직여요 (모든 폰에서 똑같이)
+    if (S.def && S.def.botLive && cur.bots) {
+      Object.keys(cur.bots).forEach((pid) => { S.live[pid] = S.def.botLive(cur.bots[pid], t - cur.startAt, cur); });
+    }
     if (S.inst && !S.ended) {
       S.inst.tick(t);
       const pn = performance.now();
       const sc = S.inst.score();
-      if (pn - S.lastProg > 250 && (sc !== S.lastSentScore || pn - S.lastProg > 1500)) {
+      const val = S.def.streamValue ? JSON.stringify([S.inst.value(), S.inst.extra ? S.inst.extra() : null]) : null;
+      const gap = S.def.streamValue ? 200 : 250;
+      if (pn - S.lastProg > gap && (sc !== S.lastSentScore || (val !== null && val !== S.lastSentVal) || pn - S.lastProg > 1500)) {
         S.lastProg = pn;
         S.lastSentScore = sc;
-        send({ t: 'prog', g: S.playIndex, score: sc, v: S.inst.value() });
+        S.lastSentVal = val;
+        const msg = { t: 'prog', g: S.playIndex, score: sc, v: S.inst.value() };
+        if (S.inst.extra) msg.x = S.inst.extra();
+        send(msg);
       }
-      if (t >= endAt) finishPlay();
+      if (t >= endAt || (S.inst.done && S.inst.done())) finishPlay();
+    } else if (S.inst && S.ended && S.def && S.def.watch) {
+      S.inst.tick(t);   // 내 경기가 끝나도 다른 선수들은 계속 움직여요
     }
     renderRivals(false);
   }
@@ -1619,7 +1742,7 @@
       const pos = entries.indexOf(e) + 1;
       return `<div class="pd p${pos}"><div class="spot" aria-hidden="true"></div>
         ${e.rank === 1 ? '<svg class="crown" width="44" height="30" viewBox="0 0 44 30" aria-hidden="true"><path d="M4 26 L2 6 L13 15 L22 2 L31 15 L42 6 L40 26 Z" fill="#FFD23F" stroke="#C99A00" stroke-width="2.5" stroke-linejoin="round"/><circle cx="22" cy="17" r="3" fill="#FF4757"/></svg>' : ''}
-        <div class="av" style="width:${c.av}px;height:${c.av}px;border-color:${c.c}">${A.svg(p.animal)}</div>
+        <div class="av" style="width:${c.av}px;height:${c.av}px;border-color:${c.c}">${avatar(p)}</div>
         <span class="nm">${p.pid === S.pid ? '나' : esc(p.name)}</span>
         <span class="sc" style="color:${c.c}">${valueOf(e)}</span>
         <div class="block" style="height:${c.h}px;background:${c.c};box-shadow:inset 0 6px 0 rgba(255,255,255,.35),0 6px 0 ${c.s}">${e.rank}</div>
@@ -1634,12 +1757,25 @@
       const isMe = s.pid === S.pid;
       const mv = s.move > 0 ? `<span class="mv up">▲ ${s.move}</span>` : s.move < 0 ? `<span class="mv down">▼ ${-s.move}</span>` : '<span class="mv same">–</span>';
       const gain = gains && gains[s.pid] != null ? `<span class="gain">+${gains[s.pid]}</span>` : '';
+      const tot = s.medals ? medalsHTML(s.medals) : fmtNum(s.total);
       return `<div class="srow${isMe ? ' me' : ''}" style="animation-delay:${(d0 + i * 0.08).toFixed(2)}s">
         <span class="rk${s.rank === 1 ? ' first' : ''}">${s.rank}</span>
-        <div class="av">${A.svg(p.animal)}</div>
-        <span class="nm">${isMe ? '나 (' + esc(p.name) + ')' : esc(p.name)}</span>${gain}
-        <span class="tot">${fmtNum(s.total)}</span>${gains ? mv : ''}</div>`;
+        <div class="av">${avatar(p)}</div>
+        <span class="nm">${isMe ? '나 (' + esc(p.name) + ')' : esc(p.name)}</span>${s.medals ? '' : gain}
+        <span class="tot">${tot}</span>${gains ? mv : ''}</div>`;
     }).join('');
+  }
+
+  // 올림픽 메달 (금·은·동 개수)
+  const MEDAL_C = [['#FFD23F', '#C99A00'], ['#E3E1F2', '#9C97BE'], ['#FF9F5A', '#B85A1C']];
+  function medalIcon(k, size) {
+    const [c, s] = MEDAL_C[k];
+    const z = size || 18;
+    return `<svg width="${z}" height="${z}" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2 L11 10 M17 2 L13 10" stroke="${k === 0 ? '#FF4757' : k === 1 ? '#3D7BFF' : '#2ED573'}" stroke-width="3.2" stroke-linecap="round"/><circle cx="12" cy="15" r="7" fill="${c}" stroke="${s}" stroke-width="2"/><text x="12" y="18.6" text-anchor="middle" font-size="9" font-weight="900" fill="${s}" font-family="system-ui,sans-serif">${k + 1}</text></svg>`;
+  }
+  function medalsHTML(m) {
+    const parts = [0, 1, 2].filter((k) => m[k]).map((k) => `<span class="mdl">${medalIcon(k)}<b>${m[k]}</b></span>`);
+    return parts.length ? `<span class="mdls">${parts.join('')}</span>` : '<span class="mdls none">메달 없음</span>';
   }
 
   function confetti(boxId, n, gold, keep) {
@@ -1681,17 +1817,21 @@
     const res = room.lastResult;
     if (!res) return;
     const def = G.get(res.game);
-    $('#result-no').textContent = `GAME ${res.index + 1} 결과`;
+    $('#result-no').textContent = def.olympic ? `종목 ${res.index + 1} 결과` : `GAME ${res.index + 1} 결과`;
     $('#result-title').textContent = def.title;
     $('#result-title').style.fontSize = def.title.length > 6 ? '32px' : '';
     const rows = res.rows.slice().sort((a, b) => a.rank - b.rank);
-    $('#result-podium').innerHTML = podiumHTML(rows.slice(0, 3), (e) => fmtNum(e.score) + '점', false);
+    const valOf = (e) => (def.fmt ? def.fmt(e.score) : fmtNum(e.score) + '점');
+    $('#result-podium').innerHTML = podiumHTML(rows.slice(0, 3), (e) => (e.medal ? medalIcon(e.medal - 1, 16) + ' ' : '') + valOf(e), false);
     const mine = rows.find((r) => r.pid === S.pid);
     const myStanding = (room.standings || []).find((s) => s.pid === S.pid);
     const rankUp = myStanding && myStanding.move > 0 && res.index > 0
       ? `<span class="rankup">▲ ${myStanding.move}계단 상승!</span>` : '';
+    const MEDAL_TXT = ['금메달!', '은메달!', '동메달!'];
     $('#result-mine').innerHTML = mine
-      ? `내 기록 <b>${fmtNum(mine.score)}점</b> · ${mine.rank}위 · 순위 점수 +${mine.points}${rankUp}`
+      ? (def.olympic
+        ? `내 기록 <b>${valOf(mine)}</b> · ${mine.rank}위${mine.medal ? ` · ${medalIcon(mine.medal - 1, 18)} <b>${MEDAL_TXT[mine.medal - 1]}</b>` : ''}${rankUp}`
+        : `내 기록 <b>${fmtNum(mine.score)}점</b> · ${mine.rank}위 · 순위 점수 +${mine.points}${rankUp}`)
       : '이번 게임은 구경했어요';
     const gains = {};
     res.rows.forEach((r) => { gains[r.pid] = r.points; });
@@ -1707,7 +1847,7 @@
     }
     $('#result-standings').innerHTML = standingsHTML(room.standings, gains);
     HOOKS.result.forEach((fn) => { try { fn(res); } catch (e) { console.error(e); } });
-    $('#result-progress').textContent = `${res.index + 1} / ${room.sequence.length} 게임 진행`;
+    $('#result-progress').textContent = `${res.index + 1} / ${room.sequence.length} ${def.olympic ? '종목' : '게임'} 진행`;
     renderNextCard();
     setTheme('gold');
     $('#result-confetti').innerHTML = '';
@@ -1726,8 +1866,8 @@
     const nextId = room.sequence[room.index + 1];
     const remain = Math.max(0, Math.ceil(((room.current.resultEnd || 0) - serverNow()) / 1000));
     const box = $('#result-next');
-    const label = nextId ? '다음 게임' : '곧 공개';
-    let title = nextId ? G.get(nextId).title : '최종 결과 발표';
+    const label = nextId ? (room.mode === 'olympic' ? '다음 종목' : '다음 게임') : '곧 공개';
+    let title = nextId ? G.get(nextId).title : (room.mode === 'olympic' ? '메달 순위 발표' : '최종 결과 발표');
     if (nextId && room.mode === 'music') {
       const sid = (room.songs || [])[room.index + 1];
       const sg = (G.MUSIC_SONGS || []).find((x) => x.id === sid);
@@ -1745,7 +1885,7 @@
       return p ? p.name : '';
     });
     $('#final-title').textContent = winners.length ? `${winners.join(', ')} 우승!` : '게임 끝!';
-    $('#final-podium').innerHTML = podiumHTML(st.slice(0, 3), (e) => fmtNum(e.total) + '점', true);
+    $('#final-podium').innerHTML = podiumHTML(st.slice(0, 3), (e) => (e.medals ? medalsHTML(e.medals) : fmtNum(e.total) + '점'), true);
     $('#final-standings').innerHTML = standingsHTML(st, null, 3.6);
     renderFinalActions();
     HOOKS.final.forEach((fn) => { try { fn(); } catch (e) { console.error(e); } });
@@ -1941,7 +2081,7 @@
   window.App = {
     $, $$, esc, S, G, A, SND,
     send, toast, banner, showScreen, me, playerById, fmtNum, serverNow, setTheme, confetti, later,
-    podiumHTML, standingsHTML, wakeLock,
+    podiumHTML, standingsHTML, wakeLock, avatar, medalIcon,
     hooks: HOOKS
   };
 

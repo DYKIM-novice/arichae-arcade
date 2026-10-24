@@ -2511,3 +2511,118 @@ button.cd-chip { border: 0; color: var(--text); font-family: var(--body); cursor
 .tv-card { max-width: 260px; padding: 16px 18px; border-radius: 18px; background: #FFF6C9; color: var(--ink); text-align: center; box-shadow: 0 12px 30px rgba(0,0,0,.5); animation: dbPop .3s cubic-bezier(.2,1.4,.4,1); }
 .tv-card .tv-k { display: block; font-weight: 800; margin-bottom: 4px; }
 .tv-card p { margin: 0; font-size: 16px; }
+
+/* ================= 올림픽관 ================= */
+.mode-seg button[data-mode="olympic"].on { background: linear-gradient(135deg, #3D7BFF, #FFD23F 50%, #FF4757); color: #fff; box-shadow: 0 4px 0 #8C5A00, 0 0 22px rgba(255,210,63,.35); text-shadow: 0 2px 0 rgba(0,0,0,.3); }
+#settings.oly { border-color: rgba(255,210,63,.3); box-shadow: 0 7px 0 var(--deep), 0 0 30px rgba(255,210,63,.14); }
+#olympic-panel { display: flex; flex-direction: column; gap: 10px; }
+.oly-season { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.oly-season button { min-height: 56px; border: 2px solid transparent; border-radius: 16px; background: var(--panel2); color: var(--muted); font-family: var(--body); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer; box-shadow: 0 4px 0 var(--deep); }
+.oly-season button b { font-size: 17px; }
+.oly-season button span { font-size: 11px; opacity: .85; }
+.oly-season button.summer.on { background: linear-gradient(135deg, #FF8A3D, #FFD23F); color: #2A1A00; border-color: #FFE27A; }
+.oly-season button.winter.on { background: linear-gradient(135deg, #7FD3FF, #3D7BFF); color: #fff; border-color: #CDEBFF; text-shadow: 0 1px 0 rgba(0,0,0,.25); }
+.oly-season button:disabled { cursor: default; }
+.oly-aths { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.oly-ath { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 2px 5px; border-radius: 14px; border: 2px solid transparent; background: var(--panel2); color: var(--text); font-family: var(--body); cursor: pointer; box-shadow: 0 3px 0 var(--deep); min-width: 0; }
+.oly-ath-f { width: 44px; height: 44px; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #fff 0, #E9E6FA 70%); box-shadow: inset 0 -3px 0 var(--jc); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.oly-ath-f svg { width: 120%; height: 120%; margin-top: 8%; }
+.oly-ath b { font-size: 13px; }
+.oly-ath span { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.oly-ath.on { border-color: var(--yellow); background: #3A2F5E; transform: translateY(-2px); }
+.oly-ath.on .oly-ath-f { animation: olyBounce .6s ease-in-out infinite alternate; }
+.oly-ath.taken { opacity: .38; cursor: default; }
+@keyframes olyBounce { from { transform: translateY(0); } to { transform: translateY(-3px); } }
+.oly-ai { display: flex; flex-direction: column; gap: 8px; }
+.oly-ai-row { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.oly-ai-row b { font-size: 20px; min-width: 90px; text-align: center; }
+.oly-lv { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+.oly-lv button { border: 2px solid transparent; border-radius: 12px; background: var(--panel2); color: var(--muted); font-family: var(--body); padding: 6px 2px; display: flex; flex-direction: column; align-items: center; cursor: pointer; }
+.oly-lv button b { font-size: 16px; font-family: var(--disp); color: var(--text); }
+.oly-lv button span { font-size: 10px; white-space: nowrap; }
+.oly-lv button.on { border-color: var(--yellow); background: #3A2F5E; color: var(--yellow); }
+.il-face { width: 58px; height: 58px; display: inline-flex; }
+.il-face svg { width: 100%; height: 100%; }
+
+/* 메달 */
+.mdls { display: inline-flex; align-items: center; gap: 6px; }
+.mdls.none { font-size: 12px; color: var(--muted); font-family: var(--body); }
+.mdl { display: inline-flex; align-items: center; gap: 1px; }
+.mdl b { font-family: var(--disp); font-size: 16px; }
+.pd .sc .mdls { gap: 3px; }
+.pd .sc svg { vertical-align: -3px; }
+
+/* 경기 화면 */
+.oly-wrap { position: absolute; inset: 0; display: flex; flex-direction: column; overflow: hidden; background: #3FA45B; }
+.oly-top { flex: 0 0 auto; padding: 6px 8px 4px; background: rgba(21,18,43,.9); }
+.oly-strip { display: flex; align-items: center; gap: 8px; }
+.oly-strip-bar { position: relative; flex: 1; height: 8px; margin: 10px 12px; border-radius: 4px; background: #D9653B; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.4); }
+.oly-strip-bar i.st { position: absolute; left: 0; top: -4px; bottom: -4px; width: 3px; background: #fff; }
+.oly-strip-bar i.fin { position: absolute; right: -2px; top: -5px; bottom: -5px; width: 5px; background: repeating-linear-gradient(0deg, #fff 0 3px, #2A2340 3px 6px); }
+.oly-strip-h { position: absolute; top: 50%; left: 0; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1.5px rgba(21,18,43,.6); overflow: hidden; display: flex; align-items: center; justify-content: center; transition: left .12s linear; }
+.oly-strip-h svg { width: 130%; height: 130%; margin-top: 12%; }
+.oly-strip-h.me { width: 28px; height: 28px; margin: -14px 0 0 -14px; box-shadow: 0 0 0 2.5px var(--yellow); z-index: 2; }
+.oly-strip-lbl { font-size: 11px; color: var(--muted); font-family: var(--disp); white-space: nowrap; }
+.oly-scene { position: relative; flex: 1 1 0; min-height: 0; overflow: hidden; }
+.oly-svg { position: absolute; inset: 0; display: block; }
+.oly-hud { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; z-index: 3; }
+.oly-msg { position: absolute; left: 0; right: 0; top: 34%; text-align: center; font-family: var(--disp); font-size: 34px; color: #fff; text-shadow: 0 3px 0 rgba(21,18,43,.75), 0 0 18px rgba(21,18,43,.6); pointer-events: none; opacity: 0; z-index: 4; }
+.oly-msg.show { opacity: 1; animation: msgIn .4s cubic-bezier(.2,1.8,.4,1); }
+.oly-rate { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 14px; background: rgba(21,18,43,.78); color: #fff; font-size: 12px; }
+.oly-rate-k { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; font-weight: 700; }
+.oly-rate-k i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.oly-rate-k i.r { background: #FF4757; } .oly-rate-k i.b { background: #3D7BFF; } .oly-rate-k i.g { background: #2ED573; }
+.oly-rate-pips { flex: 1; display: grid; grid-template-columns: repeat(15, 1fr); gap: 2px; }
+.oly-rate-pips i { height: 10px; border-radius: 3px; background: rgba(255,255,255,.12); }
+.oly-rate-pips i.on.g { background: #2ED573; } .oly-rate-pips i.on.y { background: #FFD23F; } .oly-rate-pips i.on.r { background: #FF4757; box-shadow: 0 0 6px #FF4757; }
+.oly-rate-n { font-family: var(--disp); white-space: nowrap; } .oly-rate-n em { font-style: normal; font-size: 16px; color: var(--yellow); }
+.oc-wave { animation: olyWave 1.1s ease-in-out infinite; }
+@keyframes olyWave { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+.oa-stars { animation: olySpin 1s linear infinite; transform-origin: 0 -96px; }
+@keyframes olySpin { to { transform: rotate(360deg); } }
+.oa-sweat { animation: olyDrip .7s ease-in infinite; }
+@keyframes olyDrip { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(8px); } }
+.play-overlay.show.mini { inset: auto 10px auto 10px; top: 118px; padding: 8px 12px; border-radius: 16px; background: rgba(14,11,31,.82); flex-direction: row; gap: 10px; animation: dbPop .3s cubic-bezier(.2,1.4,.4,1); pointer-events: none; }
+.play-overlay.show.mini #play-overlay-text { font-size: 20px; }
+/* 수영: 박자 · 숨 */
+.osw-hud { display: flex; flex-direction: column; gap: 5px; padding: 7px 10px; border-radius: 14px; background: rgba(21,18,43,.8); color: #fff; font-size: 12px; }
+.osw-beat, .osw-air { display: flex; align-items: center; gap: 8px; }
+.osw-lbl { width: 28px; font-weight: 800; color: var(--muted); }
+.osw-track { position: relative; flex: 1; height: 22px; border-radius: 11px; background: rgba(255,255,255,.08); overflow: hidden; }
+.osw-hit { position: absolute; left: 28%; top: 2px; bottom: 2px; width: 18px; margin-left: -9px; border-radius: 50%; border: 2.5px solid #FFD23F; box-shadow: 0 0 10px rgba(255,210,63,.6); }
+.osw-dot { position: absolute; top: 6px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: #FFE27A; }
+.osw-q { width: 46px; text-align: center; font-family: var(--disp); font-size: 15px; opacity: 0; }
+.osw-q.show { opacity: 1; animation: msgIn .3s cubic-bezier(.2,1.8,.4,1); }
+.osw-q.p { color: #FFD23F; } .osw-q.g { color: #7DF0AE; } .osw-q.b { color: #FF8B95; } .osw-q.a { color: #A9C4FF; }
+.osw-bar { flex: 1; height: 10px; border-radius: 5px; background: rgba(255,255,255,.1); overflow: hidden; }
+.osw-bar i { display: block; height: 100%; width: 100%; border-radius: 5px; background: linear-gradient(90deg, #3DD6D0, #7FD3FF); transition: width .15s; }
+.osw-bar i.low { background: #FF4757; animation: olyBlink .4s steps(2) infinite; }
+@keyframes olyBlink { 50% { opacity: .35; } }
+.osw-g { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; color: #7DF0AE; font-weight: 800; }
+.osw-g i { width: 11px; height: 11px; border-radius: 50%; background: #2ED573; display: inline-block; }
+/* 멀리뛰기·창던지기: 각도 바늘 */
+.ofd-gauge { position: absolute; right: 0; bottom: calc(100% + 8px); width: 128px; padding: 6px 6px 4px; border-radius: 14px; background: rgba(21,18,43,.82); display: none; flex-direction: column; align-items: center; gap: 0; color: #fff; font-size: 10.5px; font-weight: 700; }
+.ofd-gauge.on { display: flex; animation: dbPop .25s cubic-bezier(.2,1.4,.4,1); }
+.ofd-gauge svg { width: 112px; height: 62px; }
+/* 역도 */
+.olf-chips { flex: 0 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px; padding: 5px 6px; background: rgba(21,18,43,.92); }
+.olf-chip { display: flex; align-items: center; gap: 5px; padding: 3px 6px 3px 3px; border-radius: 12px; background: rgba(255,255,255,.06); min-width: 0; }
+.olf-chip .av { width: 26px; height: 26px; border-radius: 50%; background: #fff; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.olf-chip .av svg { width: 130%; height: 130%; margin-top: 12%; }
+.olf-chip div { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.olf-chip b { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.olf-kg { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.olf-lt { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.15); flex-shrink: 0; }
+.olf-lt.ok { background: #fff; box-shadow: 0 0 6px #fff; } .olf-lt.no { background: #FF4757; }
+.olf .oly-scene { background: #2A2552; }
+.olf-need { display: flex; flex-direction: column; align-items: flex-end; font-size: 9.5px; color: var(--muted); white-space: nowrap; }
+.olf-need b { font-size: 11px; color: #FFE27A; }
+/* 양궁 */
+.oar .oly-scene { background: #CDEBFF; }
+.oar-hud { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; padding: 6px 10px; border-radius: 14px; background: rgba(21,18,43,.82); color: #fff; font-size: 11px; font-weight: 700; }
+.oar-k { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.oar-k i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+.oar-k i.r { background: #FF4757; } .oar-k i.b { background: #3D7BFF; } .oar-k i.g { background: #2ED573; }
+.oar-sum { font-family: var(--disp); font-size: 13px; white-space: nowrap; } .oar-sum b { color: var(--yellow); font-size: 17px; } .oar-sum em { font-style: normal; color: var(--muted); }
+.oar-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--jc); border: 1.5px solid #2A2340; flex-shrink: 0; }
+.oly-soon { padding: 16px 14px; border-radius: 16px; background: var(--panel2); color: #CDEBFF; font-size: 14px; text-align: center; line-height: 1.5; }

@@ -42,6 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))   # 같은 폴더의 re
 from records import RecordStore  # noqa: E402
 import boards as BG  # noqa: E402
 import cards as CG  # noqa: E402
+import olympic as OL  # noqa: E402
 from cardgames import ENGINES as _CARD_ENGINES  # noqa: E402
 from partygames import ENGINES as _PARTY_ENGINES  # noqa: E402
 import aiworker  # noqa: E402
@@ -74,7 +75,9 @@ MANIFEST_PATH = STATIC_DIR / "games.json"
 MANIFEST = json.loads(MANIFEST_PATH.read_text("utf-8"))
 GAMES: Dict[str, int] = {g["id"]: int(g["dur"]) for g in MANIFEST["games"]["arcade"]}      # 오락실
 EDU_GAMES: Dict[str, int] = {g["id"]: int(g["dur"]) for g in MANIFEST["games"]["edu"]}     # 과학관·음악관
-ALL_GAMES: Dict[str, int] = {**GAMES, **EDU_GAMES}
+OLY_GAMES: Dict[str, int] = {g["id"]: int(g["dur"]) for g in MANIFEST["games"].get("olympic", [])}   # 올림픽관
+OLY_SEASON: Dict[str, str] = {g["id"]: g.get("season", "summer") for g in MANIFEST["games"].get("olympic", [])}   # 하계·동계
+ALL_GAMES: Dict[str, int] = {**GAMES, **EDU_GAMES, **OLY_GAMES}
 EDU_PICKABLE = [g["id"] for g in MANIFEST["games"]["edu"] if g.get("pick", True)]   # 과학관에서 고를 수 있는 게임
 MUSIC_SONGS = tuple(MANIFEST["songs"])   # 음악관: 방장이 곡을 골라 순서대로 오르골 연주회
 BOARD_CFG = BG.BoardConfig(MANIFEST["games"].get("board", []))   # 보드게임관
@@ -280,6 +283,10 @@ class Player:
         self.live_value = 0.0
         self.played = False
         self.finished = False
+        self.live_extra: Optional[list] = None   # 올림픽: 다른 폰에 보여줄 내 선수 모습 (자세·각도 등)
+        self.athlete = ""                        # 올림픽 선수 캐릭터
+        self.is_bot = False                      # 올림픽 AI 선수
+        self.medals = [0, 0, 0]                  # 올림픽 금·은·동
 
     def public(self, host_pid: str) -> dict:
         return {
@@ -294,6 +301,9 @@ class Player:
             "activeFrom": self.active_from,
             "isHost": self.pid == host_pid,
             "offSince": self.disconnected_at if not self.connected else 0,
+            "athlete": self.athlete,
+            "medals": self.medals,
+            "bot": self.is_bot,
         }
 
     # 방 저장용: 연결(ws)은 빼고 저장 → 되살리면 '연결 끊김' 상태로 시작해요
@@ -348,6 +358,9 @@ class Room:
         self.ctask: Optional[asyncio.Task] = None  # 카드게임 시간 재기·AI
         self.cengine = None                        # table 카드게임 규칙 (서버만 알아요: 모든 패)
         self.cmoves = 0                            # 사람이 둔 수 세기 (AI 가 따로 생각하는 동안 판이 바뀌었나)
+        self.events: List[str] = []                # 올림픽관: 고른 종목 (누른 순서)
+        self.oly = {"ai": 3, "lv": 3, "season": "summer"}   # 올림픽관: AI 선수 수 · 단계 · 하계/동계
+        self.bots: Dict[str, Player] = {}          # 올림픽관: 이번 대회 AI 선수
 
     # 방 저장용: 돌아가는 작업(task)은 빼고, 게임 규칙(cengine)은 따로 묶어요
     def __getstate__(self) -> dict:
@@ -395,6 +408,9 @@ class Room:
             "bsess": self.bsess,
             "card": self.card,
             "csess": self.csess,
+            "events": self.events,
+            "oly": self.oly,
+            "bots": [b.public(self.host_pid) for b in self.bots.values()],
         }
 
     async def broadcast(self, payload: dict) -> None:
@@ -444,24 +460,48 @@ class Room:
         elif self.mode == "music":
             self.song_seq = [s for s in self.songs if s in MUSIC_SONGS]
             self.sequence = ["music"] * len(self.song_seq)
+        elif self.mode == "olympic":
+            self.sequence = [g for g in self.events if g in OLY_GAMES]
+            self.make_bots()
         else:
             self.sequence = self.build_sequence(self.length)
         self.index = -1
         self.last_result = None
         self.standings = []
-        for p in self.players.values():
+        for p in list(self.players.values()) + list(self.bots.values()):
             p.total = 0
             p.active_from = 0
             p.ready = False
+            p.medals = [0, 0, 0]
         self.task = asyncio.ensure_future(self.run_match())
+
+    # ---------- 올림픽관 ----------
+    def free_athlete(self, except_pid: str = "") -> str:
+        taken = {p.athlete for p in list(self.players.values()) + list(self.bots.values()) if p.pid != except_pid}
+        free = [a for a in OL.ATHLETE_IDS if a not in taken]
+        return free[0] if free else OL.ATHLETE_IDS[0]
+
+    def make_bots(self) -> None:
+        """빈 레인을 AI 선수로 (레인은 모두 8개)"""
+        self.bots = {}
+        humans = len(self.players)
+        n = max(0, min(int(self.oly.get("ai", 0)), OL.MAX_LANES - humans))
+        for i in range(n):
+            ath = self.free_athlete()
+            b = Player(f"ai{i + 1}", f"AI {OL.ATHLETE_NAME[ath]}", "", "AI", 100 + i)
+            b.athlete = ath
+            b.is_bot = True
+            b.connected = True
+            self.bots[b.pid] = b
 
     async def run_match(self) -> None:
         try:
             for i, gid in enumerate(self.sequence):
                 self.index = i
-                for p in self.players.values():
+                for p in list(self.players.values()) + list(self.bots.values()):
                     p.game_score = 0
                     p.live_value = 0.0
+                    p.live_extra = None
                     p.played = False
                     p.finished = False
                 LAST_PLAYED[gid] = time.time()
@@ -479,6 +519,14 @@ class Room:
                     "endAt": end_at,
                     "resultEnd": 0,
                 }
+                if self.mode == "olympic":
+                    # 올림픽: 출발 총 시각·바람 등은 모두 같게, AI 선수 기록은 미리 정해서 모두에게
+                    rng = random.Random(self.current["seed"])
+                    ev = OL.new_event(gid, rng)
+                    bots = {b.pid: OL.bot_perf(gid, self.oly.get("lv", 3), rng, ev) for b in self.bots.values()}
+                    self.current["ev"] = ev
+                    self.current["bots"] = bots
+                    self.current["aiDoneAt"] = start_at + scaled(max([v["done"] for v in bots.values()] or [0]))
                 self.phase = "intro"
                 await self.broadcast_state()
                 await self.sleep_until(start_at)
@@ -495,6 +543,11 @@ class Room:
                         self.live_dirty = False
                         await self.broadcast_live()
                     if now_ms() >= cut_at and self.all_finished():
+                        break
+                    # 올림픽: 모두 끝나고 AI 선수도 다 들어오면 바로 결과로 (기다리지 않게)
+                    if (self.mode == "olympic" and self.all_finished(humans_only=True)
+                            and now_ms() >= self.current.get("aiDoneAt", 0)):
+                        await asyncio.sleep(scaled(GRACE_MS) / 1000)
                         break
                 await self.broadcast_live()
 
@@ -522,13 +575,15 @@ class Room:
             await asyncio.sleep(min(left / 1000, 0.25))
 
     def active_players(self) -> List[Player]:
-        return [p for p in self.players.values() if p.active_from <= self.index]
+        humans = [p for p in self.players.values() if p.active_from <= self.index]
+        return humans + list(self.bots.values()) if self.mode == "olympic" else humans
 
-    def all_finished(self) -> bool:
-        return all(p.finished or not p.connected for p in self.active_players())
+    def all_finished(self, humans_only: bool = False) -> bool:
+        return all(p.finished or not p.connected for p in self.active_players() if not p.is_bot)
 
     async def broadcast_live(self) -> None:
-        vals = {p.pid: [p.game_score, p.live_value] for p in self.active_players()}
+        vals = {p.pid: [p.game_score, p.live_value] + ([p.live_extra] if p.live_extra else [])
+                for p in self.active_players() if not p.is_bot}
         await self.broadcast({"t": "live", "g": self.index, "vals": vals, "now": now_ms()})
 
     def apply_tug_bonus(self, active: List[Player]) -> None:
@@ -560,6 +615,12 @@ class Room:
         prev_rank = {s["pid"]: s["rank"] for s in self.standings}
         if self.sequence[self.index] == "tug":
             self.apply_tug_bonus(active)
+        if self.mode == "olympic":
+            for pid, perf in (self.current.get("bots") or {}).items():
+                b = self.bots.get(pid)
+                if b:
+                    b.game_score = int(perf.get("score", 0))
+                    b.played = True
 
         ordered = sorted(active, key=lambda p: (-p.game_score, p.order))
         rows = []
@@ -575,25 +636,39 @@ class Room:
                 pts = RANK_POINTS[min(rank, len(RANK_POINTS)) - 1]
             p.total += pts
             row = {"pid": p.pid, "score": p.game_score, "rank": rank, "points": pts, "played": p.played}
+            if self.mode == "olympic" and pts and rank <= 3:
+                p.medals[rank - 1] += 1
+                row["medal"] = rank
             # 기록실: 이번 주 Top 10 에 들면 바로 등록 (이름·한마디는 결과 화면에서 고칠 수 있어요)
-            if RECORDS_ON and p.played and p.game_score > 0:
+            if RECORDS_ON and p.played and p.game_score > 0 and not p.is_bot:
                 board, detail = self.record_board()
                 got = STORE.submit(board, p.game_score, p.name, p.animal, p.pid, detail) if board else None
                 if got:
                     row["rec"] = {"board": board, "rank": got[0], "id": got[1]["id"]}
             rows.append(row)
 
-        everyone = sorted(self.players.values(), key=lambda p: (-p.total, p.order))
+        # 올림픽은 메달 순서(금 → 은 → 동 → 점수)로 순위를 매겨요
+        if self.mode == "olympic":
+            def key(p):
+                return (-p.medals[0], -p.medals[1], -p.medals[2], -p.total)
+        else:
+            def key(p):
+                return -p.total
+        everyone = sorted(list(self.players.values()) + (list(self.bots.values()) if self.mode == "olympic" else []),
+                          key=lambda p: (key(p), p.order))
         standings = []
         rank = 0
-        last_total = None
+        last_key = None
         for pos, p in enumerate(everyone):
-            if p.total != last_total:
+            if key(p) != last_key:
                 rank = pos + 1
-                last_total = p.total
+                last_key = key(p)
             before = prev_rank.get(p.pid)
             move = 0 if before is None else before - rank
-            standings.append({"pid": p.pid, "total": p.total, "rank": rank, "move": move})
+            row = {"pid": p.pid, "total": p.total, "rank": rank, "move": move}
+            if self.mode == "olympic":
+                row["medals"] = p.medals[:]
+            standings.append(row)
         self.standings = standings
         self.last_result = {"index": self.index, "game": self.sequence[self.index], "rows": rows}
 
@@ -618,6 +693,7 @@ class Room:
         self.bsess = None
         self.csess = None
         self.cengine = None
+        self.bots = {}
         if self.ctask and not self.ctask.done():
             self.ctask.cancel()
         self.ctask = None
@@ -1227,6 +1303,7 @@ async def ws_session(ws: WebSocketConn) -> None:
                     player = Player(secrets.token_hex(6), name, animal, device, room.join_counter)
                     if room.phase in ("intro", "play", "result"):
                         player.active_from = room.index + 1
+                    player.athlete = room.free_athlete()
                     room.players[player.pid] = player
                     if not room.host_pid:
                         room.host_pid = player.pid
@@ -1277,6 +1354,14 @@ async def ws_session(ws: WebSocketConn) -> None:
                 player.name = clean_name(msg.get("name") or player.name)
                 await room.broadcast_state()
 
+            elif t == "athlete" and room.phase == "lobby":
+                ath = str(msg.get("v") or "")
+                if ath in OL.ATHLETE_IDS and ath not in {p.athlete for p in room.players.values() if p.pid != player.pid}:
+                    player.athlete = ath
+                    await room.broadcast_state()
+                else:
+                    await reply({"t": "error", "code": "athlete_taken", "msg": "다른 가족이 먼저 고른 선수예요"})
+
             elif t == "settings" and is_host and room.phase == "lobby":
                 changed = False
                 if "length" in msg:
@@ -1287,7 +1372,7 @@ async def ws_session(ws: WebSocketConn) -> None:
                     if length in (3, 5, 10):
                         room.length = length
                         changed = True
-                if msg.get("mode") in ("arcade", "edu", "music", "board", "card", "party"):
+                if msg.get("mode") in ("arcade", "edu", "music", "board", "card", "party", "olympic"):
                     room.mode = msg["mode"]
                     changed = True
                 if msg.get("level") in LEVELS:
@@ -1296,6 +1381,24 @@ async def ws_session(ws: WebSocketConn) -> None:
                 if isinstance(msg.get("picks"), list):
                     picks = [str(g) for g in msg["picks"] if str(g) in EDU_PICKABLE]
                     room.picks = picks[:MAX_PICKS]
+                    changed = True
+                if msg.get("oseason") in ("summer", "winter"):
+                    room.oly["season"] = msg["oseason"]
+                    room.events = [g for g in room.events if OLY_SEASON.get(g) == msg["oseason"]]
+                    changed = True
+                if isinstance(msg.get("events"), list):
+                    season = room.oly.get("season", "summer")
+                    evs = [str(g) for g in msg["events"] if str(g) in OLY_GAMES and OLY_SEASON.get(str(g)) == season]
+                    room.events = list(dict.fromkeys(evs))[:MAX_PICKS]
+                    changed = True
+                if "oai" in msg:
+                    try:
+                        room.oly["ai"] = max(0, min(OL.MAX_LANES - 1, int(msg["oai"])))
+                        changed = True
+                    except (TypeError, ValueError):
+                        pass
+                if msg.get("olv") in OL.AI_LEVELS:
+                    room.oly["lv"] = msg["olv"]
                     changed = True
                 if isinstance(msg.get("songs"), list):
                     songs = [str(g) for g in msg["songs"] if str(g) in MUSIC_SONGS]
@@ -1352,6 +1455,9 @@ async def ws_session(ws: WebSocketConn) -> None:
                 if room.mode == "music" and not room.songs:
                     await reply({"t": "error", "code": "no_picks", "msg": "연주할 곡을 하나 이상 골라주세요"})
                     continue
+                if room.mode == "olympic" and not room.events:
+                    await reply({"t": "error", "code": "no_picks", "msg": "올림픽 종목을 하나 이상 골라주세요"})
+                    continue
                 if room.mode == "board":
                     seats = BG.resolve_seats(room, BOARD_CFG)
                     if not seats:
@@ -1386,7 +1492,8 @@ async def ws_session(ws: WebSocketConn) -> None:
                     continue
                 log.info("[%s] 게임 시작 (%s)", room.code,
                          "과학관 " + ",".join(room.picks) if room.mode == "edu"
-                         else "음악관 " + ",".join(room.songs) if room.mode == "music" else f"{room.length}게임")
+                         else "음악관 " + ",".join(room.songs) if room.mode == "music"
+                         else "올림픽 " + ",".join(room.events) if room.mode == "olympic" else f"{room.length}게임")
                 room.start_match()
 
             elif t in ("prog", "final") and room.phase in ("play", "intro"):
@@ -1399,9 +1506,18 @@ async def ws_session(ws: WebSocketConn) -> None:
                     continue
                 player.game_score = score
                 player.live_value = value
+                x = msg.get("x")
+                if isinstance(x, list) and len(x) <= 8:
+                    try:
+                        player.live_extra = [round(float(v), 2) for v in x]
+                    except (TypeError, ValueError):
+                        player.live_extra = None
                 player.played = True
                 if t == "final":
                     player.finished = True
+                    lg = msg.get("log")
+                    # 올림픽: 누른 기록을 보관 (공개 대회에서 서버가 다시 계산해 점수를 확인할 때 써요)
+                    player.last_log = lg[:3000] if isinstance(lg, list) else None
                 room.live_dirty = True
 
             elif t == "cut" and room.phase == "play" and room.mode == "music":

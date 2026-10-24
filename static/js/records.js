@@ -14,7 +14,8 @@
     { k: 'music', name: '음악관' },
     { k: 'board', name: '보드게임' },
     { k: 'card', name: '카드게임' },
-    { k: 'party', name: '놀이마당' }
+    { k: 'party', name: '놀이마당' },
+    { k: 'olympic', name: '올림픽' }
   ];
   const LV_SHORT = { e: '초등', m: '중등', h: '고등' };
   const MLV = { e: '하', m: '중', h: '상', x: '특상' };
@@ -116,6 +117,12 @@
     return `${d.getMonth() + 1}/${d.getDate()} (${'일월화수목금토'[d.getDay()]})`;
   }
 
+  // 올림픽처럼 점수가 기록(초·m·kg)인 게임은 기록으로 보여줘요
+  function scoreText(score, board) {
+    const d = board && board !== '*' ? G.get(String(board).split(':')[0]) : null;
+    return d && d.fmt ? esc(d.fmt(score)) : App.fmtNum(score);
+  }
+
   function entryRow(e, rank, opts) {
     const o = opts || {};
     const mine = R.mine.some((m) => m.id === e.id);
@@ -131,7 +138,7 @@
         ${where}
         ${e.comment ? `<div class="rec-cm">“${esc(e.comment)}”</div>` : ''}
       </div>
-      <div class="rec-sc"><b class="disp">${App.fmtNum(e.score)}</b>${when}</div>
+      <div class="rec-sc"><b class="disp">${scoreText(e.score, o.board || R.game)}</b>${when}</div>
     </div>`;
   }
 
