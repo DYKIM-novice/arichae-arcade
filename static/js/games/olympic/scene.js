@@ -12,7 +12,9 @@
   const SURF = {
     track: { a: '#D9653B', b: '#CF5B32', line: '#FFF6EA', apron: '#3FA45B' },
     pool: { a: '#2EA6E0', b: '#2898D2', line: '#FFFFFF', apron: '#E8F4FA' },
-    runway: { a: '#C9563A', b: '#C04F33', line: '#FFF6EA', apron: '#3FA45B' }
+    runway: { a: '#C9563A', b: '#C04F33', line: '#FFF6EA', apron: '#3FA45B' },
+    ice: { a: '#E6F5FF', b: '#D8EEFC', line: '#E0435A', apron: '#F4FAFF' },
+    snow: { a: '#F8FCFF', b: '#ECF5FC', line: '#9CC7E6', apron: '#FFFFFF' }
   };
 
   class Track {
@@ -35,6 +37,7 @@
       }
       this.svg = el('svg', { class: 'oly-svg' });
       this.sceneBox.appendChild(this.svg);
+      if (this.o.winter) this.sceneBox.appendChild(snowfall());
       this.camX = 0;
       this.ath = {};
       this.build();
@@ -66,14 +69,15 @@
       this.svg.innerHTML = '';
       this.layers = {};
       const defs = el('defs', {}, `<linearGradient id="ol-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7FC8FF"/><stop offset="1" stop-color="#CDEBFF"/></linearGradient>
+        <linearGradient id="ol-wsky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9FC4E8"/><stop offset="1" stop-color="#E4F0FA"/></linearGradient>
         <linearGradient id="ol-water" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5CC4F2"/><stop offset="1" stop-color="#1E86C8"/></linearGradient>
         <pattern id="ol-check" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#fff"/><rect width="4" height="4" fill="#2A2340"/><rect x="4" y="4" width="4" height="4" fill="#2A2340"/></pattern>`);
       this.svg.appendChild(defs);
-      this.svg.appendChild(el('rect', { width: W, height: skyH + 2, fill: 'url(#ol-sky)' }));
+      this.svg.appendChild(el('rect', { width: W, height: skyH + 2, fill: this.o.winter ? 'url(#ol-wsky)' : 'url(#ol-sky)' }));
       // 관중석 (원근감: 카메라의 0.25배로 움직여요)
       const standW = 380;
       this.layers.stands = el('g', {});
-      const st = el('g', {}, O.standsSVG(standW, standH, 11) + O.flagsSVG(standW, 2));
+      const st = el('g', {}, O.standsSVG(standW, standH, 11) + O.flagsSVG(standW, 2) + (this.o.winter ? snowCaps(standW) : ''));
       const tiles = Math.ceil(W / standW) + 2;
       for (let i = 0; i < tiles; i++) {
         const u = el('g', { transform: `translate(${i * standW} 0)` });
@@ -116,7 +120,7 @@
         const laneG = el('g', {});
         this.layers.ath.appendChild(laneG);
         if (this.o.laneExtras) this.o.laneExtras(laneG, L[i], i, this);
-        const a = O.makeAthlete(p.athlete, p.bib, { tag: p.me ? '나' : p.name, me: p.me });
+        const a = O.makeAthlete(p.athlete, p.bib, { tag: p.me ? '나' : p.name, me: p.me, gear: this.o.gear, winter: this.o.winter });
         laneG.appendChild(a.g);
         const prev = old && old[p.pid];
         this.ath[p.pid] = Object.assign(prev ? { ph: prev.ph, x: prev.x, shown: prev.shown, v: prev.v } : { ph: Math.random() * 6, x: this.o.startX, shown: this.o.startX, v: 0 },
@@ -188,6 +192,20 @@
 
     destroy() { if (this.ro) this.ro.disconnect(); clearTimeout(this.msgT); }
   }
+
+  // 겨울: 내리는 눈 · 관중석 지붕의 눈
+  function snowfall() {
+    const box = document.createElement('div');
+    box.className = 'oly-snow';
+    let h = '';
+    for (let i = 0; i < 26; i++) {
+      const x = (i * 37) % 100; const d = 4 + (i * 13) % 7; const z = 2 + (i % 3);
+      h += `<i style="left:${x}%;width:${z}px;height:${z}px;animation-duration:${d}s;animation-delay:${-((i * 7) % d)}s"></i>`;
+    }
+    box.innerHTML = h;
+    return box;
+  }
+  const snowCaps = (w) => `<path d="M0 0 H${w} V4 Q${w * 0.9} 8 ${w * 0.8} 4 T${w * 0.6} 4 T${w * 0.4} 4 T${w * 0.2} 4 T0 4 Z" fill="#fff"/>`;
 
   /* ---------- 연타 막대 (아래쪽 HUD) ---------- */
   function rateMeter(box, label) {

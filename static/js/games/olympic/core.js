@@ -178,7 +178,10 @@
     const a = ath(id);
     const o = opts || {};
     const root = el('g', { class: 'oa' });
-    const shoe = '<ellipse cx="2.4" cy="8.6" rx="5.6" ry="3.6" fill="#fff" stroke="#2A2340" stroke-width="1.2"/><path d="M-1 8 h5" stroke="' + a.jersey + '" stroke-width="1.6"/>';
+    let shoe = '<ellipse cx="2.4" cy="8.6" rx="5.6" ry="3.6" fill="#fff" stroke="#2A2340" stroke-width="1.2"/><path d="M-1 8 h5" stroke="' + a.jersey + '" stroke-width="1.6"/>';
+    // 장비: 스케이트 날 · 스키
+    if (o.gear === 'skates') shoe += '<path d="M-5 13.4 H11 Q13 13.4 13 11.6" fill="none" stroke="#C9D3E0" stroke-width="1.8" stroke-linecap="round"/><path d="M-1 11.8 V13.4 M7 11.8 V13.4" stroke="#8C96A8" stroke-width="1.4"/>';
+    if (o.gear === 'skis') shoe += `<path d="M-16 13 H24 Q29 13 29 8" fill="none" stroke="#2A2340" stroke-width="4.4" stroke-linecap="round"/><path d="M-15 13 H24 Q28 13 28 9" fill="none" stroke="${a.shorts}" stroke-width="2.6" stroke-linecap="round"/>`;
     const legHTML = (shade) => `<g class="th">${limb(9, 7.5, shade ? a.dark : a.skin)}<g class="sh" transform="translate(0 8)">${limb(7, 7, shade ? a.dark : a.skin, shoe)}</g></g>`;
     const armHTML = (shade) => `<g>${limb(11, 6.2, shade ? a.dark : a.skin)}<circle cy="12.5" r="4.4" fill="${shade ? a.dark : a.skin}"/><g class="hold" transform="translate(0 12.5)"></g></g>`;
     const tilt = el('g', {});           // 몸 기울기 (엉덩이 기준)
@@ -192,7 +195,7 @@
       <path d="M-12.5 -34 Q-12.5 -45 -4 -45 L-4 -40 Q0 -36 4 -40 L4 -45 Q12.5 -45 12.5 -34 L12.5 -22 H-12.5 Z" fill="${a.jersey}" stroke="rgba(0,0,0,.12)" stroke-width="1"/>
       <rect x="-6.5" y="-37" width="13" height="9.5" rx="2" fill="#fff" stroke="rgba(0,0,0,.15)" stroke-width=".8"/>
       <text x="0" y="-29.6" text-anchor="middle" font-size="7.6" font-weight="800" fill="#2A2340" font-family="system-ui,sans-serif">${bib == null ? '' : bib}</text>
-      <rect x="-12.5" y="-24" width="25" height="9" rx="4" fill="${a.shorts}"/>`);
+      <rect x="-12.5" y="-24" width="25" height="9" rx="4" fill="${a.shorts}"/>${o.winter ? `<path d="M-12 -45 Q0 -40 12 -45 L12 -40 Q0 -35 -12 -40 Z" fill="#FF4757"/><path d="M-6 -43 v4 M0 -42 v4 M6 -43 v4" stroke="#fff" stroke-width="1.6"/><path d="M-11 -41 Q-20 -40 -24 -33 L-19 -31 Q-17 -36 -10 -37 Z" fill="#FF4757" class="oa-scarf"/>` : ''}`);
     const frontLeg = el('g', { transform: 'translate(4 -18)' }, legHTML(false));
     const frontArm = el('g', { transform: 'translate(3 -39)' }, armHTML(false));
     const headWrap = el('g', { transform: 'translate(3 -64)' });

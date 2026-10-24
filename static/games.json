@@ -1,7 +1,7 @@
 {
   "_설명": "게임 목록은 여기 한 곳에만 적어요. 서버(server.py)와 화면(kit.js)이 같이 읽어요. 게임 파일은 static/js/games/<무리>/<id>.js",
   "scripts": {
-    "before": ["js/animals.js", "js/audio.js", "js/kit.js", "js/data/songs.js", "js/data/creatures.js", "js/board/kit.js", "js/board/howto.js", "js/cards/kit.js", "js/cards/howto.js", "js/party/flick.js", "js/games/olympic/core.js", "js/games/olympic/scene.js", "js/games/olympic/race.js", "js/games/olympic/field.js"],
+    "before": ["js/animals.js", "js/audio.js", "js/kit.js", "js/data/songs.js", "js/data/creatures.js", "js/board/kit.js", "js/board/howto.js", "js/cards/kit.js", "js/cards/howto.js", "js/party/flick.js", "js/games/olympic/core.js", "js/games/olympic/scene.js", "js/games/olympic/race.js", "js/games/olympic/field.js", "js/games/olympic/downhill.js"],
     "after": ["js/app.js", "js/records.js", "js/board/hall.js", "js/cards/hall.js"]
   },
   "games": {
@@ -94,7 +94,13 @@
       {"id": "ojav", "dur": 42, "name": "창던지기", "season": "summer"},
       {"id": "olift", "dur": 45, "name": "역도", "season": "summer"},
       {"id": "oarch", "dur": 50, "name": "양궁", "season": "summer"},
-      {"id": "oswim", "dur": 50, "name": "수영 50m", "season": "summer"}
+      {"id": "oswim", "dur": 50, "name": "수영 50m", "season": "summer"},
+      {"id": "wspeed", "dur": 60, "name": "스피드스케이팅 500m", "season": "winter"},
+      {"id": "wshort", "dur": 55, "name": "쇼트트랙", "season": "winter"},
+      {"id": "wbob", "dur": 55, "name": "봅슬레이", "season": "winter"},
+      {"id": "wslalom", "dur": 60, "name": "알파인 회전", "season": "winter"},
+      {"id": "wjump", "dur": 42, "name": "스키점프", "season": "winter"},
+      {"id": "wbiath", "dur": 62, "name": "바이애슬론", "season": "winter"}
     ]
   },
   "songs": ["twinkle", "ode", "minuet", "elise", "lullaby", "spring", "summer", "autumn", "winter"]

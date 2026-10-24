@@ -2626,3 +2626,47 @@ button.cd-chip { border: 0; color: var(--text); font-family: var(--body); cursor
 .oar-sum { font-family: var(--disp); font-size: 13px; white-space: nowrap; } .oar-sum b { color: var(--yellow); font-size: 17px; } .oar-sum em { font-style: normal; color: var(--muted); }
 .oar-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--jc); border: 1.5px solid #2A2340; flex-shrink: 0; }
 .oly-soon { padding: 16px 14px; border-radius: 16px; background: var(--panel2); color: #CDEBFF; font-size: 14px; text-align: center; line-height: 1.5; }
+/* 겨울: 내리는 눈 */
+.oly-snow { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 2; }
+.oly-snow i { position: absolute; top: -6px; border-radius: 50%; background: #fff; opacity: .85; animation: olySnow linear infinite; }
+@keyframes olySnow { from { transform: translate(0, -10px); } to { transform: translate(-30px, 110vh); } }
+.oa-scarf { animation: olyScarf .5s ease-in-out infinite alternate; transform-origin: -11px -39px; }
+@keyframes olyScarf { from { transform: rotate(-6deg); } to { transform: rotate(8deg); } }
+/* 스피드스케이팅: 리듬 막대 */
+.osk-hud { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 14px; background: rgba(21,18,43,.8); color: #fff; font-size: 12px; }
+.osk-bar { position: relative; flex: 1; height: 16px; border-radius: 8px; background: rgba(255,255,255,.1); overflow: hidden; }
+.osk-zone { position: absolute; top: 0; bottom: 0; background: rgba(46,213,115,.55); border-left: 2px solid #2ED573; border-right: 2px solid #2ED573; }
+.osk-fill { position: absolute; left: 0; top: 4px; bottom: 4px; border-radius: 4px; background: #7FD3FF; }
+.osk-v { font-family: var(--disp); white-space: nowrap; } .osk-v em { font-style: normal; color: var(--yellow); font-size: 16px; }
+/* 바이애슬론 사격 판 */
+.obi-panel { display: none; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 14px; background: rgba(21,18,43,.9); color: #fff; font-size: 12px; pointer-events: none; }
+.obi-panel.on { display: flex; animation: dbPop .25s cubic-bezier(.2,1.4,.4,1); }
+.obi-row { display: flex; justify-content: space-between; font-weight: 800; } .obi-row b { color: var(--yellow); } .obi-pen { color: #FF8B95; }
+.obi-range { position: relative; height: 46px; border-radius: 12px; background: linear-gradient(#5B5677, #3B3570); }
+.obi-t { position: absolute; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; background: #15122B; border: 3px solid #fff; }
+.obi-t.now { border-color: var(--yellow); box-shadow: 0 0 10px var(--yellow); }
+.obi-t.hit { background: #fff; border-color: #2ED573; } .obi-t.miss { background: #15122B; border-color: #FF4757; opacity: .6; }
+.obi-ret { position: absolute; top: 3px; bottom: 3px; width: 4px; margin-left: -2px; border-radius: 2px; background: #FF4757; box-shadow: 0 0 8px #FF4757; }
+.obi-tip { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 11px; } .obi-tip i { width: 11px; height: 11px; border-radius: 50%; background: #2ED573; } .obi-tip b { color: var(--yellow); }
+/* 쇼트트랙 */
+.osh .oly-scene { background: #B9D8EE; }
+.osh-tip { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 12px; border-radius: 14px; background: rgba(21,18,43,.82); color: #fff; font-size: 13px; font-weight: 800; }
+.osh-tip.warn .osh-st { color: #FF8B95; animation: olyBlink .45s steps(2) infinite; }
+.osh-tip.ok .osh-st { color: #7DF0AE; }
+.osh-lap { color: var(--muted); font-size: 12px; }
+.osh-v { font-family: var(--disp); } .osh-v em { font-style: normal; color: var(--yellow); font-size: 16px; }
+/* 봅슬레이 · 알파인 */
+.odh .oly-scene { background: #F8FCFF; }
+.odh .oly-msg { color: #2A2340; text-shadow: 0 2px 0 rgba(255,255,255,.8), 0 0 12px rgba(255,255,255,.9); }
+.odh .oly-snow i { background: #CDE3F2; }
+/* 스키점프 */
+.owj .oly-scene { background: #DDEBF7; }
+.owj-hud { display: flex; flex-direction: column; gap: 6px; padding: 7px 10px; border-radius: 14px; background: rgba(21,18,43,.82); color: #fff; font-size: 11.5px; font-weight: 700; }
+.owj-bal { display: flex; align-items: center; gap: 8px; opacity: .35; } .owj-bal.on { opacity: 1; }
+.owj-bar { position: relative; flex: 1; height: 16px; border-radius: 8px; background: linear-gradient(90deg, #FF4757 0, #FFD23F 25%, #2ED573 42%, #2ED573 58%, #FFD23F 75%, #FF4757 100%); opacity: .9; }
+.owj-mid { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: #fff; }
+.owj-dot { position: absolute; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: #fff; border: 3px solid #2A2340; transition: left .05s linear; }
+.owj-dot.bad { border-color: #FF4757; } .owj-dot.good { border-color: #2ED573; }
+.owj-keys { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; } .owj-keys span { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.owj-keys i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; } .owj-keys i.r { background: #FF4757; } .owj-keys i.b { background: #3D7BFF; } .owj-keys i.g { background: #2ED573; }
+.owj-best b { color: var(--yellow); font-family: var(--disp); font-size: 14px; }

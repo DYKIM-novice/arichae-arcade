@@ -30,7 +30,8 @@
         const s = (e - gun - perf.react) / 1000;
         const pr = O.profile(D, perf.T / 1000, tau);
         const fin = s * 1000 >= perf.T;
-        const x = fin ? D + Math.min(6, (s - perf.T / 1000) * 3) : pr.pos(s);
+        let x = fin ? D + Math.min(6, (s - perf.T / 1000) * 3) : pr.pos(s);
+        if (cfg.botPos && !fin) x = cfg.botPos(perf, s, pr);
         const extra = [Math.round(pr.speed(Math.max(0, s)) * 100) / 100, fin ? 3 : 0];
         if (cfg.botExtra) cfg.botExtra(perf, s, x, extra);
         return [fin ? perf.score : 0, x, extra];
@@ -46,7 +47,8 @@
     const gun = (ctx.ev && ctx.ev.gun) || 2400;
     const tr = new O.Track(ctx, {
       D, surface: cfg.surface || 'track', view: cfg.view || 13, marks: cfg.marks || 10,
-      laneExtras: cfg.laneExtras, marksExtra: cfg.marksExtra, stripLabel: cfg.stripLabel, afterBuild: cfg.afterBuild
+      laneExtras: cfg.laneExtras, marksExtra: cfg.marksExtra, stripLabel: cfg.stripLabel, afterBuild: cfg.afterBuild,
+      winter: cfg.winter, gear: cfg.gear
     });
     const meter = cfg.noMeter ? { set() {} } : O.rateMeter(tr.hud, cfg.meterLabel);
     if (cfg.hud) cfg.hud(tr, ctx);
@@ -66,7 +68,7 @@
         if (!st.fin) {
           cfg.sim.step(st, STEP / 1000, st.e, gun);
           if (st.x >= D) {
-            st.fin = Math.max(1, st.e - gun);
+            st.fin = Math.max(1, st.e - gun) + (st.pen || 0);   // 바이애슬론 벌칙 시간
             st.x = D;
           }
         } else {
@@ -121,7 +123,7 @@
             if (a && a[0] >= 50000 && !fins[p.pid]) fins[p.pid] = Object.keys(fins).length + 1;
           }
           if (p.me && st.fin && !fins[p.pid]) fins[p.pid] = Object.keys(fins).length + 1;
-          A.ph += dt * (2.4 + v * 0.95);
+          A.ph += dt * (cfg.phRate ? cfg.phRate(v) : 2.4 + v * 0.95);
           const info = { e, gun, x, v, state, fin: !!fins[p.pid], me: p.me, extra, ph: A.ph, st: p.me ? st : null };
           const pose = cfg.pose ? cfg.pose(info) : defaultPose(info);
           tr.place(p.pid, x, pose, pose.lift || 0);

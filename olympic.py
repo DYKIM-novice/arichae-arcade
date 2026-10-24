@@ -43,9 +43,19 @@ def jav_dist(v: float, ang: float) -> float:
     return max(0.0, sp * sp * math.sin(math.radians(2 * ang)) / 9.8 * 0.92)
 
 
+RACES = ("o100", "ohurdle", "oswim", "wspeed", "wshort", "wbob", "wslalom", "wbiath")
+RACE_BASE = {   # AI 단계별 기록(초) — 1 쉬움 … 5 국가대표
+    "o100": [18.5, 15.8, 13.7, 12.1, 10.8], "ohurdle": [25.0, 21.5, 18.8, 16.6, 15.0],
+    "oswim": [43.0, 37.0, 32.0, 28.5, 25.5],
+    "wspeed": [55.0, 48.0, 42.0, 38.0, 35.0], "wshort": [46.0, 40.0, 35.5, 32.0, 29.0],
+    "wbob": [44.0, 39.0, 35.5, 32.5, 30.0], "wslalom": [50.0, 44.0, 39.5, 36.0, 33.0],
+    "wbiath": [56.0, 49.0, 44.0, 40.0, 36.5],
+}
+
+
 def new_event(gid: str, rng: random.Random) -> dict:
     """종목마다 모두에게 같은 값 (출발 총 시각 등)"""
-    if gid in ("o100", "ohurdle", "oswim"):
+    if gid in RACES:
         return {"gun": rng.randint(1800, 3000)}
     if gid == "oarch":
         return {"wind": [round(rng.uniform(-1, 1), 2) for _ in range(6)]}
@@ -56,14 +66,22 @@ def bot_perf(gid: str, lv: int, rng: random.Random, ev: dict) -> dict:
     """AI 선수 한 명의 이번 종목 기록 (score 와 끝나는 시각 done(ms, 시작부터))"""
     lv = max(1, min(5, int(lv)))
     k = lv - 1
-    if gid in ("o100", "ohurdle", "oswim"):
-        base = {"o100": [18.5, 15.8, 13.7, 12.1, 10.8], "ohurdle": [25.0, 21.5, 18.8, 16.6, 15.0],
-                "oswim": [43.0, 37.0, 32.0, 28.5, 25.5]}[gid][k]
+    if gid in RACES:
+        base = RACE_BASE[gid][k]
         t = _g(rng, base, base * 0.025, base * 0.9, base * 1.12)
         out = {"T": round(t * 1000), "react": rng.randint(140, 320)}
         if gid == "ohurdle":
             p = [0.35, 0.25, 0.16, 0.1, 0.05][k]
             out["knock"] = [i for i in range(HURDLES) if rng.random() < p]
+        if gid == "wbiath":
+            # 사격 5발 중 맞힌 것 (못 맞히면 벌칙 시간이 기록에 이미 들어 있어요)
+            hit = [0.55, 0.65, 0.75, 0.85, 0.93][k]
+            out["shots"] = [1 if rng.random() < hit else 0 for _ in range(5)]
+            out["T"] += (5 - sum(out["shots"])) * 3000
+        if gid == "wshort":
+            out["fall"] = 1 if rng.random() < [0.2, 0.14, 0.1, 0.06, 0.03][k] else 0
+            if out["fall"]:
+                out["T"] += 2500
         ms = ev["gun"] + out["react"] + out["T"]
         out["score"] = 100000 - (out["T"] + out["react"])
         out["done"] = ms + 600
@@ -81,6 +99,17 @@ def bot_perf(gid: str, lv: int, rng: random.Random, ev: dict) -> dict:
             tries.append({"v": round(v, 2), "a": round(ang, 1), "d": d, "f": f})
             best = max(best, d)
         return {"tries": tries, "score": best, "done": 1500 + 3 * 11000}
+    if gid == "wjump":
+        base = [72, 86, 100, 112, 123][k]
+        tries = []
+        best = 0
+        for i in range(2):
+            d = _g(rng, base, 5, base - 18, base + 12)
+            fall = rng.random() < [0.18, 0.12, 0.08, 0.05, 0.03][k]
+            cm = round(d * 100 * (0.8 if fall else 1))
+            tries.append({"d": cm, "fall": fall, "bal": round(rng.uniform(-0.3, 0.3), 2)})
+            best = max(best, cm)
+        return {"tries": tries, "score": best, "done": 1500 + 2 * 14000}
     if gid == "olift":
         cap = _g(rng, [75, 100, 125, 150, 175][k], 8, 40, 220)
         lifts = []
