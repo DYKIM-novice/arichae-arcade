@@ -207,7 +207,7 @@
     how: '직선 연타 · 곡선에선 초록 꾹 (3바퀴)',
     icon: ICON,
     buttons: ['r', 'g', 'b'], noGo: true, pressSound: false,
-    rules: ['직선에서는 빨·파를 번갈아 연타해서 빨라져요', '곡선에서는 초록을 꾹! 몸을 기울여야 빨리 돌 수 있어요', '안 기울이고 너무 빠르면 꽈당 · 직선에선 초록을 떼요 · 3바퀴'],
+    rules: ['직선에서는 빨·파 아무거나 연타해서 빨라져요', '곡선에서는 초록을 꾹! 몸을 기울여야 빨리 돌 수 있어요', '안 기울이고 너무 빠르면 꽈당 · 직선에선 초록을 떼요 · 3바퀴'],
     illus() {
       const b = (c, n) => `<div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX[c]};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE[c]}">${shape(c, 24)}</div></div><span style="color:${LIGHT[c]}">${n}</span></div>`;
       return `<div class="il-row">${b('r', '직선')}${b('b', '직선')}<svg width="56" height="34" viewBox="0 0 56 34"><rect x="3" y="3" width="50" height="28" rx="14" fill="none" stroke="#7FB8E0" stroke-width="4"/><path d="M42 5 A12 12 0 0 1 42 29" fill="none" stroke="#2ED573" stroke-width="4"/></svg>${b('g', '곡선 꾹')}</div>`;

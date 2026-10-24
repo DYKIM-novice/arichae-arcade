@@ -1,5 +1,5 @@
 /* 아리채 오락실 · 올림픽(하계) · 100m 달리기
-   빨강·파랑을 번갈아 연타하면 빨라져요. 출발 총소리 전에 누르면 부정출발(1초 늦게 출발). */
+   아무 버튼이나 마구 연타하면 빨라져요. 출발 총소리 전에 누르면 부정출발(1초 늦게 출발). */
 (function () {
   'use strict';
   const O = window.Oly;
@@ -12,12 +12,13 @@
     title: '100m 달리기',
     cat: '하계 · 육상',
     catColor: 'r',
-    how: '빨·파 번갈아 연타 · 부정출발 조심',
+    how: '아무 버튼이나 연타 · 부정출발 조심',
     icon: ICON,
     D: 100,
     view: 13,
-    buttons: ['r', 'b'],
-    rules: ['"탕!" 소리가 나면 빨강·파랑을 번갈아 마구 눌러요', '같은 버튼만 누르면 안 나가요 · 1초에 15번까지만 쳐줘요', '총소리 전에 누르면 부정출발! 1초 늦게 출발해요'],
+    buttons: ['r', 'g', 'b'],
+    meterLabel: '<i class="r"></i><i class="g"></i><i class="b"></i> 아무 버튼이나 연타!',
+    rules: ['"탕!" 소리가 나면 아무 버튼이나 마구 눌러요 (두 손가락으로 번갈아 치면 더 빨라요)', '1초에 15번까지만 쳐줘요', '총소리 전에 누르면 부정출발! 1초 늦게 출발해요'],
     illus() {
       const b = (c, n) => `<div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX[c]};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE[c]}">${shape(c, 24)}</div></div><span style="color:${LIGHT[c]}">${n}</span></div>`;
       const ar = '<svg width="34" height="30" viewBox="0 0 64 40" fill="none" stroke="#FFD23F" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 H54"/><path d="M42 8 L56 20 L42 32"/></svg>';

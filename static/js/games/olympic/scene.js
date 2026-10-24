@@ -209,7 +209,7 @@
 
   /* ---------- 연타 막대 (아래쪽 HUD) ---------- */
   function rateMeter(box, label) {
-    const w = G.kit.el(`<div class="oly-rate"><span class="oly-rate-k">${label || '<i class="r"></i><b>↔</b><i class="b"></i> 번갈아 연타!'}</span><span class="oly-rate-pips">${'<i></i>'.repeat(15)}</span><span class="oly-rate-n"><em>0</em>/초</span></div>`);
+    const w = G.kit.el(`<div class="oly-rate"><span class="oly-rate-k">${label || '<i class="r"></i><i class="b"></i> 아무 버튼이나 연타!'}</span><span class="oly-rate-pips">${'<i></i>'.repeat(15)}</span><span class="oly-rate-n"><em>0</em>/초</span></div>`);
     box.appendChild(w);
     const pips = Array.from(w.querySelectorAll('.oly-rate-pips i'));
     const num = w.querySelector('em');

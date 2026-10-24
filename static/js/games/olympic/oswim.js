@@ -1,5 +1,5 @@
 /* 아리채 오락실 · 올림픽(하계) · 수영 50m (자유형)
-   박자(둥·둥·둥)에 맞춰 빨·파를 번갈아 누르면 쭉쭉 나가요.
+   박자(둥·둥·둥)에 맞춰 빨·파 아무거나 누르면 쭉쭉 나가요.
    마구 누르면 헛물질 + 숨이 빨리 차요. 숨 막대가 줄면 초록으로 숨쉬기! */
 (function () {
   'use strict';
@@ -29,12 +29,10 @@
       }
       if (c !== 'r' && c !== 'b') return null;
       if (e < st.glideUntil || e - st.lastT < 200) return null;     // 너무 빨리 = 헛물질
-      const same = c === st.last;
       st.last = c; st.lastT = e;
       const ph = ((e - gun) % BEAT + BEAT) % BEAT;
       const err = Math.min(ph, BEAT - ph);
       let q = err < 70 ? 1 : err < 140 ? 0.7 : 0.3;
-      if (same) q = Math.min(q, 0.3);
       st.v = Math.min(2.4, st.v + 0.8 * q);
       st.breath -= 0.035 + (q < 0.5 ? 0.09 : 0);
       st.strokes += 1;
@@ -74,7 +72,7 @@
     title: '수영 50m',
     cat: '하계 · 수영',
     catColor: 'b',
-    how: '박자 맞춰 번갈아 · 숨 차면 초록',
+    how: '박자 맞춰 빨·파 · 숨 차면 초록',
     icon: ICON,
     D,
     surface: 'pool',
@@ -83,7 +81,7 @@
     buttons: ['r', 'g', 'b'],
     noMeter: true,
     stripLabel: '50m',
-    rules: ['노란 점이 가운데 오는 "둥!" 박자에 빨·파를 번갈아 눌러요', '박자에 딱 맞으면 쭉! 마구 누르면 헛물질하고 숨이 빨리 차요', '숨 막대가 줄면 초록을 눌러 숨쉬기 (잠깐 느려져요)'],
+    rules: ['노란 점이 가운데 오는 "둥!" 박자에 빨·파 아무거나 눌러요', '박자에 딱 맞으면 쭉! 마구 누르면 헛물질하고 숨이 빨리 차요', '숨 막대가 줄면 초록을 눌러 숨쉬기 (잠깐 느려져요)'],
     illus() {
       const b = (c, n) => `<div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX[c]};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE[c]}">${shape(c, 24)}</div></div><span style="color:${LIGHT[c]}">${n}</span></div>`;
       return `<div class="il-row">${b('r', '둥')}${b('b', '둥')}${b('r', '둥')}<span style="font-size:26px">·</span>${b('g', '숨')}</div>`;

@@ -62,8 +62,8 @@
     how: '출발 연타로 밀기 → 빨·파로 핸들',
     icon: ICON,
     D, halfView: 4.2, yScale: 0.22, tau: 6, bg: '#F8FCFF', cls: 'obob',
-    meterLabel: '<i class="r"></i><b>↔</b><i class="b"></i> 출발 연타 · 그다음 핸들',
-    rules: ['출발! 빨·파를 번갈아 연타해서 썰매를 힘껏 밀어요 (25m)', '썰매에 타면 점점 빨라져요 · 얼음 길이 휘는 쪽으로 핸들', '빨강 = 왼쪽, 파랑 = 오른쪽 · 벽에 부딪히면 쿵! 느려져요'],
+    meterLabel: '<i class="r"></i><i class="b"></i> 출발 연타 · 그다음 핸들',
+    rules: ['출발! 빨·파 아무거나 연타해서 썰매를 힘껏 밀어요 (25m)', '썰매에 타면 점점 빨라져요 · 얼음 길이 휘는 쪽으로 핸들', '빨강 = 왼쪽, 파랑 = 오른쪽 · 벽에 부딪히면 쿵! 느려져요'],
     illus() {
       const b = (c, n) => `<div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX[c]};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE[c]}">${shape(c, 24)}</div></div><span style="color:${LIGHT[c]}">${n}</span></div>`;
       return `<div class="il-row">${b('r', '◀ 왼쪽')}<svg width="40" height="50" viewBox="0 0 40 50"><path d="M6 50 Q2 26 14 16 T20 0 M26 50 Q22 26 34 16 T40 0" fill="none" stroke="#7FB8E0" stroke-width="3"/><rect x="14" y="22" width="9" height="16" rx="4.5" fill="#FF4757" transform="rotate(20 18 30)"/></svg>${b('b', '오른쪽 ▶')}</div>`;

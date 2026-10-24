@@ -70,7 +70,7 @@
     D,
     view: 15,
     buttons: ['r', 'g', 'b'],
-    rules: ['빨강·파랑을 번갈아 연타해서 달려요', '허들 바로 앞에서 초록! 폴짝 뛰어넘어요', '너무 일찍·늦게 뛰면 허들에 걸려 넘어지고 느려져요'],
+    rules: ['빨강·파랑 아무거나 연타해서 달려요', '허들 바로 앞에서 초록! 폴짝 뛰어넘어요', '너무 일찍·늦게 뛰면 허들에 걸려 넘어지고 느려져요'],
     illus() {
       const b = (c, n) => `<div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX[c]};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE[c]}">${shape(c, 24)}</div></div><span style="color:${LIGHT[c]}">${n}</span></div>`;
       return `<div class="il-row">${b('r', '달려')}${b('b', '달려')}<svg width="44" height="40" viewBox="0 0 44 40"><path d="M10 36 V20 M34 36 V20" stroke="#fff" stroke-width="3"/><rect x="6" y="15" width="32" height="6" rx="2" fill="#fff" stroke="#FF4757" stroke-width="1.5"/><path d="M2 12 Q22 -8 42 12" fill="none" stroke="#FFD23F" stroke-width="2.5" stroke-dasharray="4 3"/></svg>${b('g', '점프!')}</div>`;

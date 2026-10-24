@@ -178,13 +178,13 @@
     return O.P.run(i.ph, Math.min(1, i.v / 10.5));
   }
 
-  // 연타로 달리는 규칙 (100m·허들 공통): 번갈아 누르면 속도 +, 가만있으면 줄어요
+  // 연타로 달리는 규칙 (100m·허들 공통): 아무 버튼이나 누르면 속도 +, 가만있으면 줄어요
   function mashRunner(o) {
     const opt = Object.assign({ kick: 0.9, drag: 1.0, vmax: 12.2, falsePenalty: 1000 }, o || {});
     return {
       init() { return { mash: new O.Masher(66), v: 0, x: 0, waitUntil: 0, state: 0, falseN: 0 }; },
       press(st, c, e, gun) {
-        if (c !== 'r' && c !== 'b') return null;
+        if (c !== 'r' && c !== 'b' && c !== 'g') return null;
         if (e < gun) {
           if (!st.waitUntil) {
             st.waitUntil = gun + opt.falsePenalty;

@@ -1,7 +1,7 @@
 /* 아리채 오락실 · 올림픽관 공통 도구
    - 올림픽 전용 꼬마 선수 10명 (SVG 로 직접 그림 · 팔다리를 움직여요)
    - 경기장(하늘·관중석·트랙) 그리기, 레인 배치, 카메라
-   - 연타 세기(빨강·파랑 번갈아, 1초에 15번까지만 인정), 기록 글자
+   - 연타 세기(아무 버튼이나, 1초에 15번까지만 인정), 기록 글자
    종목 파일(o100.js 등)은 Oly.register(종목) 으로 등록해요. */
 (function () {
   'use strict';
@@ -327,10 +327,9 @@
   /* ---------- 연타 세기 ---------- */
   class Masher {
     constructor(minGap) { this.last = null; this.lastT = -1e9; this.taps = []; this.gap = minGap || 66; this.count = 0; }
-    // 1 = 인정, 0 = 너무 빠름(무시), -1 = 같은 버튼
+    // 1 = 인정, 0 = 너무 빠름(무시) — 아무 버튼이나 연타해도 돼요 (번갈아 누를 필요 없음)
     press(c, t) {
-      if (c !== 'r' && c !== 'b') return 0;
-      if (c === this.last) return -1;
+      if (c !== 'r' && c !== 'b' && c !== 'g') return 0;
       if (t - this.lastT < this.gap) return 0;
       this.last = c; this.lastT = t; this.taps.push(t); this.count++;
       return 1;
