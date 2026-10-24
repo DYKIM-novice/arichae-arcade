@@ -39,6 +39,7 @@ class Gonggi:
         self.ev = 0
         self.tries = 0
         self.deadline = 0.0
+        self.live: Optional[dict] = None     # 사람 차례: 지금 손놀림 (다른 폰에서 구경하게)
         self._set_deadline()
 
     def _set_deadline(self) -> None:
@@ -60,6 +61,9 @@ class Gonggi:
     def act(self, i: int, a: dict) -> Optional[str]:
         if i != self.actor():
             return "지금은 내 차례가 아니에요"
+        if a.get("k") == "live":
+            self.live = self._clean_live(a)
+            return None
         if a.get("k") != "result":
             return None
         try:
@@ -70,6 +74,7 @@ class Gonggi:
             return None                          # 지난 단계 결과
         ok = bool(a.get("ok"))
         self.tries += 1
+        self.live = None
         if st < 5:
             if ok:
                 self.stage[i] += 1
@@ -99,6 +104,21 @@ class Gonggi:
             self._pass()
         return None
 
+    @staticmethod
+    def _clean_live(a: dict) -> Optional[dict]:
+        """구경용 손놀림 정보만 골라서 (모양이 이상하면 버려요)"""
+        try:
+            ph = str(a.get("ph", ""))
+            if ph not in ("ready", "air", "up5", "back", "up5b"):
+                return None
+            fl = []
+            for f in (a.get("fl") or [])[:5]:
+                fl.append([round(max(0.0, min(100.0, float(f[0]))), 1), round(max(0.0, min(110.0, float(f[1]))), 1), 1 if f[2] else 0])
+            return {"st": int(a.get("st", 1)), "ph": ph, "fl": fl, "need": int(a.get("need", 0)), "picks": int(a.get("picks", 0)),
+                    "n": int(a.get("n", 0)), "hand": int(a.get("hand", 1)), "sq": int(a.get("sq", 0))}
+        except (TypeError, ValueError, IndexError):
+            return None
+
     def _pass(self) -> None:
         self.turn = (self.turn + 1) % self.n
         self._set_deadline()
@@ -120,7 +140,7 @@ class Gonggi:
         return {"k": "result", "st": 5, "ok": self.rng.random() < p, "n": n}
 
     def view(self, seat: Optional[int]) -> dict:
-        v = {"turn": self.turn, "toAct": self.actor(), "stage": self.stage[:], "score": self.score[:], "goal": self.goal,
+        v = {"turn": self.turn, "toAct": self.actor(), "stage": self.stage[:], "score": self.score[:], "goal": self.goal, "live": self.live,
              "speed": self.speed, "events": self.events[-4:], "me": seat, "over": self.over, "ai": sorted(self.ai),
              "deadline": int(self.deadline * 1000) if self.deadline else 0}
         if self.over:
