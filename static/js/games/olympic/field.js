@@ -139,10 +139,42 @@
         // [최고 기록, 지금 x, [시도, 단계, 각도, 날기(0~1), 거리cm, 파울]]
         return [b.best, b.x, [b.att, PHC[b.ph], Math.round(b.ang), Math.round((b.f || 0) * 100) / 100, b.ph === 'air' || b.ph === 'land' ? Math.round((b.fd || 0) * 100) : 0, b.foul || 0]];
       },
-      create(ctx) { return makeField(ctx, cfg, sim); }
+      create(ctx) { return makeField(ctx, cfg, sim); },
+      // 혼자 연습: 저장해 둔 누른 기록으로 '내 최고 기록' 유령 선수
+      ghost(gctx, log) { return replayField(sim, log); }
     };
     O.register(def);
     return def;
+  }
+
+  // 지금 상태 → 화면에 보낼 값 (내 선수 · 유령이 같이 써요)
+  function infoOf(st) {
+    const f = st.ph === 'air' ? Math.min(1, (st.e - st.fT) / (st.fdur * 1000)) : st.ph === 'land' ? 1 : 0;
+    return { att: st.att, ph: st.ph, x: st.x, v: st.v, ang: st.ang, f, fx: st.fx, fd: st.fd, best: st.best, foul: st.ph === 'foul' ? 1 : 0, last: st.tries[st.tries.length - 1] || 0 };
+  }
+  function extraOf(I) {
+    return [I.att, PHC[I.ph] || 0, Math.round(I.ang), Math.round(I.f * 100) / 100, I.ph === 'air' || I.ph === 'land' ? Math.round(I.fd * 100) : 0, I.foul];
+  }
+  function replayField(sim, log) {
+    const st = sim.init();
+    st.e = 0;
+    const L = log || [];
+    let i = 0;
+    const simTo = (e) => { while (st.e + STEP <= e) { st.e += STEP; sim.step(st, STEP / 1000, st.e); } };
+    return {
+      at(e) {
+        while (i < L.length && L[i][0] <= e) {
+          const le = L[i][0]; const k = String(L[i][1]); i++;
+          simTo(le);
+          const c = k.toLowerCase();
+          if (k !== c) sim.release(st, c, le); else sim.press(st, c, le);
+        }
+        simTo(e);
+        const I = infoOf(st);
+        return [st.best, Math.round(st.x * 100) / 100, extraOf(I)];
+      },
+      score: () => st.best
+    };
   }
 
   function makeField(ctx, cfg, sim) {
@@ -176,10 +208,7 @@
         ctx.fx.burst(box.width * 0.5, box.height * 0.5, '#FFD23F', 18);
       }
     }
-    function meInfo() {
-      const f = st.ph === 'air' ? Math.min(1, (st.e - st.fT) / (st.fdur * 1000)) : st.ph === 'land' ? 1 : 0;
-      return { att: st.att, ph: st.ph, x: st.x, v: st.v, ang: st.ang, f, fx: st.fx, fd: st.fd, best: st.best, foul: st.ph === 'foul' ? 1 : 0, last: st.tries[st.tries.length - 1] || 0 };
-    }
+    const meInfo = () => infoOf(st);
     return {
       start() { tr.follow(0, 1); },
       tick(t) {
@@ -241,10 +270,7 @@
       done: () => st.done && st.e - st.doneT > 600,
       score: () => st.best,
       value: () => Math.round(st.x * 100) / 100,
-      extra: () => {
-        const I = meInfo();
-        return [I.att, PHC[I.ph] || 0, Math.round(I.ang), Math.round(I.f * 100) / 100, I.ph === 'air' || I.ph === 'land' ? Math.round(I.fd * 100) : 0, I.foul];
-      },
+      extra: () => extraOf(meInfo()),
       log: () => log,
       summary: () => (st.best ? `최고 ${O.fmtM(st.best)}` : '기록 없음 (모두 파울)')
     };

@@ -27,10 +27,49 @@
         const d = fin ? D + Math.min(20, (s - perf.T / 1000) * 8) : pr.pos(s);
         return [fin ? perf.score : 0, d, [Math.round(pr.speed(Math.max(0, s)) * 10) / 10, fin ? 3 : 0, Math.round(cfg.botLat(d) * 100) / 100]];
       },
-      create(ctx) { return make(ctx, cfg); }
+      create(ctx) { return make(ctx, cfg); },
+      // 혼자 연습: 저장해 둔 누른 기록으로 '내 최고 기록' 유령 썰매
+      ghost(gctx, log) { return replay(gctx, log, cfg); }
     };
     O.register(def);
     return def;
+  }
+
+  // 규칙을 e(ms)까지 10ms 씩 (화면 경기와 유령이 같은 계산) · say 는 화면이 있을 때만
+  function stepper(st, cfg, gun, react) {
+    const D = cfg.D;
+    return function simTo(e) {
+      while (st.e + STEP <= e) {
+        st.e += STEP;
+        if (st.fin) { st.v *= Math.exp(-1.5 * STEP / 1000); st.d += st.v * STEP / 1000; continue; }
+        const r = cfg.sim.step(st, STEP / 1000, st.e, gun);
+        if (react) react(r);
+        if (st.d >= D) st.fin = Math.max(1, st.e - gun) + (st.pen || 0);
+      }
+    };
+  }
+  function replay(gctx, log, cfg) {
+    const D = cfg.D;
+    const gun = (gctx.ev && gctx.ev.gun) || 2400;
+    const st = cfg.sim.init(gctx);
+    st.e = 0; st.fin = 0;
+    const simTo = stepper(st, cfg, gun, null);
+    const L = log || [];
+    let i = 0;
+    const score = () => (st.fin ? 100000 - st.fin : Math.round(Math.min(st.d, D - 0.01) * 100));
+    return {
+      at(e) {
+        while (i < L.length && L[i][0] <= e) {
+          const le = L[i][0]; const k = String(L[i][1]); i++;
+          if (k !== k.toLowerCase()) continue;     // 떼기는 규칙에 안 써요 (화면 경기와 같게)
+          simTo(le);
+          cfg.sim.press(st, k, le, gun);
+        }
+        simTo(e);
+        return [score(), Math.round(st.d * 100) / 100, [Math.round(st.v * 10) / 10, st.fin ? 3 : (st.state || 0), Math.round(st.lat * 100) / 100]];
+      },
+      score
+    };
   }
 
   function make(ctx, cfg) {
@@ -84,14 +123,7 @@
     const shown = {};
     function say(t, c, ms) { msgEl.textContent = t; msgEl.style.color = c || '#fff'; msgEl.classList.remove('show'); void msgEl.offsetWidth; msgEl.classList.add('show'); clearTimeout(msgT); if (ms !== 0) msgT = setTimeout(() => msgEl.classList.remove('show'), ms || 1100); }
     function react(r) { if (!r) return; if (r.say) say(r.say, r.color, r.ms); if (r.sfx && ctx.sfx[r.sfx]) ctx.sfx[r.sfx](); if (r.vib) ctx.vibrate(r.vib); }
-    function simTo(e) {
-      while (st.e + STEP <= e) {
-        st.e += STEP;
-        if (st.fin) { st.v *= Math.exp(-1.5 * STEP / 1000); st.d += st.v * STEP / 1000; continue; }
-        react(cfg.sim.step(st, STEP / 1000, st.e, gun));
-        if (st.d >= D) st.fin = Math.max(1, st.e - gun) + (st.pen || 0);
-      }
-    }
+    const simTo = stepper(st, cfg, gun, react);
     // 화면 좌표: 가로 = 옆(m), 세로 = 앞뒤 (앞이 위)
     const SX = (lat) => Wd / 2 + (lat - camLat) * px;
     const SY = (d) => meY - (d - st.d) * py;

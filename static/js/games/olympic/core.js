@@ -28,9 +28,10 @@
   ATH.forEach((a, i) => { a.i = i; BY[a.id] = a; });
   const ath = (id) => BY[id] || ATH[0];
 
-  /* ---------- 얼굴 (눈·입·볼) — ex: n 보통, e 힘줌, h 기쁨, d 어질, s 슬픔 ---------- */
+  /* ---------- 얼굴 (눈·입·볼) — ex: n 보통, e 힘줌, h 기쁨, d 어질, s 슬픔, o 깜짝 ---------- */
   function eyes(ex, x1, x2, y) {
     const one = (x) => {
+      if (ex === 'o') return `<circle cx="${x}" cy="${y}" r="4.4" fill="#fff" stroke="#2A2340" stroke-width="1.5"/><circle cx="${x + 0.9}" cy="${y + 0.3}" r="1.8" fill="#2A2340"/>`;
       if (ex === 'e') return `<path d="M${x - 3.5} ${y - 3} L${x + 1.5} ${y} L${x - 3.5} ${y + 3}" fill="none" stroke="#2A2340" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" transform="${x === x2 ? `translate(${2 * x} 0) scale(-1 1)` : ''}"/>`;
       if (ex === 'h') return `<path d="M${x - 3.6} ${y + 1.5} Q${x} ${y - 4} ${x + 3.6} ${y + 1.5}" fill="none" stroke="#2A2340" stroke-width="2.4" stroke-linecap="round"/>`;
       if (ex === 'd') return `<path d="M${x} ${y} m-3 0 a3 3 0 1 1 3 3 a2 2 0 1 1 -2 -2" fill="none" stroke="#2A2340" stroke-width="1.6" stroke-linecap="round"/>`;
@@ -40,6 +41,7 @@
     return one(x1) + one(x2);
   }
   function mouth(ex, x, y) {
+    if (ex === 'o') return `<ellipse cx="${x}" cy="${y + 2}" rx="3.2" ry="4.2" fill="#7A2236"/>`;
     if (ex === 'e') return `<path d="M${x - 4.5} ${y - 1} Q${x} ${y + 5.5} ${x + 4.5} ${y - 1} Z" fill="#7A2236"/><path d="M${x - 3.4} ${y - .4} H${x + 3.4}" stroke="#fff" stroke-width="1.3"/>`;
     if (ex === 'h') return `<path d="M${x - 4.5} ${y - 1.5} Q${x} ${y + 6} ${x + 4.5} ${y - 1.5} Z" fill="#7A2236"/><path d="M${x - 2.4} ${y + 2.2} Q${x} ${y + 3.6} ${x + 2.4} ${y + 2.2}" fill="#FF8FA6"/>`;
     if (ex === 'd') return `<path d="M${x - 4} ${y + 1} q1.3 -2 2.6 0 t2.6 0 t2.6 0" fill="none" stroke="#2A2340" stroke-width="1.6" stroke-linecap="round"/>`;
@@ -181,7 +183,7 @@
     let shoe = '<ellipse cx="2.4" cy="8.6" rx="5.6" ry="3.6" fill="#fff" stroke="#2A2340" stroke-width="1.2"/><path d="M-1 8 h5" stroke="' + a.jersey + '" stroke-width="1.6"/>';
     // 장비: 스케이트 날 · 스키
     if (o.gear === 'skates') shoe += '<path d="M-5 13.4 H11 Q13 13.4 13 11.6" fill="none" stroke="#C9D3E0" stroke-width="1.8" stroke-linecap="round"/><path d="M-1 11.8 V13.4 M7 11.8 V13.4" stroke="#8C96A8" stroke-width="1.4"/>';
-    if (o.gear === 'skis') shoe += `<path d="M-16 13 H24 Q29 13 29 8" fill="none" stroke="#2A2340" stroke-width="4.4" stroke-linecap="round"/><path d="M-15 13 H24 Q28 13 28 9" fill="none" stroke="${a.shorts}" stroke-width="2.6" stroke-linecap="round"/>`;
+    if (o.gear === 'skis') shoe += `<g class="oa-ski"><path d="M-16 13 H24 Q29 13 29 8" fill="none" stroke="#2A2340" stroke-width="4.4" stroke-linecap="round"/><path d="M-15 13 H24 Q28 13 28 9" fill="none" stroke="${a.shorts}" stroke-width="2.6" stroke-linecap="round"/></g>`;
     const legHTML = (shade) => `<g class="th">${limb(9, 7.5, shade ? a.dark : a.skin)}<g class="sh" transform="translate(0 8)">${limb(7, 7, shade ? a.dark : a.skin, shoe)}</g></g>`;
     const armHTML = (shade) => `<g>${limb(11, 6.2, shade ? a.dark : a.skin)}<circle cy="12.5" r="4.4" fill="${shade ? a.dark : a.skin}"/><g class="hold" transform="translate(0 12.5)"></g></g>`;
     const tilt = el('g', {});           // 몸 기울기 (엉덩이 기준)
@@ -201,6 +203,9 @@
     const headWrap = el('g', { transform: 'translate(3 -64)' });
     const head = el('g', {}, HEAD[a.id]('n'));
     headWrap.appendChild(head);
+    const hatG = el('g', { class: 'oa-hat' });   // 머리 위에 얹는 것 (눈덩이·새 등)
+    headWrap.appendChild(hatG);
+    let hatHTML = '';
     [backArm, backLeg, back, torso, frontLeg, frontArm, headWrap].forEach((x) => tilt.appendChild(x));
     const fx = el('g', { class: 'oa-fx' });   // 땀·별 등
     root.appendChild(fx);
@@ -219,13 +224,17 @@
     };
     let curEx = 'n';
     let fxKind = '';
+    let fxMoved = false;
     const api = {
       g: root, a, parts,
       // 자세: 각도는 도(°). 다리·팔 0 = 아래로, + = 앞으로. 무릎 + = 뒤로 굽힘
       set(p) {
         const P = p || {};
         root.setAttribute('transform', `translate(${(P.x || 0).toFixed(1)} ${(P.y || 0).toFixed(1)}) scale(${(P.s || 1).toFixed(3)})`);
-        body.setAttribute('transform', `translate(0 ${(P.bob || 0).toFixed(2)})`);
+        // sq: 찌그러짐(+ 납작 · - 길쭉) — 발바닥 기준으로 늘였다 줄였다
+        const sq = P.sq || 0;
+        body.setAttribute('transform', `translate(0 ${(P.bob || 0).toFixed(2)})${sq ? ` scale(${(1 + sq).toFixed(3)} ${(1 - sq).toFixed(3)})` : ''}`);
+        if (P.fxx || P.fxy || fxMoved) { fxMoved = !!(P.fxx || P.fxy); fx.setAttribute('transform', `translate(${(P.fxx || 0).toFixed(1)} ${(P.fxy || 0).toFixed(1)})`); }
         tilt.setAttribute('transform', `rotate(${(P.tilt || 0).toFixed(1)} 0 -18)`);
         parts.fth.setAttribute('transform', `rotate(${(-(P.fl || 0)).toFixed(1)})`);
         parts.bth.setAttribute('transform', `rotate(${(-(P.bl || 0)).toFixed(1)})`);
@@ -242,6 +251,7 @@
         }
       },
       hold(html, front) { (front === false ? parts.bhold : parts.fhold).innerHTML = html || ''; },
+      hat(html) { const h = html || ''; if (h !== hatHTML) { hatHTML = h; hatG.innerHTML = h; } },
       remove() { root.remove(); }
     };
     api.set({});
@@ -376,7 +386,7 @@
     const bar = w.firstElementChild;
     const heads = {};
     list.slice().reverse().forEach((p) => {
-      const h = G.kit.el(`<span class="oly-strip-h${p.me ? ' me' : ''}">${faceSVG(p.athlete)}</span>`);
+      const h = G.kit.el(`<span class="oly-strip-h${p.me ? ' me' : ''}${p.ghost ? ' opr-ghost' : ''}">${faceSVG(p.athlete)}</span>`);
       bar.appendChild(h);
       heads[p.pid] = h;
     });

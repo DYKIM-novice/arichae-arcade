@@ -117,7 +117,7 @@
       this.ath = {};
       for (let i = this.n - 1; i >= 0; i--) {
         const p = this.list[i];
-        const laneG = el('g', {});
+        const laneG = el('g', p.ghost ? { class: 'opr-ghost' } : {});   // 혼자 연습의 '내 최고 기록' 유령은 반투명
         this.layers.ath.appendChild(laneG);
         if (this.o.laneExtras) this.o.laneExtras(laneG, L[i], i, this);
         const a = O.makeAthlete(p.athlete, p.bib, { tag: p.me ? '나' : p.name, me: p.me, gear: this.o.gear, winter: this.o.winter });

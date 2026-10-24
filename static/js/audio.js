@@ -203,7 +203,41 @@
       const n = [[523, 0], [659, 0.12], [784, 0.24], [1047, 0.36], [784, 0.52], [1047, 0.64]];
       n.forEach(([f, d], i) => tone(f, i === n.length - 1 ? 0.6 : 0.14, { type: 'square', vol: 0.12, delay: d }));
       tone(262, 0.9, { type: 'triangle', vol: 0.2, delay: 0.36 });
-    }
+    },
+    /* ---- 올림픽관 손맛·몸개그 소리 ---- */
+    // 관중 함성 (k: 0~1 크기)
+    roar(k) {
+      const v = k == null ? 1 : k;
+      noise(1.5, { vol: 0.13 * v, freq: 850, filter: 'bandpass' });
+      noise(1.1, { vol: 0.07 * v, freq: 2300, filter: 'bandpass', delay: 0.08 });
+      noise(0.7, { vol: 0.05 * v, freq: 500, filter: 'lowpass', delay: 0.05 });
+    },
+    quack() {
+      tone(560, 0.11, { type: 'sawtooth', vol: 0.13, slide: 360 });
+      tone(540, 0.13, { type: 'sawtooth', vol: 0.12, slide: 330, delay: 0.15 });
+    },
+    boing() {
+      tone(150, 0.32, { type: 'sine', vol: 0.3, slide: 520 });
+      tone(300, 0.2, { type: 'triangle', vol: 0.08, slide: 900, delay: 0.04 });
+    },
+    thud() {
+      tone(110, 0.2, { type: 'sine', vol: 0.45, slide: 40 });
+      noise(0.1, { vol: 0.12, freq: 380, filter: 'lowpass' });
+    },
+    splat() {
+      noise(0.3, { vol: 0.2, freq: 1100, filter: 'lowpass' });
+      tone(240, 0.14, { type: 'triangle', vol: 0.18, slide: 70 });
+    },
+    shutter() {
+      noise(0.035, { vol: 0.22, freq: 3200 });
+      noise(0.05, { vol: 0.16, freq: 1800, filter: 'bandpass', delay: 0.07 });
+    },
+    tweet() {
+      tone(2300, 0.07, { type: 'sine', vol: 0.12, slide: 3300 });
+      tone(2500, 0.07, { type: 'sine', vol: 0.1, slide: 3500, delay: 0.1 });
+    },
+    scrape() { noise(0.22, { vol: 0.06, freq: 4200 }); },
+    whistle() { tone(2400, 0.22, { type: 'sine', vol: 0.12, slide: 1500 }); }
   };
 
   /* ---------- 배경음악: 8비트 스타일 시퀀서 ---------- */

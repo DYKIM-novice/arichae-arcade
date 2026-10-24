@@ -36,10 +36,57 @@
         if (cfg.botExtra) cfg.botExtra(perf, s, x, extra);
         return [fin ? perf.score : 0, x, extra];
       },
-      create(ctx) { return makeRace(ctx, cfg); }
+      create(ctx) { return makeRace(ctx, cfg); },
+      // 혼자 연습: 저장해 둔 누른 기록(log)을 화면 없이 다시 돌려 '내 최고 기록' 유령 선수를 만들어요
+      ghost(gctx, log) { return replayRace(gctx, log, cfg); }
     };
     O.register(def);
     return def;
+  }
+
+  // 규칙을 e(ms)까지 10ms 씩 계산 (화면 경기와 유령이 똑같은 계산을 써요)
+  function stepper(st, cfg, gun) {
+    const D = cfg.D;
+    return function simTo(e) {
+      while (st.e + STEP <= e) {
+        st.e += STEP;
+        if (!st.fin) {
+          cfg.sim.step(st, STEP / 1000, st.e, gun);
+          if (st.x >= D) {
+            st.fin = Math.max(1, st.e - gun) + (st.pen || 0);   // 바이애슬론 벌칙 시간
+            st.x = D;
+          }
+        } else {
+          // 들어온 뒤에는 천천히 멈춰요
+          st.v *= Math.exp(-2.2 * STEP / 1000);
+          st.x += st.v * STEP / 1000;
+        }
+      }
+    };
+  }
+
+  // 유령: at(e) → 다른 선수와 같은 꼴 [점수, 거리, 덧붙임]
+  function replayRace(gctx, log, cfg) {
+    const gun = (gctx.ev && gctx.ev.gun) || 2400;
+    const st = cfg.sim.init(gctx);
+    st.x = st.x || 0; st.v = st.v || 0; st.fin = 0; st.e = 0;
+    const simTo = stepper(st, cfg, gun);
+    const L = log || [];
+    let i = 0;
+    return {
+      at(e) {
+        while (i < L.length && L[i][0] <= e) {
+          const le = L[i][0]; const k = String(L[i][1]); i++;
+          simTo(le);
+          const c = k.toLowerCase();
+          if (k !== c) { if (cfg.sim.release) cfg.sim.release(st, c, le, gun); } else cfg.sim.press(st, c, le, gun);
+        }
+        simTo(e);
+        const sc = st.fin ? 100000 - st.fin : Math.round(st.x * 100);
+        return [sc, Math.round(st.x * 100) / 100, [Math.round(st.v * 100) / 100, st.fin ? 3 : (st.state || 0)].concat(cfg.extra ? cfg.extra(st) : [])];
+      },
+      score: () => (st.fin ? 100000 - st.fin : Math.round(st.x * 100))
+    };
   }
 
   function makeRace(ctx, cfg) {
@@ -61,23 +108,9 @@
     let finSaid = false;
     const me = tr.list.find((p) => p.me);
     const fins = {};      // pid → 들어온 순서
-
-    function simTo(e) {
-      while (st.e + STEP <= e) {
-        st.e += STEP;
-        if (!st.fin) {
-          cfg.sim.step(st, STEP / 1000, st.e, gun);
-          if (st.x >= D) {
-            st.fin = Math.max(1, st.e - gun) + (st.pen || 0);   // 바이애슬론 벌칙 시간
-            st.x = D;
-          }
-        } else {
-          // 들어온 뒤에는 천천히 멈춰요
-          st.v *= Math.exp(-2.2 * STEP / 1000);
-          st.x += st.v * STEP / 1000;
-        }
-      }
-    }
+    const simTo = stepper(st, cfg, gun);
+    // 손맛·몸개그 (fx.js) — 켠 종목만 (100m)
+    const J = cfg.juice && O.fx ? O.fx.raceJuice(ctx, tr, cfg, st, gun) : null;
 
     function myScore() { return st.fin ? 100000 - st.fin : Math.round(st.x * 100); }
 
@@ -104,9 +137,9 @@
         starter.tick(t);
         simTo(e);
         meter.set(cfg.rate ? cfg.rate(st, e) : st.mash ? st.mash.rate(e) : 0);
-        // 전광판 시계
-        tr.setBoard(e < gun ? '0.00' : st.fin ? (st.fin / 1000).toFixed(2) : ((e - gun) / 1000).toFixed(2));
         const live = ctx.live();
+        // 1) 지금 모두의 상태
+        const ents = {};
         tr.list.forEach((p) => {
           const A = tr.ath[p.pid];
           if (!A) return;
@@ -123,15 +156,30 @@
             if (a && a[0] >= 50000 && !fins[p.pid]) fins[p.pid] = Object.keys(fins).length + 1;
           }
           if (p.me && st.fin && !fins[p.pid]) fins[p.pid] = Object.keys(fins).length + 1;
-          A.ph += dt * (cfg.phRate ? cfg.phRate(v) : 2.4 + v * 0.95);
-          const info = { e, gun, x, v, state, fin: !!fins[p.pid], me: p.me, extra, ph: A.ph, st: p.me ? st : null };
-          const pose = cfg.pose ? cfg.pose(info) : defaultPose(info);
-          tr.place(p.pid, x, pose, pose.lift || 0);
-          tr.strip.set(p.pid, x / D);
+          ents[p.pid] = { x, v, state, extra, fin: !!fins[p.pid] };
         });
-        tr.follow(st.x, dt || 0.016);
+        // 2) 화면에 보여줄 모습 (손맛 종목은 포토 피니시 때 잠깐 느린 화면)
+        const view = J ? J.frame(e, dt, ents) : { e, a: ents, rate: 1 };
+        const de = view.e;
+        // 전광판 시계
+        tr.setBoard(de < gun ? '0.00' : st.fin && de - gun >= st.fin ? (st.fin / 1000).toFixed(2) : ((de - gun) / 1000).toFixed(2));
+        tr.list.forEach((p) => {
+          const A = tr.ath[p.pid];
+          const E = view.a[p.pid];
+          if (!A || !E) return;
+          A.ph += dt * view.rate * (cfg.phRate ? cfg.phRate(E.v) : 2.4 + E.v * 0.95);
+          const info = { e: de, gun, x: E.x, v: E.v, state: E.state, fin: E.fin, me: p.me, extra: E.extra, ph: A.ph, st: p.me ? st : null };
+          let pose = cfg.pose ? cfg.pose(info) : defaultPose(info);
+          let px = E.x;
+          if (J) { const r = J.pose(p, A, info, pose); pose = r.pose; px = r.x; }
+          tr.place(p.pid, px, pose, pose.lift || 0);
+          tr.strip.set(p.pid, E.x / D);
+        });
+        const meE = view.a[me.pid];
+        tr.follow(meE ? meE.x : st.x, dt || 0.016);
+        if (J) J.after(e, dt, view);
         if (cfg.tick) cfg.tick(tr, st, e, ctx, live);
-        if (st.fin && !finSaid) {
+        if (st.fin && !finSaid && (!J || (meE && meE.x >= D))) {
           finSaid = true;
           const r = rankNow();
           tr.say(`골인! ${(st.fin / 1000).toFixed(2)}초`, '#FFD23F', 2400);
@@ -140,6 +188,7 @@
           const box = ctx.stage.getBoundingClientRect();
           ctx.fx.burst(box.width * 0.4, box.height * 0.55, '#FFD23F', 26);
           ctx.setBadge(`${r}위`, r === 1 ? 'y' : 'b');
+          if (J) J.finish(myScore(), r, e);
         } else if (!st.fin && e > gun) {
           ctx.setBadge(`${rankNow()}위`, 'b');
         }
@@ -150,6 +199,7 @@
         simTo(e);
         log.push([Math.round(e), c]);
         const r = cfg.sim.press(st, c, e, gun);
+        if (J && r) J.press(r, e);
         if (r && r.say) tr.say(r.say, r.color || '#FF8B95', r.ms || 1200);
         if (r && r.sfx) ctx.sfx[r.sfx] && ctx.sfx[r.sfx]();
         if (r && r.vib) ctx.vibrate(r.vib);
@@ -160,7 +210,7 @@
         log.push([Math.round(e), c.toUpperCase()]);
         if (cfg.sim.release) cfg.sim.release(st, c, e, gun);
       },
-      end() { tr.destroy(); },
+      end() { if (J) J.destroy(); tr.destroy(); },
       done: () => !!st.fin && st.e - gun - st.fin > 1500,
       score: myScore,
       value: () => Math.round(st.x * 100) / 100,

@@ -10,7 +10,10 @@
   const SND = window.Sound;
 
   // 다른 모듈이 끼어들 수 있는 자리 (메시지 받을 때, 상태 바뀔 때, 결과·최종 화면)
-  const HOOKS = { message: [], state: [], result: [], final: [] };
+  // olyPanel: 올림픽 대기실 종목 카드를 그린 뒤 (혼자 연습 버튼 등)
+  const HOOKS = { message: [], state: [], result: [], final: [], olyPanel: [] };
+  // 혼자 연습처럼 서버 없이 도는 화면이 패드 입력을 잠깐 가져갈 때 (null 이면 방 경기로)
+  let padTaker = null;
 
   const KEY_SESSION = 'arichae_session';
   const KEY_PROFILE = 'arichae_profile';
@@ -801,6 +804,7 @@
     $('#oly-ai').innerHTML = `<div class="oly-ai-row"><button type="button" class="cd-step" data-oai="-1" ${dis || (nAi <= 0 ? 'disabled' : '')}>−</button>
         <b class="disp">AI ${nAi}명</b><button type="button" class="cd-step" data-oai="1" ${dis || (nAi >= maxAi ? 'disabled' : '')}>+</button></div>
       ${nAi ? `<div class="oly-lv">${OLY_LV.map((l) => `<button type="button" data-olv="${l.n}" class="${o.lv === l.n ? 'on' : ''}" ${dis}><b>${l.n}</b><span>${l.name}</span></button>`).join('')}</div>` : ''}`;
+    HOOKS.olyPanel.forEach((fn) => { try { fn(isHost); } catch (e) { console.error(e); } });
   }
 
   // 음악관: 난이도(초·중) + 곡 고르기
@@ -1192,6 +1196,9 @@
     const room = S.room;
     const cur = room.current;
     if (!cur || !cur.game) return;
+    // 혼자 연습 중이었다면 먼저 깨끗이 끝내요 (방 경기가 우선)
+    if (padTaker && padTaker.abort) { try { padTaker.abort(); } catch (e) { console.error(e); } }
+    padTaker = null;
     cleanupGame();
     S.playIndex = cur.index;
     S.def = G.get(cur.game);
@@ -1662,6 +1669,7 @@
 
   /* ---------- 입력 ---------- */
   function press(c) {
+    if (padTaker) { if (performance.now() >= S.lockUntil) padTaker.press(c); return; }
     if (!S.inst || S.ended || S.spectator || !S.def) return;
     if (!S.def.buttons.includes(c)) return;
     if (performance.now() < S.lockUntil) return;
@@ -1670,6 +1678,7 @@
   }
 
   function release(c) {
+    if (padTaker) { if (padTaker.release) padTaker.release(c); return; }
     if (!S.inst || S.ended || S.spectator || !S.def) return;
     if (typeof S.inst.onRelease === 'function') S.inst.onRelease(c, serverNow());
   }
@@ -1685,7 +1694,7 @@
         try { btn.setPointerCapture(e.pointerId); } catch (err) { /* 무시 */ }
         bez.classList.add('down');
         isDown = true;
-        if (S.inst && !S.ended && !bez.classList.contains('unused')) spawnWave(bez, c);
+        if ((padTaker ? padTaker.wave !== false : S.inst && !S.ended) && !bez.classList.contains('unused')) spawnWave(bez, c);
         press(c);
       };
       const up = () => {
@@ -2082,7 +2091,12 @@
     $, $$, esc, S, G, A, SND,
     send, toast, banner, showScreen, me, playerById, fmtNum, serverNow, setTheme, confetti, later,
     podiumHTML, standingsHTML, wakeLock, avatar, medalIcon,
-    hooks: HOOKS
+    hooks: HOOKS,
+    // 플레이 화면 도구 (혼자 연습이 방 경기와 같은 화면·효과를 쓰게)
+    play: { setScore, setBadge, lockPad, burst, floatText, shake, flash, edgeFlash, sparkleHud, tickScore, stylePad, cleanupGame, showGo },
+    // 패드 입력 가져가기: takePad({ press(c), release(c), abort(), wave }) · takePad(null) 로 돌려줘요
+    takePad(h) { padTaker = h || null; },
+    padTaken: () => padTaker
   };
 
   init();
