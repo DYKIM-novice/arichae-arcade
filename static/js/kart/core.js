@@ -35,7 +35,8 @@
     fanBoost: [0.7, 0.25],           // 응원 폭죽 부스터
     kartR: 1.05,                     // 카트 반지름 (부딪힘)
     helperLane: 4.0,                 // 도우미: 차선 간격
-    helperHold: 0.28                 // 도우미: 이만큼 꾹 누르면 드리프트(코너에서)
+    helperHold: 0.28,                // 도우미: 이만큼 꾹 누르면 드리프트(코너에서)
+    helperSpeed: 0.965               // 도우미: 최고 속도 배율 (벽에 안 부딪히는 대신 조금 느긋하게 — 잘 타면 기본 조작이 이겨요)
   };
 
   /* ---------------- 아이템 ---------------- */
@@ -432,6 +433,7 @@
     if (k.drift) target *= P.driftSpeed;
     if (k.slowT > 0) target *= P.honeyMult;
     if (loc0.onSC) target *= T.sc.slow;
+    if (k.helper && !k.finished) target *= P.helperSpeed;
     if (spinning) target = P.vmax * 0.28;
     if (k.finished) target = P.vmax * 0.55;
     target = Math.min(target, vCap * (k.boostT > 0 ? 1 + k.boostA : 1));

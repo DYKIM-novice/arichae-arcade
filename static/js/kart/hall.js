@@ -421,7 +421,10 @@
     if (H.spec) { pickFanTarget(); camIdx = H.fanT >= 0 ? H.fanT : 0; }
     const me = H.me;
     const qLeft = H.quakeIdx >= 0 ? (H.quakeAt - App.serverNow()) / 1000 : 0;
+    const r0 = performance.now();
     H.view.render({ dt: dtv, t: tRace, camIdx, boost: me && !H.spec ? me.boostT > 0 : false, quakeIdx: qLeft > 0 ? H.quakeIdx : -1, quakeLeft: qLeft });
+    const rc = performance.now() - r0;
+    H.costR = H.costR ? H.costR * 0.95 + rc * 0.05 : rc;   // 그리기(three.js) 시간
     // 소리
     if (me && !H.spec) sfx('update', me.v, me.boostT > 0, !!me.drift, me.stage, ks.status !== 'race');
     else sfx('update', 0, false, false, 0, true);
@@ -616,7 +619,7 @@
         }
         break;
       case 'hit':
-        if (mine && !ev.self) applyHit(ev.w, ev.by);
+        if (mine && !ev.own) applyHit(ev.w, ev.by);
         else if (!mine && v) {
           v.bubble(ev.v, ev.w === 'honey' ? '끈적!' : ev.w === 'nut' ? '어리둥절' : '으앙!', '#A9C4FF', 1.0);
           if (ev.by === H.myIdx && ev.by >= 0) { popSub(`명중! ${nameOf(ev.v)} ${ev.w === 'honey' ? '꿀범벅' : ev.w === 'nut' ? '뒤죽박죽' : '빙글빙글'}`, '#7DF0AE'); sfx('dodge'); }

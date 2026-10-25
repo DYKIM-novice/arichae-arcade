@@ -1044,7 +1044,7 @@ async def handle(room, player, msg: dict, reply, is_host: bool) -> None:
         else:
             by = sess.karts[int(msg.get("by", -1))] if str(msg.get("by", "")).lstrip("-").isdigit() and 0 <= int(msg.get("by")) < len(sess.karts) else None
             k.st["quakeHit"] += 1
-            sess.ev(k="hit", v=k.idx, w="quake", by=by.idx if by else -1, self=1)
+            sess.ev(k="hit", v=k.idx, w="quake", by=by.idx if by else -1, own=1)
         await room.broadcast(sess.snapshot(now))
 
 
