@@ -2,7 +2,7 @@
   "_설명": "게임 목록은 여기 한 곳에만 적어요. 서버(server.py)와 화면(kit.js)이 같이 읽어요. 게임 파일은 static/js/games/<무리>/<id>.js",
   "scripts": {
     "before": ["js/animals.js", "js/audio.js", "js/kit.js", "js/data/songs.js", "js/data/creatures.js", "js/board/kit.js", "js/board/howto.js", "js/cards/kit.js", "js/cards/howto.js", "js/party/flick.js", "js/games/olympic/core.js", "js/games/olympic/fx.js", "js/games/olympic/scene.js", "js/games/olympic/race.js", "js/games/olympic/field.js", "js/games/olympic/downhill.js"],
-    "after": ["js/app.js", "js/olympic-practice.js", "js/records.js", "js/board/hall.js", "js/cards/hall.js", "js/rpg/data.js", "js/rpg/sim.js", "js/rpg/meta.js", "js/rpg/sfx.js", "js/rpg/view.js", "js/rpg/ui.js", "js/rpg/net.js", "js/rpg/game.js", "js/rpg/hall.js"]
+    "after": ["js/app.js", "js/olympic-practice.js", "js/records.js", "js/board/hall.js", "js/cards/hall.js", "js/rpg/data.js", "js/rpg/sim.js", "js/rpg/meta.js", "js/rpg/sfx.js", "js/rpg/view.js", "js/rpg/ui.js", "js/rpg/net.js", "js/rpg/game.js", "js/rpg/art.js", "js/rpg/hall.js"]
   },
   "games": {
     "arcade": [

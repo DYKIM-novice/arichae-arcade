@@ -3080,3 +3080,10 @@ g.opr-ghost { opacity: .45; }
 /* === rpg === 장면 층 */
 .rg-layers { position: absolute; inset: 0; overflow: hidden; }
 /* === rpg === */
+
+/* === rpg === 1장 카드 (배경 그림은 RpgArt.src 로 넣어요) */
+.rg-ch { position: relative; overflow: hidden; isolation: isolate; }
+.rg-ch-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 55% 50%; opacity: .5; z-index: -1; pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, #000 40%, transparent); mask-image: linear-gradient(180deg, #000 40%, transparent); }
+.rg-ch .rg-logo b, .rg-ch .rg-logo span { text-shadow: 0 2px 4px rgba(0, 0, 0, .7); }
+/* === rpg === */

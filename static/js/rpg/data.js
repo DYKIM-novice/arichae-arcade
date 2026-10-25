@@ -1,78 +1,99 @@
 /* 아리채 오락실 · 회귀 RPG 「되감기 용사단」 숫자 표
    - 화면(sim.js)과 서버(rpg.py)가 같은 숫자를 쓰도록 여기 한 곳에만 적어요
    - 서버는 아래 JSON 부분(JSON 시작 ~ 끝 표시 사이)만 잘라 읽어요 → 그 안에는 주석·끝 쉼표를 쓰면 안 돼요
-   - 시간은 모두 밀리초(ms), 피해·체력은 정수 근처 숫자예요 */
+   - 시간은 모두 밀리초(ms), 피해·체력은 정수 근처 숫자예요
+   - 1인칭 색 패링 (docs/handoff/specs/rpg_fp.md)
+       · 적 공격 한 타마다 색(빨·초·파) 하나 → 닿는 순간 그 색 버튼을 누르면 패링, 아니면 맞음
+       · parry = 판정 폭(win, 닿는 순간 앞 60%·뒤 40%) · 한 공격 최대 연타 수 · 연타 사이 최소 간격 · 고리가 줄어드는 시간(lead) · 색이 보이는 시간(reveal)
+         (난이도 고르기는 없어요: 회귀할수록 쉬워지니까 한 가지로 충분해요)
+       · 적 공격의 hits 는 '타 수'예요 (서버 rpg.py 도 그대로 읽어요). 실제 시각·간격·색은 sim.js 가 만들어요
+   - 1장 「꽃비 항구와 울음곶」 (rpg_story.md 6절): 적 열쇠(mushroom·bat·golem·boss)는 저장·서버·시험과 맞추려고 그대로 두고
+     이름과 그림(art = static/img/rpg/<화풍>/<art>.webp)만 바꿨어요 · 집게 게 · 갈매기 떼 · 구르는 대포 · 짐 상자 · 적 캐럭선(중간 보스, mid) · 폭풍 문어 */
 (function (root) {
   'use strict';
   const DATA = /*JSON*/{
-    "v": 1,
+    "v": 2,
     "hero": {
       "hp": 100, "atk": 12,
       "combo": [
-        {"start": 80, "rec": 210, "mult": 1.0, "kb": 7, "stop": 55},
-        {"start": 80, "rec": 210, "mult": 1.15, "kb": 8, "stop": 60},
-        {"start": 120, "rec": 330, "mult": 1.7, "kb": 18, "stop": 85}
+        {"start": 80, "rec": 230, "mult": 1.0, "kb": 7, "stop": 55},
+        {"start": 80, "rec": 230, "mult": 1.15, "kb": 8, "stop": 60},
+        {"start": 120, "rec": 350, "mult": 1.7, "kb": 18, "stop": 85}
       ],
-      "comboKeep": 420, "tapBuffer": 260,
-      "chargeAt": 320, "chargeFull": 780, "chargeHalf": 160,
-      "heavy": {"start": 100, "rec": 320, "mult": 3.2, "half": 1.9, "kb": 28, "stop": 90},
-      "guardTake": 0.25,
-      "parryPre": 160, "parryPost": 70, "parryLock": 380,
+      "autoRest": 180, "chanceSpeed": 2,
+      "parrySplit": 0.6, "tryEarly": 250, "lateShow": 220, "parryLock": 380,
       "counterMult": 3.0, "counterDelay": 150,
+      "strong": {"need": 3, "mult": 5.0, "kb": 28, "stop": 110},
+      "parryCombo": {"step": 0.3, "cap": 0},
       "slowmo": 300, "slowScale": 0.22, "parryStop": 120,
-      "hurtMs": 300,
-      "gaugeMax": 100, "gaugeHit": 6, "gaugeParry": 30, "gaugeGuard": 5, "gaugeHurt": 4,
-      "spec": {"dur": 1150, "hits": 5, "gap": 170, "first": 260, "mult": 2.0, "invuln": 1350},
-      "lvAtk": 0.12, "lvHp": 10, "lvHeal": 0.3,
+      "hurtMs": 300, "wallCut": 0.15,
+      "gaugeMax": 250, "gaugeHit": 2, "gaugeParry": 30, "gaugeHurt": 4,
+      "spec": {"dur": 1150, "hits": 5, "gap": 170, "first": 260, "mult": 2.0, "invuln": 1350, "win": 120},
+      "lvAtk": 0.15, "lvHp": 20, "lvHeal": 0.3,
       "xpBase": 20, "xpGrow": 5,
       "roomHeal": 0.25, "reviveHp": 0.4
     },
-    "scale": {"hp": 0.38, "dmg": 0.34, "xp": 0.3, "party": 0.7, "star": 0.15},
+    "parry": {"win": 230, "maxHits": 3, "gapMin": 450, "lead": 1300, "reveal": 800},
+    "scale": {"hp": 0.38, "dmg": 0.8, "xp": 0.3, "party": 0.7, "star": 0.15},
     "flow": {"firstWalk": 1500, "nextWalk": 1300, "roomWalk": 2200, "dieAnim": 650, "cardMax": 12000, "readyMax": 30000},
     "enemies": {
       "mushroom": {
-        "name": "버섯돌이", "hp": 600, "xp": 6, "size": 1.0, "first": 1000, "gap": [1400, 2200], "stun": 900,
+        "name": "집게 게", "art": "e_crab", "hp": 840, "xp": 6, "size": 1.0, "first": 1000, "gap": [1400, 2200], "stun": 900,
         "pats": [
-          {"id": "bonk", "name": "머리 박치기", "w": 1, "wind": 1050, "hits": [0], "dmg": 11, "icon": "g", "rec": 350}
+          {"id": "bonk", "name": "집게 찍기", "w": 1, "wind": 1050, "hits": [0], "dmg": 12, "icon": "g", "rec": 350}
         ]
       },
       "bat": {
-        "name": "찍찍 박쥐", "hp": 480, "xp": 7, "size": 0.9, "first": 800, "gap": [1150, 1800], "stun": 900,
+        "name": "갈매기 떼", "art": "e_gulls", "hp": 670, "xp": 7, "size": 0.9, "first": 800, "gap": [1150, 1800], "stun": 900,
         "pats": [
-          {"id": "double", "name": "두 번 할퀴기", "w": 2, "wind": 900, "hits": [0, 420], "dmg": 8, "icon": "g", "rec": 300},
-          {"id": "swoop", "name": "급강하", "w": 1, "wind": 1150, "hits": [0], "dmg": 12, "icon": "g", "rec": 350}
+          {"id": "double", "name": "두 번 쪼기", "w": 2, "wind": 900, "hits": [0, 420], "dmg": 9, "icon": "g", "rec": 300},
+          {"id": "swoop", "name": "급강하", "w": 1, "wind": 1150, "hits": [0], "dmg": 13, "icon": "g", "rec": 350}
         ]
       },
       "golem": {
-        "name": "바위돌이", "hp": 1150, "xp": 12, "size": 1.25, "first": 1200, "gap": [1700, 2500], "stun": 1000,
+        "name": "구르는 대포", "art": "e_cannon", "hp": 1610, "xp": 12, "size": 1.25, "first": 1200, "gap": [1700, 2500], "stun": 1000,
         "pats": [
-          {"id": "slam", "name": "바위 내려찍기", "w": 2, "wind": 1500, "hits": [0], "dmg": 21, "icon": "g", "rec": 400, "vuln": 1700},
-          {"id": "poke", "name": "돌주먹", "w": 1, "wind": 1000, "hits": [0], "dmg": 10, "icon": "g", "rec": 300}
+          {"id": "slam", "name": "대포 돌진", "w": 2, "wind": 1500, "hits": [0], "dmg": 23, "icon": "g", "rec": 400, "vuln": 1700},
+          {"id": "poke", "name": "포신 휘두르기", "w": 1, "wind": 1000, "hits": [0], "dmg": 11, "icon": "g", "rec": 300}
+        ]
+      },
+      "crates": {
+        "name": "미끄러지는 짐 상자", "art": "e_crates", "hp": 760, "xp": 7, "size": 1.0, "first": 900, "gap": [1300, 2000], "stun": 900,
+        "pats": [
+          {"id": "slide", "name": "상자 미끄럼", "w": 2, "wind": 1000, "hits": [0], "dmg": 12, "icon": "g", "rec": 320},
+          {"id": "pile", "name": "와르르 두 상자", "w": 1, "wind": 1100, "hits": [0, 450], "dmg": 8, "icon": "g", "rec": 350}
+        ]
+      },
+      "caravel": {
+        "name": "적 캐럭선", "art": "e_caravel", "hp": 1600, "xp": 24, "size": 1.4, "first": 1400, "gap": [1300, 2000], "stun": 900, "mid": true,
+        "pats": [
+          {"id": "volley", "name": "일제 포격", "w": 2, "wind": 1300, "hits": [0, 450, 900], "dmg": 9, "icon": "g", "rec": 450},
+          {"id": "ram", "name": "뱃머리 들이받기", "w": 1, "wind": 1600, "hits": [0], "dmg": 18, "icon": "g", "rec": 500, "vuln": 1500}
         ]
       },
       "boss": {
-        "name": "도깨비 대왕", "hp": 9000, "xp": 60, "size": 2.0, "first": 1600, "gap": [900, 1500], "stun": 750, "boss": true,
+        "name": "울음곶의 폭풍 문어", "art": "e_octopus", "hp": 12000, "xp": 60, "size": 2.0, "first": 1600, "gap": [900, 1500], "stun": 750, "boss": true,
         "rage": 0.5, "rageWind": 0.85, "rageGap": 0.8,
         "pats": [
-          {"id": "triple", "name": "방망이 3연타", "w": 3, "wind": 1300, "hits": [0, 460, 920], "dmg": 14, "icon": "g", "rec": 450},
-          {"id": "smash", "name": "뚝딱 내려찍기", "w": 2, "wind": 2000, "hits": [0], "dmg": 44, "icon": "r", "brk": 0.08, "brkStun": 1900, "rec": 600, "vuln": 1300},
-          {"id": "fire", "name": "도깨비불", "w": 2, "wind": 1600, "hits": [0, 320], "dmg": 16, "icon": "g", "all": true, "rec": 400, "vuln": 1500}
+          {"id": "triple", "name": "촉수 3연타", "w": 3, "wind": 1300, "hits": [0, 460, 920], "dmg": 15, "icon": "g", "rec": 450},
+          {"id": "smash", "name": "돛대 내려찍기", "w": 2, "wind": 2000, "hits": [0], "dmg": 48, "icon": "r", "brk": 0.08, "brkStun": 1900, "rec": 600, "vuln": 1300, "seq": ["r", "g", "b"]},
+          {"id": "fire", "name": "스콜 빗줄기", "w": 2, "wind": 1600, "hits": [0, 320, 640], "dmg": 12, "icon": "g", "all": true, "rec": 400, "vuln": 1500}
         ]
       }
     },
     "rooms": [
       [["mushroom", "mushroom"]],
       [["mushroom", "bat", "mushroom"], ["bat", "mushroom", "bat"]],
-      [["bat", "golem", "mushroom"], ["mushroom", "golem", "bat"]],
-      [["golem", "bat", "golem"], ["bat", "mushroom", "golem"]],
+      [["crates", "golem", "caravel"], ["golem", "crates", "caravel"]],
+      [["golem", "bat", "crates"], ["crates", "mushroom", "golem"]],
       [["golem", "mushroom", "bat", "golem"], ["bat", "golem", "bat", "golem"]],
       [["boss"]]
     ],
     "cards": [
-      {"id": "slash", "c": "r", "name": "연속 베기", "desc": "콤보 공격력 +20%", "max": 5},
-      {"id": "heavy", "c": "r", "name": "모아 베기", "desc": "꾹 모아 베기 +40%·더 빨리 모아요", "max": 3},
-      {"id": "vamp", "c": "r", "name": "회복 베기", "desc": "3번째 베기마다 체력 +3", "max": 3},
-      {"id": "wall", "c": "g", "name": "철벽 가드", "desc": "막을 때 받는 피해 -30%", "max": 3},
+      {"id": "slash", "c": "r", "name": "연속 베기", "desc": "자동 공격 +20%", "max": 5},
+      {"id": "heavy", "c": "r", "name": "모아 베기", "desc": "강반격 +40%·연속 패링 2번이면 강반격", "max": 3},
+      {"id": "vamp", "c": "r", "name": "회복 베기", "desc": "자동 공격 3번째마다 체력 +3", "max": 3},
+      {"id": "wall", "c": "g", "name": "철벽 가드", "desc": "맞을 때 받는 피해 -15%", "max": 3},
       {"id": "parry", "c": "g", "name": "번개 패링", "desc": "패링 판정 넉넉히·반격 +30%", "max": 3},
       {"id": "calm", "c": "g", "name": "반격 회복", "desc": "패링하면 체력 +6", "max": 3},
       {"id": "charge", "c": "b", "name": "필살 충전", "desc": "필살 게이지가 30% 빨리 차요", "max": 3},
@@ -82,10 +103,10 @@
       {"id": "potion", "c": "x", "name": "회복 물약", "desc": "체력 40% 회복", "max": 99}
     ],
     "meta": {
-      "xpK": 0.33, "xpCap": 4, "clearBonus": 10,
+      "xpK": 0.33, "xpCap": 4, "clearBonus": 10, "foreMs": 400, "foreKeep": 6,
       "nodes": [
         {"id": "combo", "c": "r", "name": "전생의 검술", "desc": "연속 베기를 배운 채로 시작", "max": 2, "cost": [6, 14]},
-        {"id": "hp", "c": "g", "name": "튼튼한 영혼", "desc": "최대 체력 +15%", "max": 5, "cost": [3, 5, 8, 12, 16]},
+        {"id": "hp", "c": "g", "name": "튼튼한 영혼", "desc": "최대 체력 +15%", "max": 5, "cost": [2, 3, 5, 7, 10]},
         {"id": "reroll", "c": "b", "name": "운명 다시 뽑기", "desc": "카드 다시 뽑기 +1번", "max": 2, "cost": [5, 12]}
       ]
     }

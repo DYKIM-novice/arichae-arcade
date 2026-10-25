@@ -958,6 +958,7 @@
       const room = S.room;
       if (!room) return;
       if (room.hostPid === S.pid) {
+        if (room.mode === 'rpg' && window.RpgHall && window.RpgHall.onMain) { window.RpgHall.onMain(); return; }   /* === rpg === (1장은 혼자 모험 페이지로) */
         const needPick = (room.mode === 'edu' && !(room.picks || []).length) || (room.mode === 'music' && !(room.songs || []).length)
           || (room.mode === 'olympic' && !(room.events || []).length);
         if (needPick) {
