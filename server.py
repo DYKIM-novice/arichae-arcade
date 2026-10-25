@@ -43,6 +43,7 @@ from records import RecordStore  # noqa: E402
 import boards as BG  # noqa: E402
 import cards as CG  # noqa: E402
 import olympic as OL  # noqa: E402
+import kart as KT  # noqa: E402  /* === kart === */ 쌩쌩카트
 from cardgames import ENGINES as _CARD_ENGINES  # noqa: E402
 from partygames import ENGINES as _PARTY_ENGINES  # noqa: E402
 import aiworker  # noqa: E402
@@ -361,6 +362,10 @@ class Room:
         self.events: List[str] = []                # 올림픽관: 고른 종목 (누른 순서)
         self.oly = {"ai": 3, "lv": 3, "season": "summer"}   # 올림픽관: AI 선수 수 · 단계 · 하계/동계
         self.bots: Dict[str, Player] = {}          # 올림픽관: 이번 대회 AI 선수
+        # === kart === 쌩쌩카트: 설정(AI 수·단계·오늘 승수) · 진행 중인 판
+        self.kart = KT.default_settings()
+        self.ksess = None
+        # === /kart ===
 
     # 방 저장용: 돌아가는 작업(task)은 빼고, 게임 규칙(cengine)은 따로 묶어요
     def __getstate__(self) -> dict:
@@ -411,6 +416,7 @@ class Room:
             "events": self.events,
             "oly": self.oly,
             "bots": [b.public(self.host_pid) for b in self.bots.values()],
+            "kart": self.kart, "ksess": KT.public(self),   # === kart ===
         }
 
     async def broadcast(self, payload: dict) -> None:
@@ -694,6 +700,7 @@ class Room:
         self.csess = None
         self.cengine = None
         self.bots = {}
+        self.ksess = None   # === kart === (진행 작업은 phase 가 바뀌면 저절로 끝나요)
         if self.ctask and not self.ctask.done():
             self.ctask.cancel()
         self.ctask = None
@@ -1200,6 +1207,8 @@ def restore_rooms() -> None:
         # 오락실·과학관·음악관 미니게임은 진행 중이던 것만 끝내고 대기실로 (최종 결과 화면은 그대로)
         if room.phase in ("intro", "play", "result"):
             room.phase, room.index, room.current, room.sequence = "lobby", -1, {}, []
+        if room.phase == "kart":   # === kart === 달리던 판은 대기실로
+            room.phase, room.ksess = "lobby", None
         if room.bsess:
             shift_times(room.bsess, at, dt)
         if room.csess:
@@ -1372,7 +1381,7 @@ async def ws_session(ws: WebSocketConn) -> None:
                     if length in (3, 5, 10):
                         room.length = length
                         changed = True
-                if msg.get("mode") in ("arcade", "edu", "music", "board", "card", "party", "olympic"):
+                if msg.get("mode") in ("arcade", "edu", "music", "board", "card", "party", "olympic", "kart"):   # kart: 쌩쌩카트
                     room.mode = msg["mode"]
                     changed = True
                 if msg.get("level") in LEVELS:
@@ -1399,6 +1408,8 @@ async def ws_session(ws: WebSocketConn) -> None:
                         pass
                 if msg.get("olv") in OL.AI_LEVELS:
                     room.oly["lv"] = msg["olv"]
+                    changed = True
+                if KT.apply_settings(room, msg):   # === kart === AI 수 · 단계
                     changed = True
                 if isinstance(msg.get("songs"), list):
                     songs = [str(g) for g in msg["songs"] if str(g) in MUSIC_SONGS]
@@ -1457,6 +1468,11 @@ async def ws_session(ws: WebSocketConn) -> None:
                     continue
                 if room.mode == "olympic" and not room.events:
                     await reply({"t": "error", "code": "no_picks", "msg": "올림픽 종목을 하나 이상 골라주세요"})
+                    continue
+                if room.mode == "kart":   # === kart === 쌩쌩카트 시작
+                    KT.start(room)
+                    log.info("[%s] 쌩쌩카트 시작", room.code)
+                    await room.broadcast_state()
                     continue
                 if room.mode == "board":
                     seats = BG.resolve_seats(room, BOARD_CFG)
@@ -1542,7 +1558,10 @@ async def ws_session(ws: WebSocketConn) -> None:
             elif t in ("cprog", "cact", "cend", "crematch") and room.phase == "card" and room.csess:
                 await handle_card(room, player, msg, reply, is_host)
 
-            elif t == "again" and is_host and room.phase in ("final", "result", "intro", "play", "board", "card"):
+            elif t in KT.MSG_TYPES and room.phase == "kart":   # === kart ===
+                await KT.handle(room, player, msg, reply, is_host)
+
+            elif t == "again" and is_host and room.phase in ("final", "result", "intro", "play", "board", "card", "kart"):
                 await room.back_to_lobby()
 
             elif t == "kick" and is_host:

@@ -308,6 +308,10 @@
     setVibe,
     isMuted: () => muted,
     isVibe: () => vibeOn,
-    canVibrate: () => typeof navigator.vibrate === 'function'
+    canVibrate: () => typeof navigator.vibrate === 'function',
+    /* === kart === 쌩쌩카트 엔진 소리처럼 계속 나는 소리를 만들 때 (같은 음량 조절·음소거를 타요) */
+    ctx: () => ensure(),
+    bus: () => (ensure(), sfxBus)
+    /* === /kart === */
   };
 })();
