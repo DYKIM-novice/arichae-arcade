@@ -20,10 +20,13 @@
     const s = t / 1000;
     return [amp * (0.62 * Math.sin(s * 1.9 + a) + 0.38 * Math.sin(s * 3.3 + b)), amp * (0.6 * Math.cos(s * 1.6 + b) + 0.4 * Math.sin(s * 2.7 + a))];
   }
+  // 흔들림 크기 (난이도: 흔들림 배율 arSway · 떨리기 시작하는 때 arShake)
   const ampOf = (st, e) => {
-    if (st.ph !== 'draw') return 0.5;
+    const dp = st.dp || O.diffP('normal');
+    const sw = dp.arSway; const T = dp.arShake;
+    if (st.ph !== 'draw') return 0.5 * sw;
     const h = (e - st.drawT) / 1000;
-    return h < 1 ? 0.5 - 0.38 * h : h < 2.6 ? 0.12 : Math.min(0.6, 0.12 + (h - 2.6) * 0.3);   // 오래 당기면 떨려요
+    return sw * (h < 1 ? 0.5 - 0.38 * h : h < T ? 0.12 : Math.min(0.6, 0.12 + (h - T) * 0.3));   // 오래 당기면 떨려요
   };
   const ptsOf = (x, y) => { const r = Math.hypot(x, y); return r >= 1 ? 0 : Math.max(1, 10 - Math.floor(r * 10)); };
 
@@ -57,7 +60,7 @@
     };
     function shoot(st, e) {
       const [sx, sy] = sway(seed + st.k * 131, e, ampOf(st, e));
-      st.hx = st.aim + sx + (winds[st.k] || 0) * DRIFT;
+      st.hx = st.aim + sx + (winds[st.k] || 0) * (st.dp ? st.dp.arDrift : DRIFT);
       st.hy = sy + 0.04;
       st.hp = ptsOf(st.hx, st.hy);
       st.hits.push([Math.round(st.hx * 1000) / 1000, Math.round(st.hy * 1000) / 1000, st.hp]);
@@ -143,6 +146,7 @@
     }
     const st = sim.init();
     st.e = 0;
+    st.dp = O.diffP(ctx.diff);
     build();
     const ro = window.ResizeObserver ? new ResizeObserver(() => { if (scene.clientWidth !== Wd || scene.clientHeight !== Hd) build(); }) : null;
     if (ro) ro.observe(scene);

@@ -22,9 +22,9 @@
     icon: ICON,
     LINE, D: FIELD, view: 16, camMax: FIELD - 12, camLead: 0.28,
     kick: 1.05, vmax: 10.8, maxAng: 80, angSpeed: 95, bestAng: [36, 48],
-    dist: (v, a) => { const sp = 9 + v * 2.3; return Math.max(0, sp * sp * Math.sin(2 * a * Math.PI / 180) / 9.8 * 0.92); },   // 서버 olympic.jav_dist 와 같아요
+    dist: (v, a) => { const sp = 9 + v * 2.3; return Math.max(0, sp * sp * Math.sin(2 * a * Math.PI / 180) / 9.8 * 0.8); },   // 서버 olympic.jav_dist 와 같아요 (0.92 → 0.8)
     flightT: (v, a) => { const sp = 9 + v * 2.3; return Math.max(1.1, 2 * sp * Math.sin(a * Math.PI / 180) / 9.8 * 0.42); },
-    rules: ['빨·파 연타로 창을 들고 달려요 (빠를수록 멀리!)', '파울선 앞에서 초록을 꾹 누르면 던질 각도가 올라가요', '40~45도쯤에서 떼면 휙! · 선을 넘으면 파울 · 3번 중 최고 기록'],
+    rules: ['빨·파 연타로 창을 들고 달려요 (빠를수록 멀리!)', '노란 "각도 구간"에서 초록을 꾹 → 던질 각도가 올라가요 (누르는 동안 속도는 그대로 · 선에 닿으면 저절로 휙!)', '40~45도쯤에서 떼면 휙! · 파울선을 넘으면 파울 · 3번 중 최고 기록'],
     illus() {
       const b = (c, n) => `<div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX[c]};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE[c]}">${shape(c, 24)}</div></div><span style="color:${LIGHT[c]}">${n}</span></div>`;
       return `<div class="il-row">${b('r', '달려')}${b('b', '달려')}<svg width="60" height="40" viewBox="0 0 60 40"><path d="M4 36 Q30 -12 56 30" fill="none" stroke="#FFE27A" stroke-width="2.5" stroke-dasharray="4 3"/><path d="M20 12 L40 4" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>${b('g', '꾹→떼기')}</div>`;

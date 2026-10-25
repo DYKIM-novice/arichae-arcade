@@ -18,15 +18,15 @@
     view: 13,
     buttons: ['r', 'g', 'b'],
     meterLabel: '<i class="r"></i><i class="g"></i><i class="b"></i> 아무 버튼이나 연타!',
-    rules: ['"탕!" 소리가 나면 아무 버튼이나 마구 눌러요 (두 손가락으로 번갈아 치면 더 빨라요)', '1초에 15번까지만 쳐줘요', '총소리 전에 누르면 부정출발! 1초 늦게 출발해요 · 가끔 오리 "꽥!"·풍선 "팡!"이 속여요'],
+    rules: ['"탕!" 소리가 나면 아무 버튼이나 마구 눌러요 · 손가락 여러 개로 쳐도 돼요!', '연타하면 부스터 게이지가 차요 · 다 차면 큰 [부스터!]를 톡 (한 번만)', '총소리 전에 누르면 부정출발! 늦게 출발해요 · 가끔 오리 "꽥!"·풍선 "팡!"이 속여요'],
     illus() {
       const b = (c, n) => `<div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX[c]};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE[c]}">${shape(c, 24)}</div></div><span style="color:${LIGHT[c]}">${n}</span></div>`;
-      const ar = '<svg width="34" height="30" viewBox="0 0 64 40" fill="none" stroke="#FFD23F" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 H54"/><path d="M42 8 L56 20 L42 32"/></svg>';
-      return `<div class="il-row"><span class="il-face">${O.faceSVG('dino', 'e')}</span>${b('r', 1)}${ar}${b('b', 2)}${ar}${b('r', 3)}</div>`;
+      return `<div class="il-row"><span class="il-face">${O.faceSVG('dino', 'e')}</span>${b('r', '마구')}${b('g', '마구')}${b('b', '마구')}</div>`;
     },
     sim: O.mashRunner({ kick: 0.9, drag: 1.0, vmax: 12.2 }),
     tau: 1.1,
     juice: true,        // 손맛·몸개그 (fx.js): 발 구름 먼지, 얼굴 꽈당, 결승 테이프, 포토 피니시
-    fakeStart: true     // 엉뚱 변주: 진짜 '탕!' 전에 오리 '꽥!'·풍선 '팡!' 이 속여요 (모두 같은 때)
+    fakeStart: true,    // 엉뚱 변주: 진짜 '탕!' 전에 오리 '꽥!'·풍선 '팡!' 이 속여요 (모두 같은 때)
+    boost: { cap: 110, ms: 3200 }   // 필살기 부스터: 연타 110칸 → 3.2초 동안 ×1.5
   });
 })();

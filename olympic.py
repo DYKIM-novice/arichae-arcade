@@ -33,23 +33,22 @@ def _g(rng: random.Random, mu: float, sd: float, lo: float, hi: float) -> float:
 
 
 def jump_dist(v: float, ang: float) -> float:
-    """멀리뛰기 거리(m) — 화면과 같은 식: 빠를수록, 45도에 가까울수록 멀리"""
-    return max(0.0, v * v * math.sin(math.radians(2 * ang)) / 9.8 * 0.72)
+    """멀리뛰기 거리(m) — 화면과 같은 식: 빠를수록, 45도에 가까울수록 멀리 (각도 잡는 동안 안 느려져서 0.62)"""
+    return max(0.0, v * v * math.sin(math.radians(2 * ang)) / 9.8 * 0.62)
 
 
 def jav_dist(v: float, ang: float) -> float:
     """창던지기 거리(m) — 도움닫기 속도로 던지는 힘이 정해져요"""
     sp = 9 + v * 2.3
-    return max(0.0, sp * sp * math.sin(math.radians(2 * ang)) / 9.8 * 0.92)
+    return max(0.0, sp * sp * math.sin(math.radians(2 * ang)) / 9.8 * 0.8)
 
 
-RACES = ("o100", "ohurdle", "oswim", "wspeed", "wshort", "wbob", "wslalom", "wbiath")
+RACES = ("o100", "ohurdle", "oswim", "wspeed", "wshort", "wbob", "wslalom")   # 바이애슬론(wbiath)은 빠졌어요
 RACE_BASE = {   # AI 단계별 기록(초) — 1 쉬움 … 5 국가대표
     "o100": [18.5, 15.8, 13.7, 12.1, 10.8], "ohurdle": [25.0, 21.5, 18.8, 16.6, 15.0],
-    "oswim": [43.0, 37.0, 32.0, 28.5, 25.5],
+    "oswim": [44.0, 38.0, 33.0, 30.0, 27.5],   # 수영 숨 박자 규칙(2026-10)에 맞춰 다시 맞춤 (예전 43·37·32·28.5·25.5)
     "wspeed": [55.0, 48.0, 42.0, 38.0, 35.0], "wshort": [46.0, 40.0, 35.5, 32.0, 29.0],
     "wbob": [44.0, 39.0, 35.5, 32.5, 30.0], "wslalom": [50.0, 44.0, 39.5, 36.0, 33.0],
-    "wbiath": [56.0, 49.0, 44.0, 40.0, 36.5],
 }
 
 
@@ -73,11 +72,6 @@ def bot_perf(gid: str, lv: int, rng: random.Random, ev: dict) -> dict:
         if gid == "ohurdle":
             p = [0.35, 0.25, 0.16, 0.1, 0.05][k]
             out["knock"] = [i for i in range(HURDLES) if rng.random() < p]
-        if gid == "wbiath":
-            # 사격 5발 중 맞힌 것 (못 맞히면 벌칙 시간이 기록에 이미 들어 있어요)
-            hit = [0.55, 0.65, 0.75, 0.85, 0.93][k]
-            out["shots"] = [1 if rng.random() < hit else 0 for _ in range(5)]
-            out["T"] += (5 - sum(out["shots"])) * 3000
         if gid == "wshort":
             out["fall"] = 1 if rng.random() < [0.2, 0.14, 0.1, 0.06, 0.03][k] else 0
             if out["fall"]:

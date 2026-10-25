@@ -15,6 +15,11 @@
   const osc = (w) => Math.max(0.62, 1.35 - w / 330);   // 바늘 한 번 왕복(초)
   const zone = (w) => Math.max(0.12, 0.3 - w / 1300);  // 초록 칸 넓이(반쪽)
   const BOT_START = 1500; const BOT_CYCLE = 4200;
+  // 난이도 값을 곱한 것 (초록 칸 넓이 · 필요한 빠르기 · 바늘 왕복)
+  const dpOf = (st) => st.dp || O.diffP('normal');
+  const zoneS = (st, w) => zone(w) * dpOf(st).lfZone;
+  const needS = (st, w) => need(w) * dpOf(st).lfNeed;
+  const oscS = (st, w) => osc(w) * dpOf(st).lfOsc;
 
   const sim = {
     init() { return { wi: 0, fails: 0, ph: 'ready', phT: 0, h: 0, best: 0, mash: new O.Masher(66), jerkT: 0, done: false, tries: 0, lastOk: null }; },
@@ -26,8 +31,8 @@
       }
       if (st.ph === 'jerk' && c === 'g') {
         const w = W[st.wi];
-        const p = Math.sin(2 * Math.PI * (e - st.jerkT) / 1000 / osc(w));
-        return Math.abs(p) <= zone(w) ? ok(st, e) : fail(st, e, '삐끗! 놓쳤어요');
+        const p = Math.sin(2 * Math.PI * (e - st.jerkT) / 1000 / oscS(st, w));
+        return Math.abs(p) <= zoneS(st, w) ? ok(st, e) : fail(st, e, '삐끗! 놓쳤어요');
       }
       return null;
     },
@@ -37,7 +42,7 @@
       if (st.ph === 'ready' && e - st.phT >= READY) { st.ph = 'pull'; st.phT = e; st.h = 0; st.mash = new O.Masher(66); return { say: `${w}kg 들어 올려요!`, color: '#FFE27A' }; }
       if (st.ph === 'pull') {
         if (st.h >= 1) { st.ph = 'jerk'; st.phT = e; st.jerkT = e; return { say: '지금! 초록!', color: '#7DF0AE', sfx: 'tick' }; }
-        st.h = Math.max(0, st.h - 0.12 * need(w) * dt);
+        st.h = Math.max(0, st.h - 0.12 * needS(st, w) * dt);
         if (e - st.phT > PULL_MAX) return fail(st, e, '힘이 모자라요…');
       }
       if (st.ph === 'jerk' && e - st.phT > JERK_MAX) return fail(st, e, '시간이 지났어요');
@@ -137,6 +142,7 @@
 
     const st = sim.init();
     st.e = 0;
+    st.dp = O.diffP(ctx.diff);
     const log = [];
     let lastT = 0; let ph = 0; let msgT = 0;
     function say(t, c, ms) { msgEl.textContent = t; msgEl.style.color = c || '#fff'; msgEl.classList.remove('show'); void msgEl.offsetWidth; msgEl.classList.add('show'); clearTimeout(msgT); msgT = setTimeout(() => msgEl.classList.remove('show'), ms || 1300); }
@@ -177,8 +183,8 @@
       lights.innerHTML = [-28, 0, 28].map((dx) => `<circle cx="${dx}" r="9" fill="${lc}" stroke="rgba(0,0,0,.3)"/>`).join('');
       // 흔들리는 바늘 (들어 올리는 순간)
       if (st.ph === 'jerk') {
-        const p = Math.sin(2 * Math.PI * (st.e - st.jerkT) / 1000 / osc(w));
-        const z = zone(w); const L = Math.min(150, Wd * 0.38);
+        const p = Math.sin(2 * Math.PI * (st.e - st.jerkT) / 1000 / oscS(st, w));
+        const z = zoneS(st, w); const L = Math.min(150, Wd * 0.38);
         jerkG.innerHTML = `<rect x="${-L - 8}" y="-16" width="${2 * L + 16}" height="32" rx="16" fill="rgba(21,18,43,.85)"/><rect x="${-L}" y="-6" width="${2 * L}" height="12" rx="6" fill="#FF4757" opacity=".55"/><rect x="${(-z * L).toFixed(1)}" y="-8" width="${(2 * z * L).toFixed(1)}" height="16" rx="5" fill="#2ED573"/><path d="M${(p * L).toFixed(1)} -14 v28" stroke="#FFD23F" stroke-width="5" stroke-linecap="round"/><text y="34" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="system-ui,sans-serif">초록 칸에서 초록!</text>`;
       } else jerkG.innerHTML = '';
     }
@@ -190,7 +196,7 @@
         lastT = t;
         simTo(e);
         meter.set(st.ph === 'pull' ? st.mash.rate(e) : 0);
-        needEl.lastChild.textContent = `${Math.ceil(need(W[st.wi]))}번/초 이상`;
+        needEl.lastChild.textContent = `${Math.ceil(needS(st, W[st.wi]))}번/초 이상`;
         needEl.style.visibility = st.ph === 'pull' ? 'visible' : 'hidden';
         drawLifter(t);
         // 다른 선수 상태 카드
@@ -221,8 +227,8 @@
       extra: () => [W[st.wi], PHC[st.done ? 'done' : st.ph], Math.round(st.h * 100) / 100, st.fails],
       log: () => log,
       _st: () => st,
-      _needle: () => (st.ph === 'jerk' ? Math.sin(2 * Math.PI * (st.e - st.jerkT) / 1000 / osc(W[st.wi])) : 9),
-      _zone: () => zone(W[st.wi]),
+      _needle: () => (st.ph === 'jerk' ? Math.sin(2 * Math.PI * (st.e - st.jerkT) / 1000 / oscS(st, W[st.wi])) : 9),
+      _zone: () => zoneS(st, W[st.wi]),
       summary: () => (st.best ? `최고 ${st.best}kg` : '성공 못 했어요')
     };
   }

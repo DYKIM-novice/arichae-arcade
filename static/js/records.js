@@ -41,10 +41,11 @@
     if (board.startsWith('music:')) return 'music';
     const id = board.split(':')[0];
     const m = G.META && G.META[id];
-    return m ? (m.group === 'edu' ? 'edu' : m.group) : 'arcade';
+    return m ? (m.group === 'edu' ? 'edu' : m.group) : (RETIRED_CAT[id] || 'arcade');
   }
-  // 지금은 빠진 게임 (명예의 전당에 남은 옛 기록 이름)
-  const RETIRED = { hex: '헥스', umul: '우물고누', hobak: '호박고누' };
+  // 지금은 빠진 게임 (명예의 전당에 남은 옛 기록 이름 · 어느 관이었나)
+  const RETIRED = { hex: '헥스', umul: '우물고누', hobak: '호박고누', wbiath: '바이애슬론' };
+  const RETIRED_CAT = { wbiath: 'olympic' };
   function boardName(board) {
     if (board.startsWith('music:')) {
       const sg = (G.MUSIC_SONGS || []).find((s) => s.id === board.slice(6));

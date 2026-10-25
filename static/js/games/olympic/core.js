@@ -1,7 +1,8 @@
 /* 아리채 오락실 · 올림픽관 공통 도구
    - 올림픽 전용 꼬마 선수 10명 (SVG 로 직접 그림 · 팔다리를 움직여요)
    - 경기장(하늘·관중석·트랙) 그리기, 레인 배치, 카메라
-   - 연타 세기(아무 버튼이나, 1초에 15번까지만 인정), 기록 글자
+   - 연타 세기(아무 버튼이나 · 손가락 여러 개도 OK, 한 번 누름이 두 번 들어가는 것만 걸러요), 기록 글자
+   - 난이도(혼자 연습: 이지·노멀·하드·헬) 값 표 O.diffP
    종목 파일(o100.js 등)은 Oly.register(종목) 으로 등록해요. */
 (function () {
   'use strict';
@@ -335,13 +336,17 @@
   }
 
   /* ---------- 연타 세기 ---------- */
+  // 기록 게임이라 어떤 방법이든 돼요 (손가락 여러 개·두 손). 빠르기 제한은 없고,
+  // 같은 버튼이 22ms 안에 또 들어오면 한 번 누른 게 두 번 들어간 것(터치 겹침)으로 보고 걸러요
+  const TAP_DEBOUNCE = 22;
   class Masher {
-    constructor(minGap) { this.last = null; this.lastT = -1e9; this.taps = []; this.gap = minGap || 66; this.count = 0; }
-    // 1 = 인정, 0 = 너무 빠름(무시) — 아무 버튼이나 연타해도 돼요 (번갈아 누를 필요 없음)
+    constructor() { this.last = null; this.lastT = -1e9; this.by = { r: -1e9, g: -1e9, b: -1e9 }; this.taps = []; this.count = 0; }
+    // 1 = 인정, 0 = 같은 버튼이 너무 붙어서 들어옴(무시) — 아무 버튼이나 연타해도 돼요
     press(c, t) {
       if (c !== 'r' && c !== 'b' && c !== 'g') return 0;
-      if (t - this.lastT < this.gap) return 0;
-      this.last = c; this.lastT = t; this.taps.push(t); this.count++;
+      if (t - this.by[c] < TAP_DEBOUNCE) return 0;
+      this.by[c] = t; this.last = c; this.lastT = t; this.taps.push(t); this.count++;
+      if (this.taps.length > 80) this.taps.splice(0, this.taps.length - 80);
       return 1;
     }
     rate(t) { while (this.taps.length && t - this.taps[0] > 1000) this.taps.shift(); return this.taps.length; }
@@ -405,10 +410,53 @@
     G.register(def);
   }
 
+  /* ================================================================
+     난이도 (혼자 연습만 · 방 경기는 늘 '노멀') — 종목 규칙(sim)이 ctx.diff 로 이 값을 읽어요
+     노멀 값 = 원래 규칙 그대로. 판정 칸 넓이 · 벌칙 · 흔들림 · 엉뚱 변주 · AI 실력이 달라져요
+     ================================================================ */
+  const DIFF_IDS = ['easy', 'normal', 'hard', 'hell'];
+  const DIFF_NAME = { easy: '이지', normal: '노멀', hard: '하드', hell: '헬' };
+  const DIFF = {
+    easy: {
+      id: 'easy', fs: 0, fake: 0, hSafe: [0.03, 0.97], hAir: 0.6, hStum: [0.72, 220],
+      swWin: [105, 200], swDrain: [0.024, 0.06], swTired: 800,
+      skWin: [0.62, 1.65], skSlip: [0.42, 170], stSkid: 0.5, stFallMs: 900, penV: 12.9, peng2: false,
+      bobHW: 1.75, bobHit: 0.97, slGW: 1.9, slPen: 1200, biHit: 0.105, biSpd: 0.8, biPen: 2000,
+      fdAng: 0.78, fdGrace: 0.35, fdAuto: true, lfZone: 1.45, lfNeed: 0.85, lfOsc: 1.25, arSway: 0.65, arDrift: 0.24, arShake: 3.4,
+      jpDrift: 0.6, jpFall: 0.95, jpTake: 0.9, boostCap: 0.8, ai: [1, 2]
+    },
+    normal: {
+      id: 'normal', fs: 1000, fake: 1, hSafe: [0.12, 0.9], hAir: 0.56, hStum: [0.45, 380],
+      swWin: [70, 140], swDrain: [0.035, 0.09], swTired: 1200,
+      skWin: [0.78, 1.35], skSlip: [0.55, 260], stSkid: 1, stFallMs: 1300, penV: 11.3, peng2: false,
+      bobHW: 1.5, bobHit: 0.93, slGW: 1.5, slPen: 2000, biHit: 0.07, biSpd: 1, biPen: 3000,
+      fdAng: 1, fdGrace: 0, fdAuto: true, lfZone: 1, lfNeed: 1, lfOsc: 1, arSway: 1, arDrift: 0.34, arShake: 2.6,
+      jpDrift: 1, jpFall: 0.75, jpTake: 0.4, boostCap: 1, ai: [3]
+    },
+    hard: {
+      id: 'hard', fs: 1500, fake: 2, hSafe: [0.18, 0.86], hAir: 0.56, hStum: [0.38, 520],
+      swWin: [55, 115], swDrain: [0.042, 0.1], swTired: 1500,
+      skWin: [0.84, 1.26], skSlip: [0.6, 340], stSkid: 1.2, stFallMs: 1600, penV: 10.8, peng2: false,
+      bobHW: 1.38, bobHit: 0.9, slGW: 1.3, slPen: 2500, biHit: 0.058, biSpd: 1.15, biPen: 3500,
+      fdAng: 1.2, fdGrace: 0, fdAuto: false, lfZone: 0.85, lfNeed: 1.1, lfOsc: 0.9, arSway: 1.2, arDrift: 0.4, arShake: 2.2,
+      jpDrift: 1.25, jpFall: 0.66, jpTake: 0.3, boostCap: 1.1, ai: [4, 5]
+    },
+    hell: {
+      id: 'hell', fs: 2000, fake: 3, hSafe: [0.24, 0.82], hAir: 0.56, hStum: [0.3, 700],
+      swWin: [42, 90], swDrain: [0.05, 0.12], swTired: 1900,
+      skWin: [0.88, 1.2], skSlip: [0.66, 430], stSkid: 1.45, stFallMs: 1900, penV: 10.3, peng2: true,
+      bobHW: 1.28, bobHit: 0.86, slGW: 1.15, slPen: 3000, biHit: 0.048, biSpd: 1.3, biPen: 4000,
+      fdAng: 1.38, fdGrace: 0, fdAuto: false, lfZone: 0.7, lfNeed: 1.2, lfOsc: 0.8, arSway: 1.45, arDrift: 0.48, arShake: 1.7,
+      jpDrift: 1.5, jpFall: 0.56, jpTake: 0.22, boostCap: 1.25, ai: [6]
+    }
+  };
+  const diffP = (d) => DIFF[d] || DIFF.normal;
+
   window.Oly = {
     ATH, ath, HEAD, faceSVG, makeAthlete, P, el, NS,
     standsSVG, flagsSVG, RINGS, lanes, Masher, profile, roster, strip,
     fmtSec, fmtTimeScore, fmtM, ease, clamp, register,
+    DIFF, DIFF_IDS, DIFF_NAME, diffP,
     name: (id) => ath(id).name
   };
 })();

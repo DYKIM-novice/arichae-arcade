@@ -18,7 +18,7 @@
     init() { return { d: 0, v: 0, lat: 0, latv: 0, pen: 0, gi: 0, miss: 0, res: [], state: 0, waitUntil: 0, go: false }; },
     press(st, c, e, gun) {
       if (c !== 'r' && c !== 'b') return null;
-      if (e < gun) { if (!st.waitUntil) { st.waitUntil = gun + 1000; st.state = 1; return { say: '부정출발! 1초 늦게', sfx: 'bad', vib: [40, 40, 40] }; } return null; }
+      if (e < gun) return O.falseStart(st, gun, 1000);
       if (st.waitUntil && e < st.waitUntil) return null;
       st.latv = O.clamp(st.latv + (c === 'r' ? -1.9 : 1.9), -8, 8);
       return { sfx: 'tick', vib: 5 };
@@ -34,9 +34,10 @@
       if (Math.abs(st.lat) > EDGE) { st.lat = Math.sign(st.lat) * EDGE; st.latv = 0; st.v *= 0.985; }
       st.d += st.v * dt;
       while (st.gi < N && st.d >= GATE(st.gi)) {
-        const ok = Math.abs(st.lat - GX(st.gi)) <= GW;
+        const ok = Math.abs(st.lat - GX(st.gi)) <= (st.dp ? st.dp.slGW : GW);
+        const pen = st.dp ? st.dp.slPen : PEN;
         st.res.push(ok ? 1 : 0);
-        if (!ok) { st.pen += PEN; st.miss += 1; out = { say: '깃발 놓침 +2초', color: '#FF8B95', sfx: 'bad', vib: [30, 20, 30], ms: 700 }; }
+        if (!ok) { st.pen += pen; st.miss += 1; out = { say: `깃발 놓침 +${pen / 1000}초`, color: '#FF8B95', sfx: 'bad', vib: [30, 20, 30], ms: 700 }; }
         else out = { sfx: 'good', vib: 8 };
         st.gi += 1;
       }
@@ -63,7 +64,7 @@
     icon: ICON,
     D, halfView: 9.5, yScale: 0.42, tau: 4, bg: '#F8FCFF', cls: 'oslm',
     meterLabel: '<i class="r"></i> 왼쪽 · 오른쪽 <i class="b"></i>',
-    rules: ['비탈을 내려가며 깃발 문 사이로 지나가요 (20개)', '빨강 = 왼쪽, 파랑 = 오른쪽으로 꺾어요 · 많이 꺾으면 느려져요', '문을 놓치면 2초 벌칙 · 미리미리 다음 문 쪽으로!'],
+    rules: ['비탈을 내려가며 깃발 문 사이로 지나가요 (20개)', '빨강 = 왼쪽, 파랑 = 오른쪽으로 꺾어요 · 많이 꺾으면 느려져요', '문을 놓치면 벌칙 시간 · 미리미리 다음 문 쪽으로!'],
     illus() {
       const b = (c, n) => `<div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX[c]};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE[c]}">${shape(c, 24)}</div></div><span style="color:${LIGHT[c]}">${n}</span></div>`;
       return `<div class="il-row">${b('r', '◀ 왼쪽')}<svg width="44" height="50" viewBox="0 0 40 40">${ICON.replace(/^<svg[^>]*>/, '').replace('</svg>', '')}</svg>${b('b', '오른쪽 ▶')}</div>`;
@@ -89,6 +90,7 @@
       return s;
     },
     drawObjects(d0, d1, SX, SY, px, st) {
+      const GW = st && st.dp ? st.dp.slGW : 1.5;    // 난이도: 문 넓이
       let s = '';
       for (let i = 0; i < N; i++) {
         const d = GATE(i);

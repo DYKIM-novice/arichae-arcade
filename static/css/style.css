@@ -2838,3 +2838,213 @@ g.opr-ghost { opacity: .45; }
 .osh-peng .fl, .osh-peng .fr { transform-box: fill-box; transform-origin: 50% 0; animation: oshFlap .35s ease-in-out infinite alternate; }
 @keyframes oshFlap { from { transform: rotate(-12deg); } to { transform: rotate(14deg); } }
 .ofx-photo { top: 6px; width: 40%; }
+
+/* ================================================================
+   올림픽관 · 필살기 부스터 (obs-) — 게이지 · 큰 [부스터!] 버튼 · 외침 · 다른 선수 알림 · 질주선
+   ================================================================ */
+.obs-ui { position: absolute; left: 0; right: 0; bottom: 0; top: 0; pointer-events: none; z-index: 5; }
+.obs-gauge { position: absolute; left: 8px; top: 6px; display: flex; align-items: center; gap: 6px; padding: 4px 9px 4px 4px; border-radius: 16px; background: rgba(21,18,43,.82); color: #fff; box-shadow: 0 3px 0 rgba(0,0,0,.25); transition: opacity .3s; }
+.obs-gf { width: 24px; height: 24px; border-radius: 50%; background: #fff; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.obs-gf svg { width: 132%; height: 132%; margin-top: 12%; }
+.obs-gbar { position: relative; width: 66px; height: 10px; border-radius: 5px; background: rgba(255,255,255,.14); overflow: hidden; }
+.obs-gbar i { position: absolute; inset: 0; border-radius: 5px; transform-origin: 0 50%; transform: scaleX(0); background: linear-gradient(90deg, var(--bc2), var(--bc)); transition: transform .12s linear; }
+.obs-gt { font-family: var(--disp); font-weight: 400; font-size: 12px; white-space: nowrap; }
+.obs-gauge.s1 { background: linear-gradient(90deg, #FFD23F, var(--bc)); color: #15122B; animation: obsGlow .5s ease-in-out infinite alternate; }
+.obs-gauge.s1 .obs-gbar i { background: #fff; }
+.obs-gauge.s2 { background: var(--bc); color: #fff; box-shadow: 0 0 16px var(--bc); }
+.obs-gauge.s2 .obs-gbar i { transform: scaleX(1) !important; background: repeating-linear-gradient(90deg, #fff 0 6px, rgba(255,255,255,.4) 6px 12px); animation: obsStripe .3s linear infinite; }
+.obs-gauge.s3 { opacity: .45; }
+@keyframes obsGlow { from { box-shadow: 0 0 0 0 rgba(255,210,63,.7); } to { box-shadow: 0 0 0 6px rgba(255,210,63,0); } }
+@keyframes obsStripe { from { transform: translateX(-12px) scaleX(1.2); } to { transform: translateX(0) scaleX(1.2); } }
+/* 큰 버튼: 다 차면 무대 위에 뿅 */
+.obs-btn { position: absolute; left: 50%; top: 13%; width: min(80%, 300px); height: 78px; margin-left: calc(min(80%, 300px) / -2); padding: 0 16px 0 8px; border: 0; border-radius: 40px; display: flex; align-items: center; gap: 10px; color: #15122B; pointer-events: none; opacity: 0; transform: scale(.3); transition: transform .18s, opacity .18s;
+  background: linear-gradient(180deg, #FFF2A8, #FFD23F 45%, var(--bc)); box-shadow: inset 0 4px 0 rgba(255,255,255,.6), 0 7px 0 rgba(0,0,0,.35), 0 0 24px rgba(255,210,63,.75); touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.obs-btn.on { pointer-events: auto; opacity: 1; transform: scale(1); animation: obsPop .45s cubic-bezier(.2,1.8,.4,1), obsBeat .55s ease-in-out .45s infinite alternate; }
+.obs-btn:active { transform: scale(.94) translateY(3px); }
+.obs-bring { position: absolute; inset: -6px; border-radius: 46px; border: 4px solid #FFE27A; opacity: 0; animation: obsRing 1s ease-out infinite; }
+.obs-btn.on .obs-bring { opacity: 1; }
+.obs-bface { width: 58px; height: 58px; border-radius: 50%; background: #fff; flex-shrink: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 3px rgba(21,18,43,.2); }
+.obs-bface svg { width: 128%; height: 128%; margin-top: 10%; }
+.obs-btxt { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.05; }
+.obs-btxt b { font-size: 34px; color: #15122B; text-shadow: 0 2px 0 rgba(255,255,255,.6); }
+.obs-btxt em { font-style: normal; font-size: 11px; font-weight: 800; color: #3B2A0A; opacity: .85; }
+.obs-bolt { margin-left: auto; width: 34px; height: 34px; color: #fff; animation: obsBolt .4s steps(2) infinite; }
+.obs-bolt svg { width: 100%; height: 100%; }
+@keyframes obsPop { from { transform: scale(.2) rotate(-8deg); } to { transform: scale(1); } }
+@keyframes obsBeat { from { transform: scale(1); } to { transform: scale(1.06); } }
+@keyframes obsRing { from { transform: scale(.92); opacity: .95; } to { transform: scale(1.18); opacity: 0; } }
+@keyframes obsBolt { 0% { transform: rotate(-8deg) scale(1); } 50% { transform: rotate(8deg) scale(1.15); } }
+/* 외침 (켠 순간) */
+.obs-shout { position: absolute; left: 50%; top: 26%; display: flex; align-items: center; gap: 8px; padding: 6px 16px 6px 6px; border-radius: 30px; background: #fff; color: var(--bc); border: 3px solid #2A2340; opacity: 0; transform: translateX(-50%) scale(.4); box-shadow: 0 6px 0 rgba(0,0,0,.3); white-space: nowrap; }
+.obs-shout b { font-size: 22px; color: #2A2340; -webkit-text-stroke: 0; text-shadow: 2px 2px 0 var(--bc); }
+.obs-shout.big b { font-size: 30px; }
+.obs-sface { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; background: #FFF6D6; display: flex; align-items: center; justify-content: center; }
+.obs-sface svg { width: 130%; height: 130%; margin-top: 12%; }
+.obs-shout.show { animation: obsShout 1.3s cubic-bezier(.2,1.6,.4,1) forwards; }
+@keyframes obsShout { 0% { opacity: 0; transform: translateX(-50%) scale(.4) rotate(-6deg); } 14% { opacity: 1; transform: translateX(-50%) scale(1.12) rotate(3deg); } 24% { transform: translateX(-50%) scale(1) rotate(0); } 80% { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); } 100% { opacity: 0; transform: translateX(-50%) scale(.9) translateY(-24px); } }
+/* 다른 선수 부스터 알림 */
+.obs-feed { position: absolute; right: 8px; top: 40px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.obs-chip { display: flex; align-items: center; gap: 4px; padding: 3px 9px 3px 3px; border-radius: 14px; background: rgba(21,18,43,.85); color: #fff; font-size: 11px; font-weight: 700; border: 2px solid var(--bc); animation: obsChip 1.8s ease forwards; white-space: nowrap; }
+.obs-chip b { color: var(--bc); }
+.obs-chip span { width: 20px; height: 20px; border-radius: 50%; overflow: hidden; background: #fff; display: flex; align-items: center; justify-content: center; }
+.obs-chip span svg { width: 130%; height: 130%; margin-top: 12%; }
+@keyframes obsChip { 0% { opacity: 0; transform: translateX(30px); } 12% { opacity: 1; transform: translateX(0); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); } }
+/* 부스터 중: 질주선 + 테두리 빛 */
+.obs-rush { position: absolute; inset: 0; overflow: hidden; opacity: 0; transition: opacity .25s; box-shadow: inset 0 0 40px var(--bc); }
+.obs-rush.on { opacity: 1; }
+.obs-rush i { position: absolute; left: 100%; height: 4px; width: 46%; border-radius: 2px; background: linear-gradient(90deg, rgba(255,255,255,0), #fff 70%, rgba(255,255,255,0)); opacity: .8; animation: obsRush .28s linear infinite; }
+.obs-rush i:nth-child(1) { top: 18%; animation-delay: -.05s; } .obs-rush i:nth-child(2) { top: 31%; width: 30%; animation-delay: -.17s; }
+.obs-rush i:nth-child(3) { top: 47%; animation-delay: -.1s; background: linear-gradient(90deg, rgba(255,255,255,0), var(--bc) 70%, rgba(255,255,255,0)); }
+.obs-rush i:nth-child(4) { top: 59%; width: 36%; animation-delay: -.22s; } .obs-rush i:nth-child(5) { top: 72%; animation-delay: -.02s; background: linear-gradient(90deg, rgba(255,255,255,0), var(--bc2) 70%, rgba(255,255,255,0)); }
+.obs-rush i:nth-child(6) { top: 84%; width: 28%; animation-delay: -.13s; }
+@keyframes obsRush { from { transform: translateX(0); } to { transform: translateX(-260%); } }
+.oly-scene.obs-punch { animation: obsPunch .42s cubic-bezier(.2,1.6,.4,1); }
+@keyframes obsPunch { 0% { transform: scale(1); } 30% { transform: scale(1.07); } 100% { transform: scale(1); } }
+/* 선수 뒤 기운 (SVG) */
+.obs-streak { transform-box: fill-box; transform-origin: 100% 50%; animation: obsStreak .22s linear infinite alternate; }
+@keyframes obsStreak { from { transform: scaleX(.75); opacity: .5; } to { transform: scaleX(1.15); opacity: 1; } }
+.obs-flick { transform-box: fill-box; transform-origin: 100% 50%; animation: obsFlick .12s steps(2) infinite; }
+@keyframes obsFlick { from { transform: scaleX(.8); } to { transform: scaleX(1.1); } }
+.obs-buzz { transform-box: fill-box; transform-origin: 50% 100%; animation: obsBuzz .06s linear infinite alternate; }
+@keyframes obsBuzz { from { transform: scaleY(1); } to { transform: scaleY(.25); } }
+.obs-ring { transform-box: fill-box; transform-origin: 50% 50%; animation: olySpin .5s linear infinite; }
+
+/* ================================================================
+   올림픽 레벨 (olv-) — 배지 · 내 레벨 카드 · 입장 등급 · XP · 레벨 업 축하
+   ================================================================ */
+.olv-b { display: inline-flex; align-items: center; flex-shrink: 0; margin-right: 4px; padding: 1px 5px; border-radius: 6px; font-size: 10px; font-weight: 900; line-height: 1.35; font-family: system-ui, sans-serif; vertical-align: 1px; letter-spacing: -.02em; }
+.olv-easy { background: #2ED573; color: #0E3B21; }
+.olv-normal { background: #3D7BFF; color: #fff; }
+.olv-hard { background: #FF8A3D; color: #3A1600; }
+.olv-hell { background: #15060A; color: #FF4757; box-shadow: 0 0 0 1.5px #FF4757, 0 0 8px rgba(255,71,87,.6); }
+.rv .nm .olv-b { font-size: 8.5px; padding: 0 3px; margin-right: 2px; }
+.olv-flame { width: 12px; height: 14px; margin-left: 2px; flex-shrink: 0; transform-origin: 50% 100%; animation: olvFlame .35s ease-in-out infinite alternate; }
+@keyframes olvFlame { from { transform: scale(1, 1) rotate(-4deg); } to { transform: scale(1.12, 1.22) rotate(4deg); } }
+#olv-panel { margin-bottom: 4px; }
+.olv-me { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 16px; background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 2px var(--olc, #2ED573); }
+.olv-c-easy { --olc: #2ED573; } .olv-c-normal { --olc: #3D7BFF; } .olv-c-hard { --olc: #FF8A3D; } .olv-c-hell { --olc: #FF4757; }
+.olv-me.olv-c-hell { background: linear-gradient(135deg, #2A0A12, #15060A); }
+.olv-big { min-width: 58px; text-align: center; font-size: 15px; color: var(--olc); line-height: 1; }
+.olv-big b { display: block; font-size: 34px; font-weight: 400; color: #fff; text-shadow: 0 3px 0 var(--olc); }
+.olv-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.olv-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 14px; }
+.olv-tn { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 900; }
+.olv-bar { height: 10px; border-radius: 5px; background: rgba(255,255,255,.12); overflow: hidden; }
+.olv-bar i { display: block; height: 100%; border-radius: 5px; transform-origin: 0 50%; background: linear-gradient(90deg, #FFD23F, var(--olc)); }
+.olv-sub { font-size: 11px; color: var(--muted); }
+.olv-sub b { color: #fff; }
+.olv-tiers { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.olv-tb { border: 0; border-radius: 12px; padding: 7px 2px 6px; background: rgba(255,255,255,.07); color: #fff; display: flex; flex-direction: column; align-items: center; gap: 1px; box-shadow: inset 0 0 0 2px transparent; }
+.olv-tb b { font-size: 17px; display: inline-flex; align-items: center; }
+.olv-tb span { font-size: 10px; color: var(--muted); }
+.olv-tb.on { box-shadow: inset 0 0 0 2.5px var(--yellow); background: rgba(255,210,63,.14); }
+.olv-tb:disabled { opacity: 1; }
+.olv-tb:disabled:not(.on) { opacity: .5; }
+.olv-t-easy b, span.olv-t-easy { color: #7DF0AE; } .olv-t-normal b, span.olv-t-normal { color: #A9C4FF; } .olv-t-hard b, span.olv-t-hard { color: #FFB27A; } .olv-t-hell b, span.olv-t-hell { color: #FF6B78; }
+.olv-tb.olv-t-hell { background: linear-gradient(180deg, #2A0A12, #15060A); }
+.olv-codetag { display: flex; flex-direction: column; margin-top: 6px; font-size: 13px; font-weight: 900; }
+.olv-codetag span { display: inline-flex; align-items: center; }
+.olv-codetag em { font-style: normal; font-size: 11px; color: var(--muted); font-weight: 700; }
+.olv-inv { display: inline-flex; align-items: center; margin-left: 6px; padding: 1px 8px; border-radius: 8px; background: rgba(255,255,255,.1); font-weight: 900; }
+.olv-xpg { margin-left: 6px; font-size: 11px; font-weight: 900; color: #7DF0AE; }
+.olv-xp { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; padding: 6px 10px; border-radius: 12px; background: rgba(46,213,115,.14); box-shadow: inset 0 0 0 1.5px rgba(46,213,115,.45); animation: olvIn .5s cubic-bezier(.2,1.6,.4,1) 3.2s both; }
+.olv-xpn { font-size: 20px; color: #7DF0AE; }
+.olv-xpp { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 11px; color: var(--muted); flex: 1; }
+.olv-xpp b { color: #fff; }
+.olv-pxp .olv-xp { animation-delay: 0s; margin: 4px 0 8px; }
+.olv-pxp em { display: block; font-style: normal; font-size: 11px; color: var(--muted); text-align: center; margin-bottom: 6px; }
+@keyframes olvIn { from { opacity: 0; transform: translateY(10px) scale(.9); } to { opacity: 1; transform: none; } }
+.olv-up { position: fixed; inset: 0; z-index: 90; display: none; align-items: center; justify-content: center; background: rgba(10,8,24,.72); }
+.olv-up.show { display: flex; animation: olvFade .3s ease; }
+@keyframes olvFade { from { opacity: 0; } }
+.olv-up-in { position: relative; width: min(86vw, 340px); padding: 26px 18px 18px; border-radius: 26px; text-align: center; background: radial-gradient(circle at 50% 30%, #3B3570, #15122B 70%); box-shadow: 0 0 0 3px var(--olc), 0 0 40px var(--olc); overflow: hidden; animation: olvPop .6s cubic-bezier(.2,1.8,.4,1); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.olv-up-in.olv-c-hell { background: radial-gradient(circle at 50% 30%, #4A0E1A, #12040A 70%); }
+@keyframes olvPop { from { transform: scale(.3) rotate(-10deg); } to { transform: none; } }
+.olv-rays { position: absolute; left: 50%; top: 36%; width: 520px; height: 520px; margin: -260px 0 0 -260px; background: repeating-conic-gradient(rgba(255,210,63,.16) 0 10deg, transparent 10deg 20deg); animation: olySpin 9s linear infinite; pointer-events: none; }
+.olv-up-in .confetti { position: absolute; inset: 0; pointer-events: none; }
+.olv-up-k { position: relative; font-size: 30px; color: var(--yellow); text-shadow: 0 3px 0 rgba(0,0,0,.4); }
+.olv-up-badge { position: relative; width: 120px; height: 120px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 56px; color: #fff; background: radial-gradient(circle at 35% 30%, #fff6, transparent 40%), var(--olc); box-shadow: inset 0 -8px 0 rgba(0,0,0,.25), 0 0 0 6px rgba(255,255,255,.15); animation: olvBadge 1s cubic-bezier(.2,1.8,.4,1) .2s both; }
+.olv-up-badge small { font-size: 22px; margin-right: 2px; align-self: center; }
+@keyframes olvBadge { from { transform: scale(0) rotate(-180deg); } to { transform: none; } }
+.olv-up-from { position: relative; font-size: 13px; color: var(--muted); font-weight: 800; }
+.olv-up-tier { position: relative; margin-top: 4px; padding: 8px 12px; border-radius: 14px; background: rgba(255,255,255,.1); font-family: var(--disp); font-size: 20px; display: flex; flex-direction: column; align-items: center; }
+.olv-up-tier em { font-style: normal; font-family: system-ui, sans-serif; font-size: 11px; color: var(--muted); font-weight: 700; }
+.olv-up-msg { position: relative; font-size: 13px; color: #fff; }
+.olv-up-tap { position: relative; font-size: 11px; color: var(--muted2, #8D86B5); margin-top: 6px; }
+
+/* ================================================================
+   혼자 연습 난이도 (opd-) — 이지 초록 · 노멀 파랑 · 하드 주황 · 헬 빨강/검정 + 불꽃
+   ================================================================ */
+.opd-pick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.opd-btn { position: relative; border: 0; border-radius: 14px; padding: 9px 2px 7px; display: flex; flex-direction: column; align-items: center; gap: 1px; color: #fff; background: rgba(255,255,255,.07); box-shadow: inset 0 0 0 2px var(--dc), 0 4px 0 rgba(0,0,0,.25); overflow: hidden; }
+.opd-btn b { font-size: 21px; } .opd-btn span { font-size: 10px; color: var(--muted); }
+.opd-btn.on { background: var(--dc); color: var(--dt); box-shadow: inset 0 0 0 2px #fff, 0 4px 0 rgba(0,0,0,.3), 0 0 14px var(--dc); transform: translateY(-2px); }
+.opd-btn.on span { color: var(--dt); opacity: .85; }
+.opd-easy { --dc: #2ED573; --dt: #0E3B21; } .opd-normal { --dc: #3D7BFF; --dt: #fff; } .opd-hard { --dc: #FF8A3D; --dt: #3A1600; } .opd-hell { --dc: #FF4757; --dt: #FFE27A; }
+.opd-btn.opd-hell { background: linear-gradient(180deg, #2A0A12, #0D0306); }
+.opd-btn.opd-hell.on { background: linear-gradient(180deg, #7A0E1E, #15060A); }
+.opd-btn .olv-flame { position: absolute; right: 5px; top: 4px; width: 14px; height: 17px; }
+.opd-desc { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 7px 10px; border-radius: 12px; font-size: 12px; background: rgba(255,255,255,.05); box-shadow: inset 3px 0 0 var(--dc); }
+.opd-desc b { color: var(--dc); }
+.opd-desc.opd-hell { background: linear-gradient(90deg, rgba(255,71,87,.18), rgba(21,6,10,.5)); }
+.opd-b { display: inline-flex; align-items: center; gap: 2px; padding: 1px 7px; border-radius: 8px; font-size: 11px; font-weight: 900; background: var(--dc); color: var(--dt); white-space: nowrap; vertical-align: 1px; font-family: system-ui, sans-serif; }
+.opd-b .olv-flame { width: 10px; height: 12px; margin: 0 1px 0 0; }
+.opd-b.opd-hell { background: #15060A; color: #FF4757; box-shadow: 0 0 0 1.5px #FF4757; }
+.opd-b.big { font-size: 13px; padding: 3px 10px; border-radius: 10px; box-shadow: 0 3px 0 rgba(0,0,0,.3); }
+.opd-b.big.opd-hell { box-shadow: 0 0 0 2px #FF4757, 0 0 12px rgba(255,71,87,.8); }
+.opd-play { position: absolute; left: calc(var(--opr-l) + 8px); top: calc(var(--opr-top) + 46px); z-index: 2; pointer-events: none; }
+.opr-rank .opd-b { margin-left: auto; }
+/* 헬: 무대에 불꽃 테두리 */
+#s-play.opr-on.opd-on-hell .stage { box-shadow: 0 0 0 3px #FF4757, 0 0 26px rgba(255,71,87,.75), inset 0 0 30px rgba(255,71,87,.35); animation: opdHell 1.2s ease-in-out infinite alternate; }
+@keyframes opdHell { from { box-shadow: 0 0 0 3px #FF4757, 0 0 18px rgba(255,71,87,.55), inset 0 0 22px rgba(255,71,87,.25); } to { box-shadow: 0 0 0 3px #FF8A3D, 0 0 34px rgba(255,71,87,.9), inset 0 0 36px rgba(255,138,61,.4); } }
+#s-play.opr-on.opd-on-easy .stage { box-shadow: 0 0 0 2px rgba(46,213,115,.6), 0 0 22px -4px #2ED573; }
+#s-play.opr-on.opd-on-hard .stage { box-shadow: 0 0 0 2px rgba(255,138,61,.7), 0 0 22px -4px #FF8A3D; }
+
+/* 수영: 숨 박자 (큰 물방울) */
+.osw-dot { left: 0; transition: none; }
+.osw-dot.br { top: 1px; width: 20px; height: 20px; margin-left: -10px; background: radial-gradient(circle at 35% 30%, #fff, #7FD3FF 55%, #3D9BEA); box-shadow: 0 0 0 2px #fff; color: #15467A; font-size: 9px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+.osw-bub, .osw-ilbub { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #7FD3FF 55%, #3D9BEA); box-shadow: 0 0 0 1.5px #fff; }
+.osw-g { color: #A9C4FF; }
+.osw-ilbub { width: 46px; height: 46px; line-height: 46px; text-align: center; color: #15467A; font-weight: 900; font-size: 15px; }
+/* 쇼트트랙: 코너 미끄러짐 막대 */
+.osh-skid { position: relative; width: 44px; height: 8px; border-radius: 4px; background: rgba(255,255,255,.14); overflow: hidden; flex-shrink: 0; opacity: .35; transition: opacity .2s; }
+.osh-skid b { position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(0); background: linear-gradient(90deg, #7FD3FF, #FFD23F, #FF4757); }
+.osh-skid.on { opacity: 1; } .osh-skid.hot { opacity: 1; animation: olyBlink .3s steps(2) infinite; }
+/* 스키점프: 연타 덤 막대 (도움닫기 때) */
+.owj-boost { display: none; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; color: var(--muted); }
+.owj-boost.on { display: flex; }
+.owj-boost b { min-width: 64px; text-align: right; color: #FFD23F; font-family: var(--disp); font-weight: 400; font-size: 14px; }
+.owj-bbar { flex: 1; height: 10px; border-radius: 5px; background: rgba(255,255,255,.12); overflow: hidden; }
+.owj-bbar i { display: block; height: 100%; transform-origin: 0 50%; transform: scaleX(0); background: linear-gradient(90deg, #FF8A3D, #FFD23F); transition: transform .1s linear; }
+.rc-pips { grid-template-columns: repeat(15, minmax(0, 1fr)); gap: 3px; }
+
+/* ================================================================
+   잠깐 멈춤 (pz-) — 방장 버튼 · 모두에게 보이는 멈춤 화면 · 3·2·1 · 그만하기 확인
+   ================================================================ */
+.pz-btn { position: fixed; z-index: 60; width: 36px; height: 36px; border: 0; border-radius: 12px; display: none; align-items: center; justify-content: center; color: #fff; background: rgba(255,255,255,.12); box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.25); -webkit-tap-highlight-color: transparent; }
+.pz-btn.show { display: flex; }
+.pz-btn:active { transform: scale(.92); }
+.pz-ov { position: fixed; inset: 0; z-index: 85; display: none; align-items: center; justify-content: center; padding: 20px; background: rgba(10,8,24,.78); }
+.pz-ov.show { display: flex; animation: olvFade .25s ease; }
+.pz-card { position: relative; width: min(88vw, 340px); padding: 24px 18px 18px; border-radius: 26px; background: radial-gradient(circle at 50% 20%, #3B3570, #1C1838 75%); box-shadow: 0 0 0 2px rgba(255,255,255,.12), 0 18px 40px rgba(0,0,0,.45); display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.pz-ic { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--yellow); color: #15122B; box-shadow: 0 5px 0 var(--yellowS); }
+.pz-ic svg { width: 34px; height: 34px; }
+.pz-t { font-size: 40px; color: #fff; text-shadow: 0 3px 0 rgba(0,0,0,.35); }
+.pz-sub { font-size: 14px; color: var(--muted); }
+.pz-hint { font-size: 12px; color: var(--muted2, #8D86B5); margin-top: 4px; }
+.pz-acts { display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 6px; }
+.pz-acts .btn { min-height: 54px; font-size: 22px; }
+.pz-quit { color: #FF8B95; }
+.pz-cd { display: none; font-size: 96px; line-height: 1; color: var(--yellow); text-shadow: 0 6px 0 rgba(0,0,0,.35); }
+.pz-ov.counting .pz-cd { display: block; }
+.pz-ov.counting .pz-acts, .pz-ov.counting .pz-sub, .pz-ov.counting .pz-hint { display: none; }
+.pz-cd.pop { animation: msgIn .45s cubic-bezier(.2,1.8,.4,1); }
+.pz-ask { display: none; position: absolute; inset: 0; border-radius: 26px; padding: 26px 18px 18px; background: #241E48; flex-direction: column; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 0 0 2px #FF4757; }
+.pz-ov.ask .pz-ask { display: flex; animation: msgIn .35s cubic-bezier(.2,1.6,.4,1); }
+.pz-ask b { font-size: 30px; color: #fff; }
+.pz-ask span { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.pz-ov .btn-red { background: #FF4757; color: #fff; box-shadow: inset 0 4px 0 rgba(255,255,255,.3), 0 5px 0 #B8202F; }
+/* 혼자 연습 멈춤 */
+.opz-btn { pointer-events: auto; }
+.opr-pause { pointer-events: auto; }
+.olv-inv { display: inline-flex; margin: 4px 0 0; } .olv-inv.no { background: rgba(255,71,87,.2); color: #FF8B95; box-shadow: inset 0 0 0 1.5px #FF4757; }

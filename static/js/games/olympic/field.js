@@ -16,8 +16,8 @@
   // 연타 도움닫기 + 각도 잡기 + 날아가기
   function makeSim(cfg) {
     return {
-      init() {
-        return { att: 0, ph: 'ready', phT: 0, x: 0, v: 0, ang: 0, holdT: 0, mash: new O.Masher(66), fx: 0, fT: 0, fd: 0, fv: 0, fa: 0, tries: [], best: 0, foul: 0, done: false };
+      init(ctx) {
+        return { att: 0, ph: 'ready', phT: 0, x: 0, v: 0, ang: 0, holdT: 0, mash: new O.Masher(), fx: 0, fT: 0, fd: 0, fv: 0, fa: 0, tries: [], best: 0, foul: 0, done: false, dp: O.diffP(ctx && ctx.diff) };
       },
       press(st, c, e) {
         if (st.done) return null;
@@ -45,11 +45,17 @@
         let out = null;
         if (st.ph === 'ready' && e - st.phT >= READY) { st.ph = 'run'; st.phT = e; st.mash = new O.Masher(66); out = { say: `${st.att + 1}번째 시도!`, color: '#FFE27A' }; }
         if (st.ph === 'run' || st.ph === 'hold') {
-          st.v *= Math.exp(-(st.ph === 'hold' ? 0.25 : 1.0) * dt);   // 각도 잡는 동안은 거의 그대로
+          if (st.ph === 'run') st.v *= Math.exp(-1.0 * dt);   // 각도 잡는 동안(초록 꾹)은 속도가 그대로예요 (느려지지 않아요)
           st.x += st.v * dt;
-          if (st.ph === 'hold') st.ang = Math.min(cfg.maxAng, (e - st.holdT) * cfg.angSpeed / 1000);
+          if (st.ph === 'hold') st.ang = Math.min(cfg.maxAng, (e - st.holdT) * cfg.angSpeed * st.dp.fdAng / 1000);
+          // 각도를 잡는 중(초록 꾹)에 선에 닿으면 저절로 휙! (이지·노멀) · 하드·헬은 그대로 파울 조심
+          if (st.ph === 'hold' && st.dp.fdAuto && st.x >= cfg.LINE) {
+            st.x = cfg.LINE;
+            const r = launch(st, e, cfg);
+            return Object.assign(r, { say: '선에서 저절로 휙!', color: '#7DF0AE' });
+          }
           // 선을 한참 넘어가면 파울
-          if (st.x > cfg.LINE + 0.6) { foul(st, e); out = { say: '파울! 선을 넘었어요', color: '#FF8B95', sfx: 'bad' }; }
+          if (st.x > cfg.LINE + 0.6 + st.dp.fdGrace) { foul(st, e); out = { say: '파울! 선을 넘었어요', color: '#FF8B95', sfx: 'bad' }; }
         } else if (st.ph === 'air') {
           const f = (e - st.fT) / (st.fdur * 1000);
           if (f >= 1) {
@@ -77,11 +83,12 @@
     st.ph = 'foul'; st.phT = e; st.foul += 1; st.tries.push(0);
   }
   function launch(st, e, cfg) {
-    if (st.x > cfg.LINE) { foul(st, e); return { say: '파울! 선을 밟았어요', color: '#FF8B95', sfx: 'bad', vib: [40, 30, 40] }; }
+    const grace = st.dp ? st.dp.fdGrace : 0;     // 이지: 선을 살짝 밟아도 봐줘요
+    if (st.x > cfg.LINE + grace) { foul(st, e); return { say: '파울! 선을 밟았어요', color: '#FF8B95', sfx: 'bad', vib: [40, 30, 40] }; }
     const a = Math.max(5, st.ang);
     st.ph = 'air'; st.fT = e; st.fx = st.x; st.fv = st.v; st.fa = a;
     // 기록은 선에서부터 잰 거리
-    st.fd = cfg.dist(st.v, a) - (cfg.LINE - st.x);
+    st.fd = cfg.dist(st.v, a) - (cfg.LINE - Math.min(cfg.LINE, st.x));
     st.fdur = cfg.flightT(st.v, a);
     return { sfx: 'whoosh', vib: 20 };
   }
@@ -141,7 +148,8 @@
       },
       create(ctx) { return makeField(ctx, cfg, sim); },
       // 혼자 연습: 저장해 둔 누른 기록으로 '내 최고 기록' 유령 선수
-      ghost(gctx, log) { return replayField(sim, log); }
+      ghost(gctx, log) { return replayField(sim, log, gctx); },
+      sim, cfg
     };
     O.register(def);
     return def;
@@ -155,8 +163,8 @@
   function extraOf(I) {
     return [I.att, PHC[I.ph] || 0, Math.round(I.ang), Math.round(I.f * 100) / 100, I.ph === 'air' || I.ph === 'land' ? Math.round(I.fd * 100) : 0, I.foul];
   }
-  function replayField(sim, log) {
-    const st = sim.init();
+  function replayField(sim, log, gctx) {
+    const st = sim.init(gctx);
     st.e = 0;
     const L = log || [];
     let i = 0;
@@ -177,16 +185,28 @@
     };
   }
 
+  // '각도 구간': 선 앞 이 구간에서 초록을 꾹 누르기 시작하면 딱 좋아요 (모든 레인에 노란 띠 + 글자)
+  const ZONE = [5, 3];          // 선에서 몇 m 앞부터 몇 m 앞까지 (1초에 9~11번 칠 때 45도쯤 되는 곳)
+  function zoneSVG(tr, cfg) {
+    const p = tr.ppm; const top = tr.trackTop; const x0 = (cfg.LINE - ZONE[0]) * p; const x1 = (cfg.LINE - ZONE[1]) * p;
+    const h = tr.H - top;
+    let s = `<g class="ofd-zone"><rect x="${x0.toFixed(1)}" y="${top}" width="${(x1 - x0).toFixed(1)}" height="${h.toFixed(1)}" fill="rgba(255,210,63,.22)"/>`;
+    s += `<rect x="${x0.toFixed(1)}" y="${top}" width="3" height="${h.toFixed(1)}" fill="#FFD23F"/><rect x="${(x1 - 3).toFixed(1)}" y="${top}" width="3" height="${h.toFixed(1)}" fill="#FFD23F" opacity=".7"/>`;
+    for (let y = top + 10; y < tr.H; y += 22) s += `<path d="M${(x0 + 8).toFixed(1)} ${y} l7 6 l-7 6" fill="none" stroke="#FFD23F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" opacity=".75"/>`;
+    s += `<g transform="translate(${((x0 + x1) / 2).toFixed(1)} ${top - 1})"><rect x="-44" y="-12" width="88" height="17" rx="8.5" fill="#FFD23F"/><text y="1.5" text-anchor="middle" font-size="10" font-weight="900" fill="#2A2340" font-family="system-ui,sans-serif">각도 구간 · 초록 꾹</text></g></g>`;
+    return s;
+  }
+
   function makeField(ctx, cfg, sim) {
     const tr = new O.Track(ctx, {
       D: cfg.D, surface: 'runway', view: cfg.view, marks: 1000, finish: false, start: true, camLead: cfg.camLead || 0.3,
       camMin: -2, camMax: cfg.camMax, strip: false,
-      marksExtra: cfg.marksExtra, afterBuild: cfg.afterBuild
+      marksExtra: (t) => (cfg.marksExtra ? cfg.marksExtra(t) : '') + zoneSVG(t, cfg), afterBuild: cfg.afterBuild
     });
     const meter = O.rateMeter(tr.hud);
     const gauge = angleGauge(tr.hud);
     tr.build(true, true);
-    const st = sim.init();
+    const st = sim.init(ctx);
     const log = [];
     let lastT = 0;
     const flags = {};    // pid → 마지막 표시한 시도 기록

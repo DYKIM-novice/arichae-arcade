@@ -17,21 +17,30 @@
   const READY = 1200; const SHOW = 2300;
   const BOT_START = 1500; const BOT_CYCLE = 14000;
 
-  // 엉뚱 변주: 날아가는 길에 새 떼! 시도마다 새가 있는 곳(m)은 씨앗으로 정해요 (모든 폰이 같아요)
-  //  균형이 잘 잡혀 있으면(|b|<0.3) 새들이 밀어 올려 주고, 기우뚱하면 퍽! 부딪혀 더 기우뚱
-  const BIRD_OK = 0.3;
-  const birdAt = (seed, k) => 34 + ((seed * 7919 + k * 104729) % 2900) / 100;
+  // 도움닫기: 가만있어도 기본 속도로 쭉 내려가요 (IN_ACC) · 빨·파 연타하면 덤 속도 (한 번에 +BONUS_K, 모두 합쳐 BONUS_MAX 까지)
+  const IN_ACC = 9.8 * 0.62 * 0.9;
+  const BONUS_K = 0.09; const BONUS_MAX = 3.6;      // 1초에 10번쯤 치면 도약대 끝에서 덤이 꽉 차요
 
   function makeSim(seed) {
     const ph1 = (seed % 613) / 613 * 6.28; const ph2 = (seed % 397) / 397 * 6.28;
     const drift = (t, k) => 0.55 * Math.sin(t * 1.7 + ph1 + k) + 0.4 * Math.sin(t * 2.9 + ph2 - k);
     return {
-      init() { return { k: 0, ph: 'ready', phT: 0, x: START_X, y: inrunY(START_X), vx: 0, vy: 0, v: 0, b: 0, q: 0, tele: false, tries: [], best: 0, done: false, fall: false, bird: 0 }; },
+      init() { return { k: 0, ph: 'ready', phT: 0, x: START_X, y: inrunY(START_X), vx: 0, vy: 0, v: 0, b: 0, q: 0, tele: false, tries: [], best: 0, done: false, fall: false, bonus: 0, mash: new O.Masher() }; },
       press(st, c, e) {
         if (st.done) return null;
+        // 도움닫기 연타: 덤 속도 (안 눌러도 괜찮아요)
+        if (st.ph === 'inrun' && (c === 'r' || c === 'b')) {
+          if (st.bonus < BONUS_MAX && st.mash.press(c, e) === 1) {
+            const add = Math.min(BONUS_K, BONUS_MAX - st.bonus);
+            st.bonus += add;
+            return { sfx: 'step', vib: 4 };
+          }
+          return null;
+        }
         if (st.ph === 'inrun' && c === 'g') {
           const dx = -st.x;   // 끝까지 남은 거리
-          st.q = dx < 0.4 ? 1 : Math.max(0.2, 1 - (dx - 0.4) / 6);
+          const tw = st.dp ? st.dp.jpTake : 0.4;     // 난이도: '완벽한 도약' 칸
+          st.q = dx < tw ? 1 : Math.max(0.2, 1 - (dx - tw) / 6);
           return takeoff(st, e);
         }
         if (st.ph === 'fly') {
@@ -46,29 +55,21 @@
         let out = null;
         if (st.ph === 'ready' && e - st.phT >= READY) { st.ph = 'inrun'; st.phT = e; out = { say: `${st.k + 1}번째 점프!`, color: '#3D7BFF' }; }
         else if (st.ph === 'inrun') {
-          st.v += (9.8 * 0.62 - 0.0012 * st.v * st.v) * dt;
-          st.x += st.v * 0.887 * dt; st.y = inrunY(st.x);
+          // 기본 속도는 내려온 거리만큼 붙어요 (연타 덤으로 빨리 내려와도 기본 속도가 덜 붙지 않게)
+          st.v += (IN_ACC - 0.0012 * st.v * st.v) * dt * (st.v + st.bonus + 1) / (st.v + 1);
+          st.x += (st.v + st.bonus) * 0.887 * dt; st.y = inrunY(st.x);   // 기본 속도 + 연타 덤
           if (st.x >= 0) { st.q = 0.25; out = takeoff(st, e); out.say = '늦었어요!'; out.color = '#FF8B95'; }
         } else if (st.ph === 'fly') {
           const t = (e - st.phT) / 1000;
-          st.b += (drift(t, st.k) * 0.8) * dt;
+          st.b += (drift(t, st.k) * 0.8 * (st.dp ? st.dp.jpDrift : 1)) * dt;
           const bal = Math.min(1, Math.abs(st.b) / 0.9);
           const lift = (0.5 + 0.14 * st.q) * (1 - bal * 0.85);
           st.vy -= 9.8 * (1 - lift) * dt;
           st.vx -= 0.0022 * st.vx * st.vx * (1 + bal) * dt;
           st.x += st.vx * dt; st.y += st.vy * dt;
-          if (!st.bird && st.x >= birdAt(seed, st.k) && st.y - hillY(st.x) > 1.5) {
-            if (Math.abs(st.b) < BIRD_OK) {
-              st.bird = 1; st.vy += 1.0; st.vx += 0.5;
-              out = { say: '새들이 밀어줘요! 슝~', color: '#7DF0AE', sfx: 'tweet', vib: 15 };
-            } else {
-              st.bird = 2; st.b = O.clamp(st.b + (st.b >= 0 ? 0.45 : -0.45), -1.4, 1.4); st.vx *= 0.94;
-              out = { say: '퍽! 새랑 부딪혔어요', color: '#FF8B95', sfx: 'bonk', vib: [30, 20, 30] };
-            }
-          }
           if (st.y <= hillY(st.x)) {
             st.y = hillY(st.x);
-            st.fall = Math.abs(st.b) > 0.75;
+            st.fall = Math.abs(st.b) > (st.dp ? st.dp.jpFall : 0.75);
             let d = st.x * (st.tele && !st.fall ? 1.02 : 1);
             if (st.fall) d *= 0.8;
             const cm = Math.max(0, Math.round(d * 100));
@@ -82,7 +83,7 @@
           if (e - st.phT >= SHOW) {
             st.k += 1;
             if (st.k >= TRIES) { st.done = true; st.doneT = e; }
-            else Object.assign(st, { ph: 'ready', phT: e, x: START_X, y: inrunY(START_X), v: 0, vx: 0, vy: 0, b: 0, tele: false, fall: false });
+            else Object.assign(st, { ph: 'ready', phT: e, x: START_X, y: inrunY(START_X), v: 0, vx: 0, vy: 0, b: 0, tele: false, fall: false, bonus: 0 });
           }
         }
         return out;
@@ -90,8 +91,8 @@
     };
     function takeoff(st, e) {
       st.ph = 'fly'; st.phT = e;
-      st.vx = st.v * 0.95; st.vy = -2.2 + 3.6 * st.q;
-      st.b = 0; st.bird = 0;
+      st.vx = (st.v + (st.bonus || 0)) * 0.95; st.vy = -2.2 + 3.6 * st.q;
+      st.b = 0;
       return { sfx: 'whoosh', vib: 20, say: st.q > 0.85 ? '완벽한 도약!' : st.q > 0.55 ? '좋아요!' : '조금 아쉬워요', color: '#7DF0AE' };
     }
   }
@@ -118,13 +119,10 @@
   const PHC = { ready: 0, inrun: 1, fly: 2, land: 3, done: 4 };
   const PHN = ['ready', 'inrun', 'fly', 'land', 'done'];
 
-  // 몸개그 소품: 날아가는 스키 · 목도리 · 눈덩이 · 새
+  // 몸개그 소품: 날아가는 스키 · 목도리 · 눈덩이
   const SKI = (c) => `<g><path d="M-22 0 H18 Q23 0 23 -5" fill="none" stroke="#2A2340" stroke-width="4.4" stroke-linecap="round"/><path d="M-21 0 H18 Q22 0 22 -4" fill="none" stroke="${c}" stroke-width="2.6" stroke-linecap="round"/></g>`;
   const SCARF = '<g><path d="M-12 -3 Q0 -8 12 -3 L14 3 Q2 -1 -10 4 Z" fill="#FF4757"/><path d="M-5 -5 v7 M2 -5 v7" stroke="#fff" stroke-width="1.6"/></g>';
-  const BIRD = '<g class="owj-bird"><path class="owj-wing" d="M-2 -1 Q-9 -11 -16 -7 Q-9 -4 -2 2 Z" fill="#5B6B8C"/><ellipse rx="7.5" ry="4.8" fill="#8395BA"/><path d="M-7 -1 L-13 -3 L-12 2 Z" fill="#5B6B8C"/><circle cx="6.5" cy="-3" r="3.8" fill="#8395BA"/><circle cx="7.8" cy="-4" r="1" fill="#15122B"/><path d="M10 -3.2 l4.4 1.1 -4.4 1.3 Z" fill="#FFB43D"/><path class="owj-wing" d="M0 -1 Q-4 -13 -12 -11 Q-6 -5 0 2 Z" fill="#A5B6DA"/></g>';
   const HAT_SNOW = '<path d="M-21 -16 Q-17 -36 -2 -33 Q4 -42 14 -34 Q25 -32 22 -15 Q0 -24 -21 -16 Z" fill="#fff" stroke="#BFD8EC" stroke-width="1.5"/><circle cx="-8" cy="-27" r="2" fill="#E4F0FA"/>';
-  const HAT_BIRD = `<g transform="translate(2 -30) scale(1.25)">${BIRD.replace('owj-bird', 'owj-bird sit')}</g><g transform="translate(0 70) scale(.8)"><path d="M-14 -96 l2 4 4 .5 -3 3 1 4 -4 -2 -4 2 1 -4 -3 -3 4 -.5 Z" fill="#FFD23F"/></g>`;
-  const FLOCK = [[0, 0], [-15, -11], [-15, 11], [-30, -20], [-30, 20]];
   const SIT = (t) => ({ fl: 82, bl: 74, fk: 4, bk: 10, fa: 40 + Math.sin(t * 9) * 14, ba: -30, tilt: -14 + Math.sin(t * 5) * 4, bob: 14, head: 10 + Math.sin(t * 7) * 6, ex: 'd', fx: 'stars', fxx: 14, fxy: 30 });
   const CRASH_ROLL = 0.75; const CRASH_SPLAT = 1.6;
 
@@ -145,8 +143,10 @@
     const hud = wrap.querySelector('.oly-hud');
     const msgEl = wrap.querySelector('.oly-msg');
     scene.appendChild((() => { const b = document.createElement('div'); b.className = 'oly-snow'; return b; })());
-    const hudEl = G.kit.el(`<div class="owj-hud"><div class="owj-bal"><span>균형</span><div class="owj-bar"><i class="owj-mid"></i><i class="owj-dot"></i></div></div><div class="owj-keys"><span><i class="g"></i> 도약·착지</span><span><i class="r"></i> 뒤로 · 앞으로 <i class="b"></i></span><span class="owj-best">최고 <b>-</b></span></div></div>`);
+    const hudEl = G.kit.el(`<div class="owj-hud"><div class="owj-bal"><span>균형</span><div class="owj-bar"><i class="owj-mid"></i><i class="owj-dot"></i></div></div><div class="owj-boost"><span>연타 덤</span><div class="owj-bbar"><i></i></div><b>+0km/h</b></div><div class="owj-keys"><span><i class="r"></i><i class="b"></i> 연타 = 더 빨리</span><span><i class="g"></i> 도약·착지</span><span class="owj-best">최고 <b>-</b></span></div></div>`);
     hud.appendChild(hudEl);
+    const bonusEl = hudEl.querySelector('.owj-boost'); const bonusBar = hudEl.querySelector('.owj-bbar i'); const bonusTx = hudEl.querySelector('.owj-boost b');
+    let lastBonus = -1;
     const dot = hudEl.querySelector('.owj-dot'); const balEl = hudEl.querySelector('.owj-bal'); const bestEl = hudEl.querySelector('.owj-best b');
     const svg = O.el('svg', { class: 'oly-svg' });
     scene.appendChild(svg);
@@ -155,7 +155,7 @@
     const camC = FX ? FX.cam(svg) : null;
     const wind = FX ? FX.lines(scene, 'linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.95) 60%, rgba(255,255,255,0))') : null;
     let Wd = 0; let Hd = 0; let ppm = 6; let world = null; let bg = null; let aths = {};
-    let PF = null; let flockG = null; let birds = []; let balls = {}; let piles = {}; let flagG = null;
+    let PF = null; let balls = {}; let piles = {}; let flagG = null;
     let camX = START_X; let camY = inrunY(START_X);
     const vis = {};      // 선수마다 화면 상태 (넘어짐·착지 연출)
     const floorY = (xp) => -hillY(xp / ppm) * ppm;
@@ -193,10 +193,6 @@
       world.appendChild(flagG);
       piles = {};
       list.forEach((p) => { const g = O.el('g', { display: 'none' }, '<ellipse rx="26" ry="9" fill="#fff" stroke="#BFD8EC" stroke-width="1.6"/><ellipse cx="-12" cy="-4" rx="10" ry="6" fill="#fff"/><ellipse cx="13" cy="-3" rx="9" ry="5" fill="#F4FAFF"/>'); world.appendChild(g); piles[p.pid] = g; });
-      // 새 떼 (내 이번 시도 길목)
-      flockG = O.el('g', { class: 'owj-flock', display: 'none' });
-      birds = FLOCK.map(([dx, dy]) => { const g = O.el('g', {}, BIRD); flockG.appendChild(g); return { g, dx, dy, vx: 0, vy: 0, ox: 0, oy: 0 }; });
-      world.appendChild(flockG);
       aths = {};
       balls = {};
       list.slice().reverse().forEach((p) => {
@@ -218,12 +214,12 @@
     }
     const st = sim.init();
     st.e = 0;
+    st.dp = O.diffP(ctx.diff);
     build();
     const ro = window.ResizeObserver ? new ResizeObserver(() => { if (scene.clientWidth !== Wd || scene.clientHeight !== Hd) build(); }) : null;
     if (ro) ro.observe(scene);
     const log = [];
-    let lastT = 0; let msgT = 0; let lastPh = 'ready'; let lastK = 0; let birdSaid = -1; let doneFx = false;
-    const flock = { y: 0, k: -1, state: 0, t: 0 };
+    let lastT = 0; let msgT = 0; let lastPh = 'ready'; let lastK = 0; let doneFx = false;
     function say(t, c, ms) { msgEl.textContent = t; msgEl.style.color = c || '#fff'; msgEl.classList.remove('show'); void msgEl.offsetWidth; msgEl.classList.add('show'); clearTimeout(msgT); msgT = setTimeout(() => msgEl.classList.remove('show'), ms || 1300); }
     function react(r) { if (!r) return; if (r.say) say(r.say, r.color, r.ms); if (r.sfx && ctx.sfx[r.sfx]) ctx.sfx[r.sfx](); if (r.vib) ctx.vibrate(r.vib); if (r.good) { const b = ctx.stage.getBoundingClientRect(); ctx.fx.burst(b.width / 2, b.height / 2, '#FFD23F', 20); } }
     function simTo(e) { while (st.e + STEP <= e) { st.e += STEP; react(sim.step(st, STEP / 1000, st.e)); } }
@@ -287,31 +283,6 @@
       piles[p.pid].setAttribute('display', 'none');
       Object.assign(V, { landT: null, crash: false, splat: false, bn: -1, rot: 0, gear: false, slide: 0 });
     }
-    // 새 떼 그리기 (내 이번 시도)
-    function drawFlock(e, dt) {
-      if (st.done) { flockG.setAttribute('display', 'none'); return; }
-      const bx = birdAt(seed, st.k);
-      if (flock.k !== st.k) { flock.k = st.k; flock.state = 0; flock.y = hillY(bx) + 21; birds.forEach((b) => { b.ox = 0; b.oy = 0; b.vx = 0; b.vy = 0; }); }
-      const show = st.ph === 'inrun' || st.ph === 'fly' || (flock.state && e - flock.t < 1600);
-      if (!show) { flockG.setAttribute('display', 'none'); return; }
-      flockG.removeAttribute('display');
-      // 다가오면 내 높이로 맞춰 날아와요 (부딪힘 판단은 규칙이 해요)
-      if (st.ph === 'fly' && !flock.state && st.x > bx - 45) flock.y += (st.y + 1.5 - flock.y) * Math.min(1, dt * 3);
-      if (!flock.state && st.bird) {
-        flock.state = st.bird; flock.t = e;
-        birds.forEach((b, i) => { b.vx = (st.bird === 1 ? 30 : 60) * (Math.random() - 0.3); b.vy = st.bird === 1 ? -(60 + i * 12) : (Math.random() - 0.5) * 160 - 40; });
-      }
-      const s = Math.max(0.9, Math.min(1.4, Wd / 300));
-      const fx = bx * ppm; const fy = -flock.y * ppm;
-      const ts = e / 1000;
-      birds.forEach((b, i) => {
-        if (flock.state) { b.ox += b.vx * dt; b.oy += b.vy * dt; }
-        const hide = flock.state === 1 && i < 2 && e - flock.t < 900;   // 두 마리는 내 손을 잡고 날아요
-        b.g.setAttribute('display', hide ? 'none' : 'inline');
-        b.g.setAttribute('transform', `translate(${(fx + b.dx * s + b.ox).toFixed(1)} ${(fy + b.dy * s + b.oy + Math.sin(ts * 6 + i) * 3).toFixed(1)}) scale(${(-s).toFixed(2)} ${s.toFixed(2)})`);
-      });
-      flockG.setAttribute('opacity', flock.state ? Math.max(0, 1 - (e - flock.t) / 1600).toFixed(2) : 1);
-    }
     return {
       start() {},
       tick(t) {
@@ -326,11 +297,11 @@
           const a = aths[p.pid];
           if (!a) return;
           let I;
-          if (p.me) I = { ph: st.done ? 'done' : st.ph, x: st.x, y: st.y, b: st.b, fall: st.fall, k: st.k, bird: st.bird, tele: st.tele, vy: st.vy };
+          if (p.me) I = { ph: st.done ? 'done' : st.ph, x: st.x, y: st.y, b: st.b, fall: st.fall, k: st.k, tele: st.tele, vy: st.vy };
           else {
             const L = live[p.pid];
             const ex = (L && L[2]) || [];
-            I = { ph: PHN[ex[1] || 0], x: ex[2] != null ? ex[2] : START_X, y: ex[3] != null ? ex[3] : inrunY(START_X), b: ex[4] || 0, fall: !!ex[5], k: ex[0] || 0, bird: ex[6] || 0, tele: false, vy: -6 };
+            I = { ph: PHN[ex[1] || 0], x: ex[2] != null ? ex[2] : START_X, y: ex[3] != null ? ex[3] : inrunY(START_X), b: ex[4] || 0, fall: !!ex[5], k: ex[0] || 0, tele: false, vy: -6 };
             chip[p.pid].textContent = `${(ex[0] || 0) + 1 > TRIES ? TRIES : (ex[0] || 0) + 1}번째 · 최고 ${L && L[0] ? (L[0] / 100).toFixed(1) + 'm' : '-'}`;
           }
           const V = vis[p.pid] || (vis[p.pid] = { ph: I.ph, k: I.k, landT: null, bn: -1 });
@@ -376,10 +347,7 @@
           ps.x = x * ppm; ps.y = -(I.ph === 'land' ? hillY(x) : I.y) * ppm; ps.s = s;
           if (I.ph === 'land' && V.crash && V.landT != null) crash(p, V, a, I, ps, (e - V.landT) / 1000, dt);
           if (I.ph === 'done' && V.crash) { Object.assign(ps, SIT(t / 1000)); ps.y = -hillY(x) * ppm; }
-          // 새 머리 위에 (부딪혔을 때) · 새가 손을 잡고 (밀어줄 때)
-          if (I.ph === 'fly' && I.bird === 2) a.hat(HAT_BIRD);
-          else if (I.ph !== 'land' || !V.crash) a.hat('');
-          if (p.me) a.hold(I.ph === 'fly' && I.bird === 1 && e - flock.t < 900 ? `<g transform="translate(0 4) scale(-.9 .9)">${BIRD}</g>` : '');
+          if (I.ph !== 'land' || !V.crash) a.hat('');
           a.set(ps);
           const rot = slopeAng(x, I.ph);
           if (rot) a.g.setAttribute('transform', a.g.getAttribute('transform').replace(/scale\(([^)]*)\)/, `rotate(${rot.toFixed(1)}) scale($1)`));
@@ -390,8 +358,7 @@
         camY += (st.y - 4 - camY) * Math.min(1, dt * 4);
         world.setAttribute('transform', `translate(${(Wd * 0.42 - camX * ppm).toFixed(1)} ${(Hd * 0.48 + camY * ppm).toFixed(1)})`);
         bg.setAttribute('transform', `translate(${(-camX * ppm * 0.15 % 160 - 160).toFixed(1)} ${(camY * ppm * 0.1).toFixed(1)})`);
-        // 손맛: 새 떼 · 조각 · 카메라 · 바람
-        drawFlock(e, dt);
+        // 손맛: 조각 · 카메라 · 바람
         if (PF) PF.tick(dt);
         if (camC) {
           if (st.ph === 'inrun' && st.v > 14) camC.shake(0.4 + (st.v - 14) * 0.06, 90);
@@ -409,7 +376,10 @@
           else if (st.ph === 'inrun') wind.set(Math.max(0, (st.v - 10) / 16), 27);
           else wind.set(0, 0);
         }
-        if (st.ph === 'fly' && st.k !== birdSaid && !st.bird && st.x > birdAt(seed, st.k) - 26) { birdSaid = st.k; say('새 떼다! 균형 꽉!', '#FFE27A', 900); }
+        // 연타 덤 막대 (도움닫기 때만)
+        bonusEl.classList.toggle('on', st.ph === 'inrun' || st.ph === 'ready');
+        const bk = Math.round((st.bonus || 0) * 3.6);
+        if (bk !== lastBonus) { lastBonus = bk; bonusBar.style.transform = `scaleX(${((st.bonus || 0) / BONUS_MAX).toFixed(3)})`; bonusTx.textContent = `+${bk}km/h`; }
         if (st.ph !== lastPh || st.k !== lastK) { lastPh = st.ph; lastK = st.k; }
         // 균형 막대
         balEl.classList.toggle('on', st.ph === 'fly');
@@ -438,7 +408,7 @@
       done: () => st.done && st.e - st.doneT > 800,
       score: () => st.best,
       value: () => st.best,
-      extra: () => [st.k, PHC[st.done ? 'done' : st.ph], Math.round(st.x * 10) / 10, Math.round(st.y * 10) / 10, Math.round(st.b * 100) / 100, st.fall ? 1 : 0, st.bird || 0],
+      extra: () => [st.k, PHC[st.done ? 'done' : st.ph], Math.round(st.x * 10) / 10, Math.round(st.y * 10) / 10, Math.round(st.b * 100) / 100, st.fall ? 1 : 0],
       log: () => log,
       _st: () => st,
       summary: () => (st.best ? `최고 ${(st.best / 100).toFixed(1)}m` : '기록 없음')
@@ -452,16 +422,17 @@
     title: '스키점프',
     cat: '동계 · 설상',
     catColor: 'g',
-    how: '도약대 끝에서 초록 → 빨·파 균형 → 초록 착지',
+    how: '연타로 더 빨리 → 끝에서 초록 → 빨·파 균형',
     icon: ICON,
     buttons: ['r', 'g', 'b'], noGo: true, pressSound: false,
-    rules: ['쓩~ 내려오다가 도약대 끝에서 초록! 끝에 가까울수록 높이 떠요', '날아가는 동안 몸이 기우뚱하면 빨강(뒤로)·파랑(앞으로)으로 균형 · 가운데일수록 멀리', '땅이 가까우면 초록으로 사뿐히 착지(텔레마크) · 2번 중 최고 기록', '날다 보면 새 떼가 나타나요! 균형이 딱 맞으면 새들이 밀어주고, 기우뚱하면 퍽!'],
+    rules: ['쓩~ 가만있어도 저절로 내려가요 · 빨·파 연타하면 덤 속도로 더 빨리!', '도약대 끝에서 초록! 끝에 가까울수록 높이 떠요', '날아가는 동안 기우뚱하면 빨강(뒤로)·파랑(앞으로)으로 균형 · 가운데일수록 멀리', '땅이 가까우면 초록으로 사뿐히 착지(텔레마크) · 2번 중 최고 기록'],
     illus() {
       const b = (c, n) => `<div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX[c]};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE[c]}">${shape(c, 24)}</div></div><span style="color:${LIGHT[c]}">${n}</span></div>`;
-      return `<div class="il-row">${b('g', '도약!')}${b('r', '뒤로')}${b('b', '앞으로')}${b('g', '착지')}</div>`;
+      return `<div class="il-row">${b('r', '연타')}${b('g', '도약!')}${b('b', '균형')}${b('g', '착지')}</div>`;
     },
     fmt: (cm) => (cm > 0 ? `${(cm / 100).toFixed(1)}m` : '기록 없음'),
     rival(arr) { const b = arr ? arr[0] || 0 : 0; const ex = (arr && arr[2]) || []; return { sort: b, text: b ? `${(b / 100).toFixed(1)}m` : `${Math.min(TRIES, (ex[0] || 0) + 1)}번째` }; },
+    makeSim,      // 시험·서버 다시 계산용
     botLive(perf, e) { const s = botState(perf, e); return [s.best, s.best, [s.k, PHC[s.ph], Math.round(s.x * 10) / 10, Math.round(s.y * 10) / 10, Math.round(s.b * 100) / 100, s.fall ? 1 : 0]]; },
     create
   });

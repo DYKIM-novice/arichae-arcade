@@ -27,9 +27,9 @@
     icon: ICON,
     LINE, D: PIT1 + 4, view: 14, camMax: PIT1 - 10,
     kick: 1.05, vmax: 11.2, maxAng: 80, angSpeed: 105, bestAng: [38, 52],
-    dist: (v, a) => Math.max(0, v * v * Math.sin(2 * a * Math.PI / 180) / 9.8 * 0.72),      // 서버 olympic.jump_dist 와 같아요
+    dist: (v, a) => Math.max(0, v * v * Math.sin(2 * a * Math.PI / 180) / 9.8 * 0.62),      // 서버 olympic.jump_dist 와 같아요 (각도 잡을 때 안 느려져서 0.72 → 0.62)
     flightT: (v, a) => Math.max(0.55, 2 * v * Math.sin(a * Math.PI / 180) / 9.8 * 0.75),
-    rules: ['빨·파 연타로 도움닫기 (빠를수록 멀리!)', '발구름판 조금 앞에서 초록을 꾹 누르면 각도가 올라가요', '45도쯤에서 떼면 가장 멀리 · 판을 넘으면 파울 · 3번 중 최고 기록'],
+    rules: ['빨·파 연타로 도움닫기 (빠를수록 멀리!)', '노란 "각도 구간"에서 초록을 꾹 → 각도가 올라가요 (누르는 동안 속도는 그대로 · 선에 닿으면 저절로 휙!)', '45도쯤에서 떼면 가장 멀리 · 발구름판을 넘으면 파울 · 3번 중 최고 기록'],
     illus() {
       const b = (c, n) => `<div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX[c]};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE[c]}">${shape(c, 24)}</div></div><span style="color:${LIGHT[c]}">${n}</span></div>`;
       return `<div class="il-row">${b('r', '달려')}${b('b', '달려')}<svg width="56" height="40" viewBox="0 0 56 40"><path d="M4 36 A28 28 0 0 1 52 36" fill="none" stroke="rgba(255,255,255,.3)" stroke-width="5"/><path d="M14 16 A28 28 0 0 1 42 16" fill="none" stroke="#2ED573" stroke-width="5"/><path d="M28 36 L44 18" stroke="#FFD23F" stroke-width="3.5" stroke-linecap="round"/></svg>${b('g', '꾹→떼기')}</div>`;

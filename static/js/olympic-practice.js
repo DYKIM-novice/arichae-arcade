@@ -6,7 +6,10 @@
    - 끝나면 결과 판: 내 기록 · 이 기기 최고 기록(신기록!) · AI 와 순위 · [다시!] (아무 버튼이나 눌러도 바로 다시)
    - 최고 기록은 누른 기록(log)·시드와 같이 저장해서, 다음 판에 '내 최고' 유령 선수로 같이 달려요
      (규칙이 화면과 떨어진 순수 계산이라 같은 시드 + 같은 누른 기록이면 똑같이 다시 움직여요)
-   - 방장이 경기를 시작하면(방 상태가 바뀌면) 연습은 바로 끝나고 방 경기로 가요 */
+   - 방장이 경기를 시작하면(방 상태가 바뀌면) 연습은 바로 끝나고 방 경기로 가요
+   - 난이도 이지·노멀·하드·헬 (연습만 · ctx.diff 로 종목 규칙이 판정 칸·벌칙·흔들림을 바꿔요, AI 실력도 같이)
+     최고 기록·유령은 난이도마다 따로 저장해요 (노멀은 예전 기록과 같은 칸)
+   - 한 판 끝나면 서버에 작은 XP 를 달라고 해요 (pxp · 하루 한도) */
 (function () {
   'use strict';
 
@@ -16,18 +19,19 @@
   if (!App || !O || !G) return;
   const { $, $$, esc, S, SND } = App;
   const P = App.play;
-  const now = () => performance.now();
+  // 연습 시계: 멈춘 동안은 서 있고, 다시 하면 멈췄던 만큼 늦게 가요 (누른 기록·유령이 그대로 맞아요)
+  const realNow = () => performance.now();
+  const now = () => (R.paused ? R.pauseAt : realNow()) - R.shift;
 
   /* ================================================================
      AI 선수 기록 — 서버 olympic.py 와 같은 규칙 (값은 시드로 정해져요)
      ================================================================ */
-  const RACES = ['o100', 'ohurdle', 'oswim', 'wspeed', 'wshort', 'wbob', 'wslalom', 'wbiath'];
+  const RACES = ['o100', 'ohurdle', 'oswim', 'wspeed', 'wshort', 'wbob', 'wslalom'];
   const RACE_BASE = {   // AI 단계별 기록(초) — 1 쉬움 … 5 국가대표
     o100: [18.5, 15.8, 13.7, 12.1, 10.8], ohurdle: [25.0, 21.5, 18.8, 16.6, 15.0],
-    oswim: [43.0, 37.0, 32.0, 28.5, 25.5],
+    oswim: [44.0, 38.0, 33.0, 30.0, 27.5],   // 서버와 같아요 (수영 숨 박자 규칙에 맞춤)
     wspeed: [55.0, 48.0, 42.0, 38.0, 35.0], wshort: [46.0, 40.0, 35.5, 32.0, 29.0],
-    wbob: [44.0, 39.0, 35.5, 32.5, 30.0], wslalom: [50.0, 44.0, 39.5, 36.0, 33.0],
-    wbiath: [56.0, 49.0, 44.0, 40.0, 36.5]
+    wbob: [44.0, 39.0, 35.5, 32.5, 30.0], wslalom: [50.0, 44.0, 39.5, 36.0, 33.0]
   };
   const HURDLES = 10;
   const LIFT_STEPS = [40, 60, 80, 100, 120, 140, 160, 180, 200, 220];
@@ -38,8 +42,8 @@
   const gc = (R, mu, sd, lo, hi) => Math.max(lo, Math.min(hi, mu + sd * gauss(R)));
   const randint = (R, a, b) => a + Math.floor(R() * (b - a + 1));
   const uniform = (R, a, b) => a + (b - a) * R();
-  const jumpDist = (v, ang) => Math.max(0, v * v * Math.sin(rad(2 * ang)) / 9.8 * 0.72);
-  const javDist = (v, ang) => { const sp = 9 + v * 2.3; return Math.max(0, sp * sp * Math.sin(rad(2 * ang)) / 9.8 * 0.92); };
+  const jumpDist = (v, ang) => Math.max(0, v * v * Math.sin(rad(2 * ang)) / 9.8 * 0.62);
+  const javDist = (v, ang) => { const sp = 9 + v * 2.3; return Math.max(0, sp * sp * Math.sin(rad(2 * ang)) / 9.8 * 0.8); };
 
   // 종목마다 모두에게 같은 값 (출발 총 시각 · 바람)
   function newEvent(gid, R) {
@@ -49,25 +53,21 @@
   }
 
   // AI 선수 한 명의 이번 종목 기록 (score · 끝나는 시각 done(ms, 시작부터))
+  //  lv 6 = 헬 (연습에만): 국가대표(5)보다 6% 빠르고, 거의 실수하지 않아요
   function botPerf(gid, lv, R, ev) {
+    const hell = Math.round(lv) >= 6;
     const k = Math.max(1, Math.min(5, Math.round(lv) || 3)) - 1;
     if (RACES.includes(gid)) {
-      const base = RACE_BASE[gid][k];
-      const t = gc(R, base, base * 0.025, base * 0.9, base * 1.12);
-      const out = { T: Math.round(t * 1000), react: randint(R, 140, 320) };
+      const base = RACE_BASE[gid][k] * (hell ? 0.94 : 1);
+      const t = gc(R, base, base * (hell ? 0.015 : 0.025), base * 0.9, base * 1.12);
+      const out = { T: Math.round(t * 1000), react: hell ? randint(R, 120, 200) : randint(R, 140, 320) };
       if (gid === 'ohurdle') {
-        const p = [0.35, 0.25, 0.16, 0.1, 0.05][k];
+        const p = hell ? 0.02 : [0.35, 0.25, 0.16, 0.1, 0.05][k];
         out.knock = [];
         for (let i = 0; i < HURDLES; i++) if (R() < p) out.knock.push(i);
       }
-      if (gid === 'wbiath') {
-        const hit = [0.55, 0.65, 0.75, 0.85, 0.93][k];
-        out.shots = [];
-        for (let i = 0; i < 5; i++) out.shots.push(R() < hit ? 1 : 0);
-        out.T += (5 - out.shots.reduce((a, b) => a + b, 0)) * 3000;
-      }
       if (gid === 'wshort') {
-        out.fall = R() < [0.2, 0.14, 0.1, 0.06, 0.03][k] ? 1 : 0;
+        out.fall = R() < (hell ? 0.01 : [0.2, 0.14, 0.1, 0.06, 0.03][k]) ? 1 : 0;
         if (out.fall) out.T += 2500;
       }
       out.score = 100000 - (out.T + out.react);
@@ -75,8 +75,8 @@
       return out;
     }
     if (gid === 'olong' || gid === 'ojav') {
-      const vs = [6.6, 7.6, 8.6, 9.6, 10.4][k];
-      const foul = [0.25, 0.2, 0.15, 0.1, 0.06][k];
+      const vs = [6.6, 7.6, 8.6, 9.6, 10.4][k] + (hell ? 0.5 : 0);
+      const foul = hell ? 0.03 : [0.25, 0.2, 0.15, 0.1, 0.06][k];
       const tries = [];
       let best = 0;
       for (let i = 0; i < 3; i++) {
@@ -90,12 +90,12 @@
       return { tries, score: best, done: 1500 + 3 * 11000 };
     }
     if (gid === 'wjump') {
-      const base = [72, 86, 100, 112, 123][k];
+      const base = [72, 86, 100, 112, 123][k] + (hell ? 6 : 0);
       const tries = [];
       let best = 0;
       for (let i = 0; i < 2; i++) {
         const d = gc(R, base, 5, base - 18, base + 12);
-        const fall = R() < [0.18, 0.12, 0.08, 0.05, 0.03][k];
+        const fall = R() < (hell ? 0.02 : [0.18, 0.12, 0.08, 0.05, 0.03][k]);
         const cm = Math.round(d * 100 * (fall ? 0.8 : 1));
         tries.push({ d: cm, fall, bal: r2(uniform(R, -0.3, 0.3), 2) });
         best = Math.max(best, cm);
@@ -103,7 +103,7 @@
       return { tries, score: best, done: 1500 + 2 * 14000 };
     }
     if (gid === 'olift') {
-      const cap = gc(R, [75, 100, 125, 150, 175][k], 8, 40, 220);
+      const cap = gc(R, [75, 100, 125, 150, 175][k] + (hell ? 18 : 0), 8, 40, 220);
       const lifts = [];
       for (const w of LIFT_STEPS) {
         const ok = w <= cap;
@@ -114,7 +114,7 @@
       return { lifts, score: best, done: 1500 + lifts.length * 4200 + 800 };
     }
     if (gid === 'oarch') {
-      const mean = [5.5, 7.0, 8.0, 8.8, 9.4][k];
+      const mean = hell ? 9.7 : [5.5, 7.0, 8.0, 8.8, 9.4][k];
       const arrows = [];
       let tot = 0;
       let tens = 0;
@@ -138,7 +138,8 @@
   const KEY = 'arichae_oly_practice';
   // 규칙(sim)이 바뀌면 올려요 — 옛 규칙으로 저장한 누른 기록은 유령으로 다시 돌리지 않아요 (기록 숫자는 그대로)
   // 2: 연타가 '아무 버튼이나'로 바뀜
-  const RULES_V = 2;
+  // 3: 연타 빠르기 제한 없앰 · 필살기 부스터 · 멀리뛰기·창던지기 각도 잡을 때 안 느려짐 · 수영 숨 박자
+  const RULES_V = 3;
   function load() {
     try {
       const v = JSON.parse(localStorage.getItem(KEY) || 'null');
@@ -158,16 +159,19 @@
   function persist() {
     if (store(DB)) return;
     // 저장 공간이 모자라면 오래된 유령(누른 기록)부터 지워요 · 기록 숫자는 남겨요
-    const ids = Object.keys(DB.pb).filter((k) => DB.pb[k] && DB.pb[k].log && k !== R.gid)
+    const cur = R.gid ? pbKey(R.gid) : '';
+    const ids = Object.keys(DB.pb).filter((k) => DB.pb[k] && DB.pb[k].log && k !== cur)
       .sort((a, b) => (DB.pb[a].at || 0) - (DB.pb[b].at || 0));
     for (const k of ids) { delete DB.pb[k].log; if (store(DB)) return; }
-    if (DB.pb[R.gid]) delete DB.pb[R.gid].log;
+    if (DB.pb[cur]) delete DB.pb[cur].log;
     store(DB);
   }
   reload();
 
-  const pbOf = (gid) => {
-    const p = DB.pb[gid];
+  // 최고 기록 칸: 노멀은 예전처럼 종목 id, 다른 난이도는 'o100@hell' 처럼 따로
+  const pbKey = (gid, diff) => ((diff || curDiff()) === 'normal' ? gid : `${gid}@${diff || curDiff()}`);
+  const pbOf = (gid, diff) => {
+    const p = DB.pb[pbKey(gid, diff)];
     return p && typeof p.score === 'number' && p.score > 0 ? p : null;
   };
   const isTime = (def) => def && def.fmt === O.fmtTimeScore;
@@ -190,13 +194,25 @@
   /* ================================================================
      연습 상태
      ================================================================ */
-  const OLY_LV = [{ n: 1, name: '쉬움' }, { n: 2, name: '보통' }, { n: 3, name: '잘함' }, { n: 4, name: '선수' }, { n: 5, name: '국가대표' }];
+  // 난이도 (연습만) — 규칙 값은 core.js 의 O.DIFF
+  const DIFFS = [
+    { k: 'easy', name: '이지', sub: '넉넉해요', ai: 'AI 쉬움~보통', desc: '판정 칸이 넓고 벌칙이 작아요 · 부정출발 없음 · 게이지도 빨리 차요' },
+    { k: 'normal', name: '노멀', sub: '방 경기 규칙', ai: 'AI 잘함', desc: '방 경기와 똑같은 규칙이에요' },
+    { k: 'hard', name: '하드', sub: '빡빡해요', ai: 'AI 선수~국가대표', desc: '판정 칸이 좁고 벌칙이 커요 · 흔들림·속임수가 더 많아요' },
+    { k: 'hell', name: '헬', sub: '지옥 훈련', ai: 'AI 국가대표보다 강해요', desc: '아주 좁은 판정 · 큰 벌칙 · 속임수가 늘 나와요 · 펭귄도 한 번 더!' }
+  ];
+  const DIFF = {};
+  DIFFS.forEach((d) => { DIFF[d.k] = d; });
+  const curDiff = () => (DIFF[DB.opt && DB.opt.diff] ? DB.opt.diff : 'normal');
+  const FLAME = '<svg class="olv-flame" viewBox="0 0 20 24" aria-hidden="true"><path d="M10 1 C12 6 17 8 17 14 A7 7 0 0 1 3 14 C3 10 6 9 6 5 C8 7 9 8 9 10 C10 7 10 4 10 1 Z" fill="#FF8A3D"/><path d="M10 10 C11 13 13 14 13 16.5 A3 3 0 0 1 7 16.5 C7 14.5 9 13.5 10 10 Z" fill="#FFE27A"/></svg>';
+  const diffBadge = (k, big) => `<span class="opd-b opd-${k}${big ? ' big' : ''}">${k === 'hell' ? FLAME : ''}${DIFF[k].name}</span>`;
   const MAX_AI = 6;          // 레인 8개 = 나 + AI 6 + 유령
   const R = {
     on: false, gid: null, def: null, key: '', back: 's-lobby',
     step: '',            // rules · count · play · result · pick
     run: null, raf: 0, root: null, quiet: false, guardUntil: 0, lastRiv: 0, lastSec: -1,
-    tries: {}            // 이번에 연 뒤로 종목마다 몇 번 했나
+    tries: {},           // 이번에 연 뒤로 종목마다 몇 번 했나
+    paused: false, pauseAt: 0, shift: 0, resumeAt: 0, pzCd: ''   // 잠깐 멈춤
   };
 
   const roomKey = (room) => (room ? `${room.phase}:${room.index}` : '');
@@ -206,14 +222,15 @@
   };
   function opts() {
     const o = DB.opt;
-    const roomLv = (S.room && S.room.oly && S.room.oly.lv) || 3;
     return {
       ai: Number.isFinite(o.ai) ? Math.max(0, Math.min(MAX_AI, o.ai)) : 3,
-      lv: Number.isFinite(o.lv) ? Math.max(1, Math.min(5, o.lv)) : roomLv,
+      diff: curDiff(),
       ghost: o.ghost !== false
     };
   }
   const canGhost = (gid) => { const d = G.get(gid); const p = pbOf(gid); return !!(d && d.ghost && p && p.v === RULES_V && Array.isArray(p.log) && p.log.length); };
+  // AI 실력: 난이도마다 (이지 1·2 섞어서 · 노멀 3 · 하드 4·5 · 헬 6)
+  const aiLv = (diff, i) => { const L = O.diffP(diff).ai; return L[i % L.length]; };
 
   function canPractice() {
     const room = S.room;
@@ -237,7 +254,7 @@
       const id = aths[i % aths.length];
       const pid = `pai${i + 1}`;
       botPlayers.push({ pid, name: `AI ${O.name(id)}`, animal: '', connected: true, athlete: id, bot: true });
-      bots[pid] = botPerf(gid, o.lv, rnd, ev);
+      bots[pid] = botPerf(gid, aiLv(o.diff, i), rnd, ev);
     }
     const players = [me];
     // 내 최고 기록 유령 (같은 시드·누른 기록을 화면 없이 다시 돌려요)
@@ -246,7 +263,7 @@
     const pb = pbOf(gid);
     if (o.ghost && canGhost(gid)) {
       try {
-        ghost = def.ghost({ seed: pb.seed, ev: pb.ev || {} }, pb.log);
+        ghost = def.ghost({ seed: pb.seed, ev: pb.ev || {}, diff: o.diff }, pb.log);
         // 출발 총 시각이 판마다 달라요 → 이번 총소리에 유령의 총소리를 맞춰요
         if (pb.ev && pb.ev.gun != null && ev.gun != null) gOff = pb.ev.gun - ev.gun;
         // 유령은 내 바로 뒤 레인 (나란히 비교하기 쉽게)
@@ -269,9 +286,11 @@
       lock: (ms) => P.lockPad(ms),
       fx: { burst: P.burst, float: P.floatText, shake: P.shake, flash: P.flash },
       ev, bots,
+      diff: o.diff,               // 난이도 → 종목 규칙이 판정·벌칙을 바꿔요
+      now,                        // 부스터 버튼을 누른 시각
       finish: () => { if (R.step === 'play') finishRun(); }
     };
-    const run = { seed, ev, bots, players, ghost, gOff, startAt, endAt, live, ctx, me, lv: o.lv, ai: o.ai, inst: null, over: false, watchUntil: 0, pb };
+    const run = { seed, ev, bots, players, ghost, gOff, startAt, endAt, live, ctx, me, diff: o.diff, ai: o.ai, inst: null, over: false, watchUntil: 0, pb };
     R.run = run;
     run.inst = def.create(ctx);
     // 첫 장면을 미리 그려 둬요 (소리·진동 없이)
@@ -375,7 +394,7 @@
     const pb = pbOf(R.gid);
     const ghostOk = canGhost(R.gid);
     const rules = (typeof def.rules === 'function' ? def.rules('') : def.rules) || [];
-    const cnt = DB.cnt[R.gid] || 0;
+    const cnt = DB.cnt[pbKey(R.gid)] || 0;
     const back = backLabel();
     return `<div class="opr-sheet opr-rules opr-c-${def.catColor || 'y'}" role="dialog" aria-label="${esc(def.title)} 연습">
       <div class="opr-head"><span class="opr-ic">${def.icon || ''}</span>
@@ -383,9 +402,11 @@
         <button type="button" class="opr-x" data-opr-act="exit" aria-label="${back}">✕</button></div>
       <div class="opr-illus">${def.illus ? def.illus('') : ''}</div>
       <div class="opr-rl">${rules.map((r, i) => `<div><b>${i + 1}</b><span>${esc(r)}</span></div>`).join('')}</div>
+      <div class="opd-pick" role="radiogroup" aria-label="난이도">${DIFFS.map((d) => `<button type="button" role="radio" aria-checked="${o.diff === d.k}" data-opr-diff="${d.k}" class="opd-btn opd-${d.k}${o.diff === d.k ? ' on' : ''}">${d.k === 'hell' ? FLAME : ''}<b class="disp">${d.name}</b><span>${d.sub}</span></button>`).join('')}</div>
+      <div class="opd-desc opd-${o.diff}">${diffBadge(o.diff)}<span>${esc(DIFF[o.diff].desc)} · <b>${esc(DIFF[o.diff].ai)}</b></span></div>
       <div class="opr-pb">${pb
-        ? `<span class="opr-pb-k">내 최고</span><b class="disp">${esc(fmtOf(def, pb.score))}</b><span class="opr-pb-n">${cnt}번 도전</span>`
-        : '<span class="opr-pb-k">아직 기록이 없어요</span><span class="opr-pb-n">첫 기록을 남겨 봐요!</span>'}</div>
+        ? `<span class="opr-pb-k">${diffBadge(o.diff)} 내 최고</span><b class="disp">${esc(fmtOf(def, pb.score))}</b><span class="opr-pb-n">${cnt}번 도전</span>`
+        : `<span class="opr-pb-k">${diffBadge(o.diff)} 아직 기록이 없어요</span><span class="opr-pb-n">첫 기록을 남겨 봐요!</span>`}</div>
       ${def.ghost ? `<button type="button" class="opr-ghostbtn${o.ghost && ghostOk ? ' on' : ''}" data-opr-act="ghost" ${ghostOk ? '' : 'disabled'}>
         <span class="opr-gface">${O.faceSVG(myInfo().athlete, 'h')}</span>
         <span><b>내 최고 기록 유령</b><em>${ghostOk ? (o.ghost ? '같이 달려요 · 눌러서 끄기' : '꺼짐 · 눌러서 켜기') : '최고 기록을 남기면 같이 달려요'}</em></span>
@@ -395,13 +416,13 @@
           <button type="button" class="cd-step" data-opr-ai="-1" ${o.ai <= 0 ? 'disabled' : ''} aria-label="AI 줄이기">−</button>
           <b class="disp">${o.ai ? `${o.ai}명` : '없음'}</b>
           <button type="button" class="cd-step" data-opr-ai="1" ${o.ai >= MAX_AI ? 'disabled' : ''} aria-label="AI 늘리기">+</button></div>
-        ${o.ai ? `<div class="oly-lv opr-lv">${OLY_LV.map((l) => `<button type="button" data-opr-lv="${l.n}" class="${o.lv === l.n ? 'on' : ''}"><b>${l.n}</b><span>${l.name}</span></button>`).join('')}</div>` : ''}
       </div>
       <button type="button" class="btn btn-green opr-go" data-opr-act="go">시작!</button>
       <div class="opr-hint">패드 버튼을 눌러도 시작해요 · 연습 기록은 이 기기에만 남아요</div>
     </div>`;
   }
   function showRules() {
+    markDiff();
     R.step = 'rules';
     showSlot(rulesHTML(), 'sheet');
     R.guardUntil = now() + 350;
@@ -423,7 +444,7 @@
       return items ? `<div class="opr-pk-h">${label}</div><div class="opr-pk-grid">${items}</div>` : '';
     };
     return `<div class="opr-sheet opr-pick" role="dialog" aria-label="연습할 종목 고르기">
-      <div class="opr-head"><div class="opr-ttl"><span class="opr-cat">혼자 연습</span><b class="disp">어떤 종목을 할까요?</b></div>
+      <div class="opr-head"><div class="opr-ttl"><span class="opr-cat">혼자 연습 · ${diffBadge(curDiff())}</span><b class="disp">어떤 종목을 할까요?</b></div>
         <button type="button" class="opr-x" data-opr-act="exit" aria-label="${backLabel()}">✕</button></div>
       ${group('summer', '☀️ 하계')}${group('winter', '❄️ 동계')}
     </div>`;
@@ -437,6 +458,18 @@
     $('.hud-score .hint-sm').textContent = '연습 · 내 기록';
   }
 
+  // 플레이 화면에 난이도 표시 (헬은 불꽃 테두리)
+  function markDiff() {
+    if (!R.root) return;
+    const k = curDiff();
+    let b = R.root.querySelector('.opd-play');
+    if (!b) { b = document.createElement('div'); b.className = 'opd-play'; R.root.appendChild(b); }
+    b.innerHTML = diffBadge(k, true);
+    b.style.display = R.step === 'play' || R.step === 'count' ? '' : 'none';   // 규칙 카드·결과 판 위에는 안 보여요
+    const sp = $('#s-play');
+    DIFFS.forEach((d) => sp.classList.toggle('opd-on-' + d.k, d.k === k));
+  }
+
   /* ---------- 3·2·1 ---------- */
   function startCountdown() {
     if (R.step !== 'rules') return;
@@ -448,6 +481,7 @@
     $('.hud-score .hint-sm').textContent = '연습 · 내 기록';
     newRun(3000);
     R.step = 'count';
+    markDiff();
     R.root.querySelector('.opr-count').classList.add('show');
     R.cdLabel = '';
   }
@@ -488,6 +522,7 @@
     $('.hud-score .hint-sm').textContent = '연습 · 내 기록';
     newRun(450);
     R.step = 'play';
+    markDiff();
     const f = R.root.querySelector('.opr-flash');
     f.classList.remove('show');
     void f.offsetWidth;
@@ -500,19 +535,21 @@
     if (!run || run.over) return;
     run.over = true;
     R.step = 'result';
+    markDiff();
     const def = R.def;
     const gid = R.gid;
     let score = 0;
     let summary = '';
     try { score = Math.round(run.inst.score() || 0); summary = run.inst.summary ? run.inst.summary() : ''; } catch (e) { console.error(e); }
-    const prev = pbOf(gid);
+    const key = pbKey(gid, run.diff);
+    const prev = pbOf(gid, run.diff);
     const isNew = score > 0 && (!prev || score > prev.score);
     if (isNew) {
       let log = null;
       try { log = run.inst.log ? run.inst.log().slice(0, 4000) : null; } catch (e) { log = null; }
-      DB.pb[gid] = { v: RULES_V, score, rec: fmtOf(def, score), at: Date.now(), seed: run.seed, ev: run.ev, log, ath: run.me.athlete, lv: run.lv, ai: run.ai };
+      DB.pb[key] = { v: RULES_V, score, rec: fmtOf(def, score), at: Date.now(), seed: run.seed, ev: run.ev, log, ath: run.me.athlete, diff: run.diff, ai: run.ai };
     }
-    DB.cnt[gid] = (DB.cnt[gid] || 0) + 1;
+    DB.cnt[key] = (DB.cnt[key] || 0) + 1;
     R.tries[gid] = (R.tries[gid] || 0) + 1;
     persist();
     // AI 와 순위 (AI 기록은 처음부터 정해져 있어요)
@@ -526,6 +563,8 @@
     $$('#pad .bez').forEach((b) => b.classList.remove('unused'));
     $('#pad').classList.add('opr-retry');
     showSlot(resultHTML({ score, summary, prev, isNew, rank, nAi: ai.length, ghostRan: !!run.ghost }), 'panel');
+    // 작은 연습 XP (서버가 하루 한도·간격을 봐요) — 답은 olympic-level.js 가 결과 판에 보여줘요
+    if (score > 0) App.send({ t: 'pxp', gid, diff: run.diff, score, win: ai.length > 0 && rank === 1 });
     R.guardUntil = now() + (isNew && prev ? 1700 : 1100);
     run.watchUntil = now() + 9000;    // 다른 선수가 들어오는 걸 조금 더 보여줘요
     if (isNew && prev) {
@@ -556,7 +595,7 @@
     }
     const medal = r.nAi && r.rank <= 3 && r.score > 0 ? App.medalIcon(r.rank - 1, 20) : '';
     const rankLine = r.nAi
-      ? `<div class="opr-rank">${medal}<span>AI ${r.nAi}명과 겨뤄 <b>${r.score > 0 ? r.rank + '위' : '-'}</b></span><span class="opr-lvtag">AI ${OLY_LV[(R.run ? R.run.lv : 3) - 1].name}</span></div>`
+      ? `<div class="opr-rank">${medal}<span>AI ${r.nAi}명과 겨뤄 <b>${r.score > 0 ? r.rank + '위' : '-'}</b></span>${diffBadge(R.run ? R.run.diff : 'normal')}</div>`
       : '';
     const ghostLine = r.ghostRan && r.prev
       ? `<div class="opr-gl">${O.faceSVG(R.run ? R.run.me.athlete : 'dino', r.isNew ? 's' : 'h')}<span>${r.isNew ? '유령(내 최고)을 이겼어요!' : '유령(내 최고)이 이겼어요 · 다시 붙어 봐요'}</span></div>`
@@ -564,7 +603,7 @@
     const n = R.tries[gid] || 0;
     return `<div class="opr-panel${r.isNew && r.prev ? ' opr-new' : ''}" role="dialog" aria-label="연습 결과">
       <div class="confetti" id="opr-confetti"></div>
-      <div class="opr-res-top"><span class="opr-cat">연습 결과 · ${esc(def.title)}</span><span class="opr-try">${n}번째 도전</span></div>
+      <div class="opr-res-top"><span class="opr-cat">연습 결과 · ${esc(def.title)} ${diffBadge(R.run ? R.run.diff : curDiff())}</span><span class="opr-try">${n}번째 도전</span></div>
       <div class="opr-rec disp">${esc(rec)}</div>
       ${r.summary && r.score > 0 && r.summary !== rec ? `<div class="opr-sum">${esc(r.summary)}</div>` : ''}
       ${pbLine}${rankLine}${ghostLine}
@@ -598,7 +637,48 @@
       <span class="rk${x.rank === 1 && x.score > 0 ? ' first' : ''}">${x.rank}</span>
       <div class="av">${O.faceSVG(x.p.athlete)}</div>
       <span class="nm">${x.isMe ? '나' : esc(x.p.name)}</span><span class="sc">${esc(x.text)}</span></div>`).join('')
-      + `<button type="button" class="rv opr-quit" data-opr-act="exit" aria-label="연습 그만하기"><b>✕</b><span>그만</span></button>`;
+      + `<button type="button" class="rv opr-quit" data-opr-act="pause" aria-label="잠깐 멈춤"><b>⏸</b><span>멈춤</span></button>`;
+  }
+
+  /* ---------- 잠깐 멈춤 (연습) : 계속 · 처음부터 · 다른 종목 · 대기실로 ---------- */
+  function pauseBox() {
+    let b = R.root.querySelector('.opr-pause');
+    if (!b) { b = document.createElement('div'); b.className = 'opr-pause pz-ov'; R.root.appendChild(b); }
+    return b;
+  }
+  function pause() {
+    if (R.paused || !R.run || (R.step !== 'play' && R.step !== 'count')) return;
+    R.paused = true; R.pauseAt = realNow(); R.resumeAt = 0; R.pzCd = '';
+    SND.SFX.whistle ? SND.SFX.whistle() : SND.SFX.click();
+    SND.vibrate([30, 30, 30]);
+    const b = pauseBox();
+    b.innerHTML = `<div class="pz-card"><div class="pz-ic"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4.2" height="14" rx="1.5" fill="currentColor"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.5" fill="currentColor"/></svg></div>
+      <b class="disp pz-t">잠깐 멈춤</b><span class="pz-sub">연습 · ${esc(R.def.title)} ${diffBadge(R.run.diff)}</span><div class="pz-cd disp"></div>
+      <div class="pz-acts"><button type="button" class="btn btn-green" data-opr-act="resume">▶ 계속하기</button>
+        <button type="button" class="btn btn-ghost" data-opr-act="again2">처음부터 다시</button>
+        <button type="button" class="btn btn-ghost" data-opr-act="pick">다른 종목</button>
+        <button type="button" class="btn btn-ghost pz-quit" data-opr-act="exit">그만하고 ${backLabel()}</button></div></div>`;
+    b.className = 'opr-pause pz-ov show';
+  }
+  function resume() { if (!R.paused || R.resumeAt) return; SND.SFX.go(); R.resumeAt = realNow() + 3000; pauseBox().classList.add('counting'); }
+  function unpause(keepTime) {
+    if (!R.paused) return;
+    if (keepTime !== false) R.shift += realNow() - R.pauseAt;
+    R.paused = false; R.resumeAt = 0;
+    const b = R.root && R.root.querySelector('.opr-pause');
+    if (b) b.className = 'opr-pause pz-ov';
+  }
+  function tickPause() {
+    if (!R.resumeAt) return;
+    const left = R.resumeAt - realNow();
+    if (left <= 0) { unpause(); return; }
+    const cd = String(Math.ceil(left / 1000));
+    if (cd !== R.pzCd) {
+      R.pzCd = cd;
+      const el = pauseBox().querySelector('.pz-cd');
+      if (el) { el.textContent = cd; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
+      SND.SFX.tick(); SND.vibrate(15);
+    }
   }
 
   /* ---------- 매 프레임 ---------- */
@@ -609,6 +689,7 @@
   function tick() {
     const run = R.run;
     if (!R.on || !run) return;
+    if (R.paused) { tickPause(); return; }
     const t = now();
     if (R.step === 'count' && !tickCountdown(t)) return;
     if (R.step !== 'play' && R.step !== 'result') return;
@@ -637,6 +718,7 @@
   /* ---------- 패드 ---------- */
   const pad = {
     press(c) {
+      if (R.paused) return;      // 멈춘 동안 누른 건 안 받아요
       const t = now();
       if (R.step === 'rules') { if (t >= R.guardUntil) startCountdown(); return; }
       if (R.step === 'result') { if (t >= R.guardUntil) retry(); return; }
@@ -647,12 +729,13 @@
       R.run.inst.onPress(c, t);
     },
     release(c) {
-      if (R.step !== 'play' || !R.run || R.run.over) return;
+      if (R.paused || R.step !== 'play' || !R.run || R.run.over) return;
       const t = now();
       if (t < R.run.startAt) return;
       if (typeof R.run.inst.onRelease === 'function') R.run.inst.onRelease(c, t);
     },
     abort() { teardown(); },
+    boost() { if (!R.paused && R.step === 'play' && R.run && !R.run.over && R.run.inst.onBoost) R.run.inst.onBoost(now()); },
     get wave() { return R.step === 'play' || R.step === 'result' || R.step === 'rules'; }
   };
 
@@ -686,6 +769,7 @@
   // 화면은 건드리지 않고 연습만 정리 (방 상태가 바뀔 때는 app.js 가 알맞은 화면을 보여줘요)
   function teardown() {
     if (!R.on) return;
+    if (R.paused) { R.paused = false; R.resumeAt = 0; }
     R.on = false;
     cancelAnimationFrame(R.raf);
     R.raf = 0;
@@ -694,7 +778,7 @@
     if (App.padTaken() === pad) App.takePad(null);
     if (R.root) { R.root.remove(); R.root = null; }
     resetPlayScreen();
-    $('#s-play').classList.remove('opr-on');
+    $('#s-play').classList.remove('opr-on', 'opd-on-easy', 'opd-on-normal', 'opd-on-hard', 'opd-on-hell');
     $('.hud-score .hint-sm').textContent = '내 점수';
     App.setTheme('base');
   }
@@ -716,10 +800,13 @@
     let b;
     if ((b = e.target.closest('[data-opr-act]'))) {
       const act = b.dataset.oprAct;
-      if (act === 'exit') exit();
+      if (act === 'exit') { unpause(false); exit(); }
+      else if (act === 'pause') pause();
+      else if (act === 'resume') resume();
+      else if (act === 'again2') { unpause(false); retry(); }
       else if (act === 'go') startCountdown();
       else if (act === 'again') { if (R.step === 'result') retry(); }
-      else if (act === 'pick') { SND.SFX.click(); showPick(); }
+      else if (act === 'pick') { unpause(false); SND.SFX.click(); showPick(); }
       else if (act === 'ghost' && !b.disabled) { SND.SFX.click(); DB.opt.ghost = !opts().ghost; persist(); showSlot(rulesHTML(), 'sheet'); }
     } else if ((b = e.target.closest('[data-opr-pick]'))) {
       SND.SFX.pop();
@@ -729,11 +816,13 @@
       DB.opt.ai = Math.max(0, Math.min(MAX_AI, opts().ai + Number(b.dataset.oprAi)));
       persist();
       showSlot(rulesHTML(), 'sheet');
-    } else if ((b = e.target.closest('[data-opr-lv]'))) {
-      SND.SFX.click();
-      DB.opt.lv = Number(b.dataset.oprLv);
+    } else if ((b = e.target.closest('[data-opr-diff]'))) {
+      const k = b.dataset.oprDiff;
+      if (k === 'hell') { SND.SFX.boom ? SND.SFX.boom() : SND.SFX.bad(); SND.vibrate([30, 30, 60]); } else SND.SFX.click();
+      DB.opt.diff = k;
       persist();
       showSlot(rulesHTML(), 'sheet');
+      markDiff();
     }
   }
 
@@ -802,5 +891,5 @@
   init();
 
   // 시험·다른 모듈용
-  window.OlyPractice = { open, exit, newEvent, botPerf, state: () => R, db: () => DB };
+  window.OlyPractice = { open, exit, newEvent, botPerf, state: () => R, db: () => DB, pbKey, diffBadge };
 })();

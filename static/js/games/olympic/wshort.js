@@ -1,7 +1,8 @@
 /* 아리채 오락실 · 올림픽(동계) · 쇼트트랙 (3바퀴)
-   위에서 내려다본 빙판. 직선에서는 빨·파 연타로 속도를 올리고,
-   곡선에서는 초록을 꾹 눌러 몸을 기울여요. 안 기울이고 너무 빠르면 꽈당!
-   직선에서 초록을 누르고 있으면 느려지니 떼고 연타! */
+   위에서 내려다본 빙판. 버튼은 모두 '아무 버튼이나 연타' 하나뿐이에요.
+   - 직선: 마구 연타해서 속도를 올려요
+   - 코너: 몸은 저절로 기울어요. 대신 코너에서 빠르게 마구 치면 '미끄러짐' 막대가 차서 꽈당! → "코너! 살살"
+   - 펭귄: 2바퀴째 뒤쪽 직선에 딱 한 번 (헬은 3바퀴째에도). 너무 빠르게 지나가면 꽝! 앞에서 잠깐 살살 */
 (function () {
   'use strict';
   const O = window.Oly;
@@ -30,48 +31,60 @@
   const curveAhead = (s, m) => seg(s + m).curve && !seg(s).curve;
 
   // 엉뚱 변주: 뒤쪽 직선 빙판 위에 펭귄이 뒤뚱뒤뚱! 자리는 씨앗으로 정해요 (모든 폰이 같아요)
-  //  펭귄 바로 앞(2.5m 안)에서 초록을 누르면 휙 피하고, 아니면 펭귄이랑 꽝! (곡선 꽈당과 같은 벌칙)
-  const PENG_WIN = 2.5;
-  const pengAt = (seed) => { const u = S + Math.PI * R + S * (0.3 + ((seed >>> 0) % 997) / 997 * 0.4); return [u, u + LAP, u + 2 * LAP]; };
+  //  2바퀴째에 딱 한 번 (헬은 3바퀴째에도). 지나갈 때 너무 빠르면(난이도 penV 초과) 펭귄이랑 꽝! 아니면 휙 피해요
+  const pengU = (seed) => S + Math.PI * R + S * (0.3 + ((seed >>> 0) % 997) / 997 * 0.4);
+  const pengAt = (seed, two) => (two ? [pengU(seed) + LAP, pengU(seed) + 2 * LAP] : [pengU(seed) + LAP]);
+  // 코너 미끄러짐: 코너에서 빠를 때(SKID_V 넘게) 한 번 칠 때마다 SKID_HIT, 느리면 SKID_SOFT · 1초에 SKID_DECAY 씩 풀려요
+  const SKID_V = 11; const SKID_HIT = 0.2; const SKID_SOFT = 0.05; const SKID_DECAY = 1.8;   // 빠를 때 1초에 9번 넘게 치면 쌓여요
+  const BOOST = { cap: 290, ms: 6000 };    // 필살기 부스터: 연타 290칸 → 6초 동안 ×1.5
 
   const sim = {
-    init(c) { return { v: 0, x: 0, mash: new O.Masher(66), lean: false, state: 0, waitUntil: 0, fallUntil: 0, falls: 0, pens: pengAt((c && c.seed) || 1), pi: 0, leanX: -99, fallAt: 0, fallKind: 0, dodge: 0 }; },
+    init(c) {
+      const dp = O.diffP(c && c.diff);
+      const st = { v: 0, x: 0, mash: new O.Masher(), lean: false, skid: 0, state: 0, waitUntil: 0, fallUntil: 0, falls: 0, pens: pengAt((c && c.seed) || 1, dp.peng2), pi: 0, fallAt: 0, fallKind: 0, dodge: 0, dp };
+      st.bo = O.boost.make(sim.boostCfg || BOOST, dp);
+      return st;
+    },
     press(st, c, e, gun) {
-      if (c === 'g') { if (e >= gun) { st.lean = true; st.leanX = st.x; } return null; }
-      if (c !== 'r' && c !== 'b') return null;
-      if (e < gun) { if (!st.waitUntil) { st.waitUntil = gun + 1000; st.state = 1; return { say: '부정출발! 1초 늦게 출발해요', sfx: 'bad', vib: [40, 40, 40] }; } return null; }
+      if (c !== 'r' && c !== 'g' && c !== 'b') return null;
+      if (e < gun) return O.falseStart(st, gun, 1000);
       if ((st.waitUntil && e < st.waitUntil) || e < st.fallUntil) return null;
-      if (st.mash.press(c, e) === 1) { st.v = Math.min(13.5, st.v + (seg(st.x).curve ? 0.45 : 0.85)); return { sfx: 'step', vib: 5 }; }
+      if (st.mash.press(c, e) === 1) {
+        const curve = seg(st.x).curve;
+        st.v = Math.min(13.5, st.v + (curve ? 0.45 : 0.85));
+        if (curve) st.skid += (st.v > SKID_V ? SKID_HIT : SKID_SOFT) * (st.dp ? st.dp.stSkid : 1);   // 코너에서 마구 치면 미끄러져요
+        O.boost.tap(st, e, 1);
+        return { sfx: 'step', vib: 5 };
+      }
       return null;
     },
-    release(st, c) { if (c === 'g') st.lean = false; },
+    release() {},
     step(st, dt, e) {
       if (st.state === 1 && e >= st.waitUntil) st.state = 0;
       if (st.state === 2 && e >= st.fallUntil) st.state = 0;
       const sg = seg(st.x);
       let out = null;
-      if (st.state !== 2) {
-        if (sg.curve) {
-          if (!st.lean && st.v > FALL) {
-            st.state = 2; st.fallUntil = e + 1300; st.v = 1.5; st.falls += 1; st.fallAt = e; st.fallKind = 1;
-            out = { say: '꽈당! 초록 꾹!', color: '#FF8B95', sfx: 'bad', vib: [60, 40, 60], ms: 1400 };
-          } else {
-            const cap = st.lean ? LEAN_MAX : SAFE;
-            if (st.v > cap) st.v -= (st.v - cap) * 2.4 * dt;
-          }
-        } else if (st.lean) st.v -= 3.2 * dt;     // 직선에서 기울이면 느려져요
+      const dp = st.dp || O.diffP('normal');
+      st.lean = sg.curve && st.state !== 2;       // 코너에서는 저절로 기울어요
+      st.skid = Math.max(0, st.skid - (sg.curve ? SKID_DECAY : SKID_DECAY * 2.5) * dt);
+      if (st.state !== 2 && sg.curve) {
+        if (st.skid >= 1) {
+          // 미끄덩: 벽 쪽으로 쭉 미끄러졌다가 다시 출발 (속도 반, 잠깐 멈춤)
+          st.state = 2; st.fallUntil = e + Math.round(dp.stFallMs * 0.7); st.v *= 0.45; st.falls += 1; st.fallAt = e; st.fallKind = 1; st.skid = 0;
+          out = { say: '미끄덩 꽈당! 코너에선 살살~', color: '#FF8B95', sfx: 'bad', vib: [60, 40, 60], ms: 1400 };
+        } else if (st.v > LEAN_MAX) st.v -= (st.v - LEAN_MAX) * 2.4 * dt;
       }
       st.v = Math.max(0, st.v * Math.exp(-0.55 * dt));
-      st.x += st.v * dt;
+      st.x += st.v * dt * O.boost.k(st);
       st.curve = sg.curve;
       // 펭귄 지나가기
       const pp = st.pens ? st.pens[st.pi] : null;
       if (pp != null && st.x >= pp) {
         st.pi += 1;
         if (st.state !== 2) {
-          if (st.lean || st.x - st.leanX < PENG_WIN) { st.dodge += 1; out = out || { say: '휙! 펭귄 피했다', color: '#7DF0AE', sfx: 'whoosh', ms: 900 }; }
+          if (st.v <= dp.penV) { st.dodge += 1; out = out || { say: '휙! 펭귄 피했다', color: '#7DF0AE', sfx: 'whoosh', ms: 900 }; }
           else {
-            st.state = 2; st.fallUntil = e + 1000; st.v = 2.5; st.falls += 1; st.fallAt = e; st.fallKind = 2;   // 펭귄은 조금 가벼운 벌칙
+            st.state = 2; st.fallUntil = e + Math.round(dp.stFallMs * 0.77); st.v = 2.5; st.falls += 1; st.fallAt = e; st.fallKind = 2;   // 펭귄은 조금 가벼운 벌칙
             out = { say: '펭귄이랑 꽝!', color: '#FF8B95', sfx: 'bad', vib: [60, 40, 60], ms: 1400 };
           }
         }
@@ -97,7 +110,8 @@
   function create(ctx) {
     const gun = (ctx.ev && ctx.ev.gun) || 2400;
     const seed = ctx.seed || 1;
-    const PENS = pengAt(seed);
+    const PENS = pengAt(seed, O.diffP(ctx.diff).peng2);
+    const SPOTS = [pengU(seed)];   // 빙판 위 펭귄 자리 (뒤쪽 직선 한 곳)
     const list = O.roster(ctx);
     ctx.stage.innerHTML = '';
     const wrap = G.kit.el('<div class="oly-wrap osh"><div class="oly-top"></div><div class="oly-scene"></div><div class="oly-hud"></div><div class="oly-msg"></div></div>');
@@ -108,15 +122,17 @@
     const strip = O.strip(wrap.querySelector('.oly-top'), list, `${LAPS}바퀴`);
     scene.appendChild((() => { const b = document.createElement('div'); b.className = 'oly-snow'; return b; })());
     const meter = O.rateMeter(hud);
-    const tip = G.kit.el('<div class="osh-tip"><span class="osh-st">직선 · 연타!</span><span class="osh-lap"></span><span class="osh-v"><em>0</em> km/h</span></div>');
+    const tip = G.kit.el('<div class="osh-tip"><span class="osh-st">직선 · 연타!</span><i class="osh-skid" aria-hidden="true"><b></b></i><span class="osh-lap"></span><span class="osh-v"><em>0</em> km/h</span></div>');
     hud.prepend(tip);
+    const skidB = tip.querySelector('.osh-skid b'); let lastSkid = -1; let curveSaid = -1;
     const tipSt = tip.querySelector('.osh-st'); const tipLap = tip.querySelector('.osh-lap'); const tipV = tip.querySelector('.osh-v em');
     const svg = O.el('svg', { class: 'oly-svg' });
     scene.appendChild(svg);
     const FX = O.fx;
     const camC = FX ? FX.cam(svg) : null;
     let Wd = 0; let Hd = 0; let k = 1; let cx = 0; let cy = 0; let tokens = {}; let board = null;
-    let PF = null; let PB = null; let peng = null; let trailG = null;
+    let PF = null; let PB = null; let pengs = []; let trailG = null; let BT = null;
+    const BO = O.boost;
     const shown = {};
     const vis = {};
     // 빙판 좌표(m) → 화면 (빙판을 세웠으니 (x, y) → (y, -x))
@@ -156,21 +172,27 @@
       svg.appendChild(trailG);
       const back = O.el('g', {}); svg.appendChild(back);
       PB = FX ? FX.parts(back, 30) : null;
-      // 펭귄
-      peng = O.el('g', {}, `<g class="osh-pg">${PENGUIN}</g><g class="osh-pgb" display="none"><rect x="-13" y="-46" width="26" height="20" rx="8" fill="#fff" stroke="#2A2340" stroke-width="1.6"/><text y="-31" text-anchor="middle" font-size="14" font-weight="900" fill="#FF4757" font-family="system-ui,sans-serif">!</text></g>`);
-      svg.appendChild(peng);
-      peng.pg = peng.firstElementChild; peng.bub = peng.lastElementChild;
+      const bl = O.el('g', { class: 'obs-trail' }); svg.appendChild(bl);
+      BT = BO.trailer(bl, 36);
+      // 펭귄 (헬은 두 마리)
+      pengs = SPOTS.map((u) => {
+        const pe = O.el('g', {}, `<g class="osh-pg">${PENGUIN}</g><g class="osh-pgb" display="none"><rect x="-13" y="-46" width="26" height="20" rx="8" fill="#fff" stroke="#2A2340" stroke-width="1.6"/><text y="-31" text-anchor="middle" font-size="14" font-weight="900" fill="#FF4757" font-family="system-ui,sans-serif">!</text></g>`);
+        svg.appendChild(pe);
+        pe.pg = pe.firstElementChild; pe.bub = pe.lastElementChild; pe.u = u;
+        return pe;
+      });
       tokens = {};
       list.slice().reverse().forEach((p, ri) => {
         const a = O.ath(p.athlete);
         const z = (p.me ? 3.4 : 2.8) * k;
-        const g = O.el('g', {}, `<g class="osh-tk">${skaterSVG(a, z)}<g class="osh-hd" transform="translate(${(z * 0.15).toFixed(1)} 0) rotate(90) scale(${(z / 52).toFixed(3)})">${O.HEAD[a.id]('n')}</g></g><g class="osh-st3" display="none" transform="scale(${(z / 18).toFixed(2)})"></g>
+        const L = BO.look(a.id);
+        const g = O.el('g', {}, `<g class="obs-taura" display="none"><circle r="${(z * 1.05).toFixed(1)}" fill="${L.c}" opacity=".3"/><circle r="${(z * 1.25).toFixed(1)}" fill="none" stroke="${L.c}" stroke-width="2.5" stroke-dasharray="6 5" opacity=".8"/></g><g class="osh-tk">${skaterSVG(a, z)}<g class="osh-hd" transform="translate(${(z * 0.15).toFixed(1)} 0) rotate(90) scale(${(z / 52).toFixed(3)})">${O.HEAD[a.id]('n')}</g></g><g class="osh-st3" display="none" transform="scale(${(z / 18).toFixed(2)})"></g>
           <g class="osh-tag" transform="translate(0 ${(-z * 1.15).toFixed(1)})"><rect x="-17" y="-7" width="34" height="13" rx="6.5" fill="${p.me ? '#FFD23F' : 'rgba(21,18,43,.7)'}"/><text y="3" text-anchor="middle" font-size="8.5" font-weight="900" fill="${p.me ? '#15122B' : '#fff'}" font-family="system-ui,sans-serif">${p.me ? '나' : G.esc(p.name.slice(0, 4))}</text></g>`);
         svg.appendChild(g);
-        const tk = g.firstElementChild;
+        const tk = g.querySelector('.osh-tk');
         const trail = O.el('path', { stroke: p.me ? 'rgba(61,123,255,.35)' : 'rgba(127,184,224,.45)', 'stroke-width': p.me ? 2.4 : 1.6 });
         trailG.appendChild(trail);
-        tokens[p.pid] = { g, tk, z, a, lane: list.length - 1 - ri, trail, hd: tk.querySelector('.osh-hd'), ex: 'n', st3: g.querySelector('.osh-st3'),
+        tokens[p.pid] = { g, tk, z, a, lane: list.length - 1 - ri, trail, hd: tk.querySelector('.osh-hd'), ex: 'n', st3: g.querySelector('.osh-st3'), aura: g.querySelector('.obs-taura'),
           lgL: tk.querySelector('.lgL > g'), lgR: tk.querySelector('.lgR > g'), arL: tk.querySelector('.arL > g'), arR: tk.querySelector('.arR > g') };
         tokens[p.pid].st3.innerHTML = STARS3;
       });
@@ -181,6 +203,22 @@
     const st = sim.init(ctx);
     st.e = 0; st.fin = 0;
     build();
+    // 필살기 부스터 (게이지 · 큰 버튼 · 빨강+파랑 꾹)
+    const me0 = list.find((p) => p.me) || list[0];
+    const clk = BO.clock(ctx);
+    const chord = BO.chord();
+    const BU = BO.ui(ctx, { wrap, scene, ath: me0.athlete, onFire: () => fire(clk.now()) });
+    const bWas = {};
+    let ended = false; let lastM = -1e9;
+    function fire(t) {
+      if (ended) return;
+      const e = Math.round(t - ctx.startAt);
+      if (e < 0) return;
+      simTo(e);
+      if (!BO.input(st, 'X', e, !st.fin)) return;
+      log.push([e, 'X']);
+      BU.activated();
+    }
     const ro = window.ResizeObserver ? new ResizeObserver(() => { if (scene.clientWidth !== Wd || scene.clientHeight !== Hd) build(); }) : null;
     if (ro) ro.observe(scene);
     const log = [];
@@ -193,6 +231,7 @@
         st.e += STEP;
         if (st.fin) { st.v *= Math.exp(-2 * STEP / 1000); st.x += st.v * STEP / 1000; continue; }
         react(sim.step(st, STEP / 1000, st.e));
+        BO.run(st, STEP, true);
         if (st.x >= D) { st.fin = Math.max(1, st.e - gun); }
       }
     }
@@ -206,7 +245,7 @@
       return { x, y, ang: sg.a * 180 / Math.PI - 90, ox: ny, oy: -nx, curve: sg.curve };   // (ox, oy) = 화면에서 바깥쪽
     }
     // 화면 효과 한 프레임: 선수 하나
-    function place(p, T, s, v, lean, state, e, dt, me) {
+    function place(p, T, s, v, lean, state, e, dt, me, boost) {
       const V = vis[p.pid] || (vis[p.pid] = { st: 0, fT: -1e9, fS: 0, ph: Math.random() * 6, hist: [], hT: 0, sprT: 0, bonk: false, lastS: s, pk: 0 });
       if (state === 2 && V.st !== 2) { V.fT = e; V.fS = s; V.bonk = false; V.pk = nearPeng(s) ? 1 : 0; if (V.pk) pengHit(e, p); }
       V.st = state;
@@ -243,6 +282,14 @@
       T.g.setAttribute('transform', `translate(${(lx - (hop ? w.ox * 0.6 * k * hop : 0)).toFixed(1)} ${(ly - (hop ? w.oy * 0.6 * k * hop : 0)).toFixed(1)})`);
       const stretch = falling ? 1 : 1 + Math.min(0.16, v / 70);
       const hs = 1 + hop * 0.3;
+      // 부스터: 기운 고리 + 꼬리 조각 (도치는 빙글빙글 회전)
+      const bon = boost && !falling;
+      if (bon !== !!T.bOn) { T.bOn = bon; T.aura.setAttribute('display', bon ? 'inline' : 'none'); }
+      if (bon) {
+        T.aura.setAttribute('transform', `rotate(${(e * 0.4 % 360).toFixed(0)})`);
+        BT.emit(T.a.id, p.pid, lx, ly, w.ang * Math.PI / 180, k / 9, me, dt);
+        if (BO.look(T.a.id).spin) spin += (e * 1.4) % 360;
+      }
       T.tk.setAttribute('transform', `rotate(${(w.ang + spin + wob).toFixed(1)}) scale(${(stretch * hs * (falling ? 1 : 1)).toFixed(3)} ${((2 - stretch) * hs * sq).toFixed(3)})`);
       T.g.style.opacity = '';
       // 팔다리: 밀기(번갈아) · 곡선 손 짚기 · 꽈당 불가사리
@@ -293,14 +340,26 @@
       V.lastS = s;
     }
     const nearPeng = (s) => PENS.some((q) => Math.abs(s - q) < 3);
-    function pengHit(e, p) { pg.hitT = e; pg.hitDir = Math.random() < 0.5 ? -1 : 1; if (p.me && ctx.sfx.boing) setTimeout(() => ctx.sfx.boing(), 80); }
+    function pengHit(e, p) {
+      pg.hitT = e; pg.hitDir = Math.random() < 0.5 ? -1 : 1;
+      const S0 = V0(p); pg.hitU = S0 % LAP;
+      if (p.me && ctx.sfx.boing) setTimeout(() => ctx.sfx.boing(), 80);
+    }
+    const V0 = (p) => (vis[p.pid] ? vis[p.pid].fS : 0);
     // 펭귄: 뒤뚱뒤뚱 · 부딪히면 컬링 돌처럼 빙글빙글 미끄러졌다가 다시 뒤뚱뒤뚱 돌아와요
-    function drawPeng(e) {
-      const ph = PENS[0];
+    function drawPeng(e) { pengs.forEach((pe) => drawOne(pe, e)); }
+    function drawOne(peng, e) {
+      const ph = peng.u;
+      // 펭귄은 내가 그 바퀴에 가까워질 때만 나와요 (2바퀴째 · 헬은 3바퀴째도)
+      const up = st.pens[st.pi];
+      const showP = (up != null && up - st.x < LAP * 0.8) || e - pg.hitT < 2600 || e - pg.dodgeT < 1400;
+      peng.setAttribute('display', showP ? 'inline' : 'none');
+      if (!showP) return;
+      const near = pengs.length < 2 || pg.hitU == null || Math.abs(((pg.hitU - ph) % LAP + LAP) % LAP) < 4 || Math.abs(((ph - pg.hitU) % LAP + LAP) % LAP) < 4;
       const sg = seg(ph);
       const lat = Math.sin(e / 1300) * 1.3;          // 레인을 가로질러 왔다 갔다
       let [x, y] = scr(sg.x, sg.y + (sg.y > 0 ? lat : -lat));
-      const ht = (e - pg.hitT) / 1000;
+      const ht = near ? (e - pg.hitT) / 1000 : -1;
       let rot = Math.sin(e / 110) * 9; let sy = 1; let sx = 1;
       if (ht >= 0 && ht < 2.6) {
         const go = ht < 1.2 ? O.ease(ht / 1.2) : 1 - O.ease((ht - 1.2) / 1.4);
@@ -327,12 +386,23 @@
         simTo(e);
         if (st.dodge !== dodge0) { pg.dodgeT = e; pg.duckT = e; if (camC) camC.punch(0.05); }
         meter.set(st.mash.rate(e));
+        clk.seen(t);
+        BU.update(st, e, ended || !!st.fin);
+        if (chord.check(t)) fire(t);
         const sg = seg(st.x);
         const pAhead = st.state !== 2 && st.pens[st.pi] != null ? st.pens[st.pi] - st.x : 99;
-        const pWarn = pAhead > 0 && pAhead < 9;
-        tipSt.textContent = st.state === 2 ? '꽈당…' : pWarn ? (pAhead < PENG_WIN ? '지금! 초록 톡!' : '펭귄! 초록 준비') : sg.curve ? (st.lean ? '기울이는 중 ✓' : '곡선! 초록 꾹!') : curveAhead(st.x, 6) ? '곧 곡선 · 초록 준비' : (st.lean ? '직선 · 초록 떼요!' : '직선 · 연타!');
-        tip.className = 'osh-tip ' + (pWarn ? 'warn' : sg.curve ? (st.lean ? 'ok' : 'warn') : st.lean ? 'warn' : '');
-        if (pWarn && pengWarn !== st.pi) { pengWarn = st.pi; say('펭귄이다!', '#FFE27A', 900); }
+        const pWarn = pAhead > 0 && pAhead < 14;
+        const dpS = st.dp || O.diffP('normal');
+        const fast = st.v > dpS.penV;
+        tipSt.textContent = st.state === 2 ? '꽈당…' : pWarn ? (fast ? '펭귄! 살살~ (너무 빨라요)' : '펭귄 옆 살살 ✓') : sg.curve ? (st.skid > 0.55 ? '미끄러져요! 살살!' : '코너! 살살 눌러요') : curveAhead(st.x, 6) ? '곧 코너 · 살살 준비' : '직선 · 마구 연타!';
+        tip.className = 'osh-tip ' + (pWarn ? (fast ? 'warn' : 'ok') : sg.curve ? (st.skid > 0.55 ? 'warn' : 'ok') : '');
+        // 미끄러짐 막대 (코너에서 차요)
+        const sk = Math.round(Math.min(1, st.skid) * 20) / 20;
+        if (sk !== lastSkid) { lastSkid = sk; skidB.style.transform = `scaleX(${sk})`; skidB.parentElement.className = 'osh-skid' + (sk > 0.55 ? ' hot' : sk > 0 ? ' on' : ''); }
+        // 코너에 들어설 때마다 한 번 "코너! 살살"
+        const cIdx = sg.curve ? Math.floor(st.x / (LAP / 2)) : -1;
+        if (cIdx >= 0 && cIdx !== curveSaid && st.state !== 2) { curveSaid = cIdx; say('코너! 살살~', '#7FD3FF', 700); }
+        if (pWarn && pengWarn !== st.pi) { pengWarn = st.pi; say('펭귄이다! 살살~', '#FFE27A', 1000); }
         const lap = Math.min(LAPS, Math.floor(st.x / LAP) + 1);
         tipLap.textContent = `${lap}/${LAPS}바퀴`;
         if (lap !== lastLap) { lastLap = lap; if (lap === LAPS && !st.fin) { say('마지막 바퀴!', '#FFD23F', 1000); if (ctx.sfx.lamp) ctx.sfx.lamp(); } }
@@ -343,17 +413,29 @@
         list.forEach((p) => {
           const T = tokens[p.pid];
           if (!T) return;
-          if (p.me) { place(p, T, st.x, st.v, st.lean, st.fin ? 3 : st.state, e, dt, true); strip.set(p.pid, st.x / D); return; }
+          if (p.me) { place(p, T, st.x, st.v, st.lean, st.fin ? 3 : st.state, e, dt, true, BO.active(st)); strip.set(p.pid, st.x / D); return; }
           const a = live[p.pid];
           const target = a ? a[1] || 0 : 0;
           const ex = (a && a[2]) || [];
           shown[p.pid] = shown[p.pid] == null ? target : shown[p.pid] + (target - shown[p.pid]) * (p.bot ? 1 : Math.min(1, dt * 6));
-          place(p, T, shown[p.pid], ex[0] || 0, ex[2] === 1, ex[1] || 0, e, dt, false);
+          // 다른 선수 부스터: 다른 폰은 진짜 값(덧붙임 5번째), AI 는 흉내
+          let bon;
+          if (p.bot) { const bw = BO.botWindow(seed, p.pid); const f = shown[p.pid] / D; bon = f > bw[0] && f < bw[1] && (ex[1] || 0) !== 3; } else bon = ex[4] === 2;
+          if (bon && !bWas[p.pid]) BU.remote(p.athlete, p.name);
+          bWas[p.pid] = bon;
+          place(p, T, shown[p.pid], ex[0] || 0, ex[2] === 1, ex[1] || 0, e, dt, false, bon);
           strip.set(p.pid, shown[p.pid] / D);
           const sc = a ? a[0] || 0 : 0;
           if (st.fin ? sc >= 50000 && sc > 100000 - st.fin : (sc >= 50000 || target > st.x)) rank++;
         });
         drawPeng(e);
+        BT.tick(dt);
+        // 역전 장치: 0.4초마다 순위로 게이지 배율 (바뀌면 누른 기록에)
+        if (!st.fin && e > gun + 300 && e - lastM >= 400) {
+          lastM = e;
+          const m = BO.mulFor(rank, list.length);
+          if (m !== st.bo.mul) { const er = Math.round(e); simTo(er); log.push([er, 'M' + m]); BO.input(st, 'M' + m, er); }
+        }
         if (PB) PB.tick(dt);
         if (PF) PF.tick(dt);
         if (camC) camC.tick(dt);
@@ -374,13 +456,14 @@
           }
         }
       },
-      onPress(c, t) { const e = t - ctx.startAt; simTo(e); log.push([Math.round(e), c]); react(sim.press(st, c, e, gun)); },
-      onRelease(c, t) { const e = t - ctx.startAt; simTo(e); log.push([Math.round(e), c.toUpperCase()]); sim.release(st, c); },
-      end() { if (ro) ro.disconnect(); clearTimeout(msgT); },
+      onPress(c, t) { const e = Math.round(t - ctx.startAt); simTo(e); log.push([e, c]); chord.down(c, t); react(sim.press(st, c, e, gun)); },
+      onRelease(c, t) { const e = Math.round(t - ctx.startAt); simTo(e); log.push([e, c.toUpperCase()]); chord.up(c); sim.release(st, c); },
+      onBoost(t) { fire(t); },
+      end() { ended = true; BU.off(); if (ro) ro.disconnect(); clearTimeout(msgT); },
       done: () => !!st.fin && st.e - gun - st.fin > 1500,
       score: () => (st.fin ? 100000 - st.fin : Math.round(st.x * 100)),
       value: () => Math.round(st.x * 100) / 100,
-      extra: () => [Math.round(st.v * 100) / 100, st.fin ? 3 : st.state, st.lean ? 1 : 0, st.fallKind || 0],
+      extra: () => [Math.round(st.v * 100) / 100, st.fin ? 3 : st.state, st.lean ? 1 : 0, st.fallKind || 0, BO.code(st)],
       log: () => log,
       _st: () => st,
       _peng: () => PENS,
@@ -395,15 +478,16 @@
     title: '쇼트트랙',
     cat: '동계 · 빙상',
     catColor: 'r',
-    how: '직선 연타 · 곡선에선 초록 꾹 · 펭귄 조심',
+    how: '아무 버튼 연타 · 코너·펭귄 앞에선 살살',
     icon: ICON,
     buttons: ['r', 'g', 'b'], noGo: true, pressSound: false,
-    rules: ['직선에서는 빨·파 아무거나 연타해서 빨라져요', '곡선에서는 초록을 꾹! 몸을 기울여야 빨리 돌 수 있어요', '안 기울이고 너무 빠르면 꽈당 · 직선에선 초록을 떼요 · 3바퀴', '뒤쪽 직선에 펭귄이 뒤뚱뒤뚱! 바로 앞에서 초록을 톡 누르면 휙 피해요'],
+    rules: ['직선에서는 아무 버튼이나 마구 연타해서 빨라져요 · 3바퀴', '코너에서는 몸이 저절로 기울어요 · 대신 빠를 때 마구 치면 미끄러져 꽈당! "코너! 살살"', '2바퀴째에 펭귄이 뒤뚱뒤뚱! 너무 빠르면 꽝 · 앞에서 잠깐 살살 치면 휙 피해요', '연타로 부스터 게이지가 차면 [부스터!] 톡'],
     illus() {
       const b = (c, n) => `<div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX[c]};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE[c]}">${shape(c, 24)}</div></div><span style="color:${LIGHT[c]}">${n}</span></div>`;
-      return `<div class="il-row">${b('r', '직선')}${b('b', '직선')}<svg width="56" height="34" viewBox="0 0 56 34"><rect x="3" y="3" width="50" height="28" rx="14" fill="none" stroke="#7FB8E0" stroke-width="4"/><path d="M42 5 A12 12 0 0 1 42 29" fill="none" stroke="#2ED573" stroke-width="4"/></svg>${b('g', '곡선 꾹')}</div>`;
+      return `<div class="il-row">${b('r', '마구')}${b('g', '마구')}<svg width="60" height="38" viewBox="0 0 60 38"><rect x="3" y="5" width="50" height="28" rx="14" fill="none" stroke="#7FB8E0" stroke-width="4"/><path d="M42 7 A12 12 0 0 1 42 31" fill="none" stroke="#7FD3FF" stroke-width="5"/><text x="30" y="24" text-anchor="middle" font-size="10" font-weight="900" fill="#7FD3FF" font-family="system-ui,sans-serif">살살</text></svg>${b('b', '마구')}</div>`;
     },
     fmt: O.fmtTimeScore,
+    boost: true, sim,
     rival(arr) { const sc = arr ? arr[0] : 0; const x = arr ? arr[1] || 0 : 0; if (sc >= 50000) return { sort: sc, text: O.fmtSec(100000 - sc) }; return { sort: x, text: `${Math.min(LAPS, Math.floor(x / LAP) + 1)}바퀴` }; },
     botLive(perf, e, cur) {
       const g = (cur.ev && cur.ev.gun) || 2400;

@@ -304,11 +304,14 @@
      frame(): 화면에 보여줄 시각(느린 화면) · pose(): 몸개그 · after(): 효과 · finish(): 골인 연출
      ================================================================ */
   // 출발 속임수 (모두 같은 값): 없음 / 오리 '꽥!' / 풍선 '팡!'
-  function fakeOut(seed, gun) {
+  //  mode(난이도): 0 없음(이지) · 1 세 번에 두 번(노멀) · 2 늘(하드) · 3 늘 + 진짜 '탕!'에 더 바짝(헬)
+  function fakeOut(seed, gun, mode) {
+    const m = mode == null ? 1 : mode;
+    if (!m) return null;
     const h = hash(seed, 1001);
-    if (h % 3 === 0) return null;
+    if (m === 1 && h % 3 === 0) return null;
     const kind = (h >>> 3) % 2 ? 'duck' : 'balloon';
-    const at = gun - 450 - ((h >>> 7) % 500);    // '차렷!' 뒤 0.15~0.65초 · 진짜 '탕!' 보다 0.45~0.95초 먼저
+    const at = m >= 3 ? gun - 300 - ((h >>> 7) % 350) : gun - 450 - ((h >>> 7) % 500);    // '차렷!' 뒤 · 진짜 '탕!' 보다 0.45~0.95초 먼저 (헬 0.3~0.65초)
     return { kind, at };
   }
 
@@ -319,7 +322,8 @@
   function raceJuice(ctx, tr, cfg, st, gun) {
     const D = cfg.D;
     const seed = ctx.seed || 1;
-    const fake = cfg.fakeStart ? fakeOut(seed, gun) : null;
+    const dp = (st && st.dp) || O.diffP(ctx.diff);
+    const fake = cfg.fakeStart ? fakeOut(seed, gun, dp.fake) : null;
     const meP = tr.list.find((p) => p.me);
     const camC = cam(tr.svg);
     const spd = lines(tr.sceneBox);
@@ -434,7 +438,7 @@
       // 2) 부정출발 → 발이 꼬여 얼굴 꽈당 → 뒷걸음질로 출발선
       if (A.fpT != null) {
         const ft = (t - A.fpT) / 1000;
-        const avail = (gun + (cfg.falsePenalty || 1000) - A.fpT) / 1000;
+        const avail = (gun + ((p.me && dp.fs) || cfg.falsePenalty || 1000) - A.fpT) / 1000;
         const running = I.x > 0.05 && I.state !== 1;
         if (running || ft > Math.max(2.4, avail + 0.3)) A.fpT = null;
         else {
@@ -610,7 +614,7 @@
       camC.punch(0.06);
       const b = ctx.stage.getBoundingClientRect();
       PF.burst('confetti', D * tr.ppm, tr.L[0].y - 60 * tr.baseS, 16, { sp: 240 });
-      const r = pb(cfg.id, score);
+      const r = pb(cfg.id + (dp.id === 'normal' ? '' : '@' + dp.id), score);
       if (r.pb) setTimeout(() => celebrate(ctx, true, '개인 신기록!'), 700);
       else if (r.first) setTimeout(() => ctx.fx.float('첫 기록!', b.width * 0.5, b.height * 0.3, '#7DF0AE', 30), 700);
       else if (rank === 1) setTimeout(() => celebrate(ctx, false), 500);

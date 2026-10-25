@@ -237,6 +237,22 @@
       tone(2500, 0.07, { type: 'sine', vol: 0.1, slide: 3500, delay: 0.1 });
     },
     scrape() { noise(0.22, { vol: 0.06, freq: 4200 }); },
+    // 필살기 부스터: 다 찼어요 (반짝반짝) · 켰어요 (위로 슝 + 힘찬 화음)
+    boostReady() {
+      [1319, 1760, 2349].forEach((f, i) => tone(f, 0.09, { type: 'triangle', vol: 0.16, delay: i * 0.06 }));
+    },
+    boost() {
+      tone(180, 0.5, { type: 'sawtooth', vol: 0.16, slide: 1400 });
+      tone(360, 0.45, { type: 'square', vol: 0.07, slide: 2200, delay: 0.03 });
+      noise(0.55, { vol: 0.12, freq: 900, filter: 'bandpass' });
+      [523, 659, 784, 1047].forEach((f) => tone(f, 0.32, { type: 'square', vol: 0.06, delay: 0.28 }));
+    },
+    // 레벨 업! (올라가는 팡파르 + 반짝)
+    levelUp() {
+      [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => tone(f, 0.16, { type: 'square', vol: 0.1, delay: i * 0.08 }));
+      tone(2093, 0.5, { type: 'triangle', vol: 0.18, delay: 0.5 });
+      tone(262, 0.8, { type: 'triangle', vol: 0.2, delay: 0.45 });
+    },
     whistle() { tone(2400, 0.22, { type: 'sine', vol: 0.12, slide: 1500 }); }
   };
 

@@ -12,15 +12,16 @@
   const SLED = 0.38;       // 썰매 반쪽 너비
   const cen = (d) => 2.2 * Math.sin(d / 55) + 1.2 * Math.sin(d / 23 + 1);    // 길 가운데
   const slope = (d) => 2.2 / 55 * Math.cos(d / 55) + 1.2 / 23 * Math.cos(d / 23 + 1);
+  const hwOf = (st) => (st && st.dp ? st.dp.bobHW : HW);     // 난이도: 얼음 길 넓이
 
   const sim = {
-    init() { return { d: 0, v: 0, lat: cen(0), latv: 0, mash: new O.Masher(66), state: 0, waitUntil: 0, hitT: -1e9, hits: 0, rode: false }; },
+    init() { return { d: 0, v: 0, lat: cen(0), latv: 0, mash: new O.Masher(), state: 0, waitUntil: 0, hitT: -1e9, hits: 0, rode: false }; },
     press(st, c, e, gun) {
       if (c !== 'r' && c !== 'b') return null;
-      if (e < gun) { if (!st.waitUntil) { st.waitUntil = gun + 1000; st.state = 1; return { say: '부정출발! 1초 늦게', sfx: 'bad', vib: [40, 40, 40] }; } return null; }
+      if (e < gun) return O.falseStart(st, gun, 1000);
       if (st.waitUntil && e < st.waitUntil) return null;
       if (st.d < PUSH) {
-        if (st.mash.press(c, e) === 1) { st.v = Math.min(9.5, st.v + 0.8); return { sfx: 'step', vib: 6 }; }
+        if (st.mash.press(c, e) === 1) { st.v = Math.min(9.5, st.v + 0.8); O.boost.tap(st, e, 1); return { sfx: 'step', vib: 6 }; }
         return null;
       }
       st.latv = O.clamp(st.latv + (c === 'r' ? -0.9 : 0.9), -5, 5);
@@ -38,16 +39,21 @@
       st.latv *= Math.exp(-0.6 * dt);
       const c = cen(st.d);
       const rel = st.lat - c;
-      if (Math.abs(rel) > HW - SLED) {
+      const hw = hwOf(st);
+      if (Math.abs(rel) > hw - SLED) {
         const side = Math.sign(rel);
-        st.lat = c + side * (HW - SLED);
+        st.lat = c + side * (hw - SLED);
         st.latv = -side * Math.abs(st.latv) * 0.3;
         if (e - st.hitT > 350 && st.d > PUSH) {
-          st.hitT = e; st.v *= 0.93; st.hits += 1;
+          st.hitT = e; st.hits += 1;
+          if (!O.boost.active(st)) st.v *= st.dp ? st.dp.bobHit : 0.93;    // 로켓 썰매(부스터) 중엔 벽에 스쳐도 안 느려져요
           out = { say: '쿵!', color: '#FF8B95', sfx: 'bad', vib: [40, 20, 40], ms: 500 };
         }
       }
-      st.d += st.v * dt;
+      const d0 = st.d;
+      st.d += st.v * dt * O.boost.k(st);
+      // 부스터 게이지: 출발 밀기 연타 + 타고 내려갈 때 벽에 안 부딪히고 20m 마다 한 칸
+      if (st.d > PUSH && e - st.hitT > 1000) O.boost.add(st, (st.d - Math.max(PUSH, d0)) / 20);
       return out;
     }
   };
@@ -63,12 +69,13 @@
     icon: ICON,
     D, halfView: 4.2, yScale: 0.22, tau: 6, bg: '#F8FCFF', cls: 'obob',
     meterLabel: '<i class="r"></i><i class="b"></i> 출발 연타 · 그다음 핸들',
-    rules: ['출발! 빨·파 아무거나 연타해서 썰매를 힘껏 밀어요 (25m)', '썰매에 타면 점점 빨라져요 · 얼음 길이 휘는 쪽으로 핸들', '빨강 = 왼쪽, 파랑 = 오른쪽 · 벽에 부딪히면 쿵! 느려져요'],
+    rules: ['출발! 빨·파 아무거나 연타해서 썰매를 힘껏 밀어요 (25m)', '썰매에 타면 점점 빨라져요 · 얼음 길이 휘는 쪽으로 핸들', '빨강 = 왼쪽, 파랑 = 오른쪽 · 벽에 부딪히면 쿵! 느려져요', '밀기 연타 + 벽에 안 부딪히고 달리면 부스터 게이지가 차요 · 다 차면 [부스터!] 톡 (로켓 썰매!)'],
     illus() {
       const b = (c, n) => `<div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX[c]};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE[c]}">${shape(c, 24)}</div></div><span style="color:${LIGHT[c]}">${n}</span></div>`;
       return `<div class="il-row">${b('r', '◀ 왼쪽')}<svg width="40" height="50" viewBox="0 0 40 50"><path d="M6 50 Q2 26 14 16 T20 0 M26 50 Q22 26 34 16 T40 0" fill="none" stroke="#7FB8E0" stroke-width="3"/><rect x="14" y="22" width="9" height="16" rx="4.5" fill="#FF4757" transform="rotate(20 18 30)"/></svg>${b('b', '오른쪽 ▶')}</div>`;
     },
     sim,
+    boost: { cap: 70, ms: 3500 },
     botLat: (d) => cen(d) + 0.25 * Math.sin(d / 9),
     angle: (latv, v) => Math.atan2(latv, Math.max(4, v)) * 180 / Math.PI * 2.2,
     camLat: (st) => cen(st.d + 8),
@@ -80,7 +87,8 @@
         <path d="M${(-w / 2 - 2).toFixed(1)} ${(L / 2 - 3).toFixed(1)} V${(-L / 2 + 6).toFixed(1)} M${(w / 2 + 2).toFixed(1)} ${(L / 2 - 3).toFixed(1)} V${(-L / 2 + 6).toFixed(1)}" stroke="#8C96A8" stroke-width="2"/>
         ${me ? `<circle r="${(L * 0.62).toFixed(1)}" fill="none" stroke="#FFD23F" stroke-width="2" stroke-dasharray="4 4" opacity=".8"/>` : ''}</g>`;
     },
-    drawCourse(d0, d1, SX, SY, px, py, W, H) {
+    drawCourse(d0, d1, SX, SY, px, py, W, H, st) {
+      const HW = hwOf(st);
       let L = ''; let R = '';
       for (let d = Math.floor(d0 / 2) * 2; d <= d1; d += 2) {
         const c = cen(d);
@@ -102,10 +110,10 @@
       if (e < gun) return '출발 준비';
       if (st.d < PUSH) return '빨·파 연타로 밀기!';
       const k = slope(st.d + Math.max(6, st.v * 0.5)) - (st.latv / Math.max(5, st.v));
-      if (Math.abs(st.lat - cen(st.d)) > HW - SLED - 0.15) return '벽이에요! 반대로';
+      if (Math.abs(st.lat - cen(st.d)) > hwOf(st) - SLED - 0.15) return '벽이에요! 반대로';
       return k > 0.03 ? '오른쪽으로 휘어요 → 파랑' : k < -0.03 ? '← 왼쪽으로 휘어요 빨강' : '쭉~';
     },
-    tipClass: (st) => (st.d >= PUSH && Math.abs(st.lat - cen(st.d)) > HW - SLED - 0.15 ? 'warn' : ''),
+    tipClass: (st) => (st.d >= PUSH && Math.abs(st.lat - cen(st.d)) > hwOf(st) - SLED - 0.15 ? 'warn' : ''),
     sumExtra: (st) => (st.hits ? ` (쿵 ${st.hits}번)` : '')
   });
 })();

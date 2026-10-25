@@ -1,5 +1,7 @@
 /* 아리채 오락실 · 전력 질주 (연타)
-   오락실 미니게임 — 버튼 3개로 모두 동시에, 서버가 준 같은 시드로 같은 문제가 나와요. */
+   오락실 미니게임 — 버튼 3개로 모두 동시에, 서버가 준 같은 시드로 같은 문제가 나와요.
+   아무 버튼이나 마구 연타! (빠르기 제한 없음 · 손가락 여러 개도 OK)
+   한 번 누른 게 두 번 들어오는 것만 걸러요 (같은 버튼 22ms 안) */
 (function () {
   'use strict';
 
@@ -11,24 +13,24 @@
     title: '전력 질주',
     cat: '연타',
     catColor: 'r',
-    buttons: ['r', 'b'],
-    rules: ['빨강·파랑 버튼을 번갈아 누르면 달려요', '같은 버튼을 연속으로 누르면 삐끗!', '150m 결승선에 먼저 들어가면 보너스'],
+    buttons: ['r', 'g', 'b'],
+    how: '아무 버튼이나 마구 연타',
+    rules: ['아무 버튼이나 마구 누르면 달려요 (한 번 = 1m)', '손가락 여러 개로 쳐도 돼요! 빠를수록 좋아요', '150m 결승선에 먼저 들어가면 보너스'],
     illus() {
       return `<div class="il-row il-race">
         <div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX.r};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE.r}">${shape('r', 24)}</div></div><span style="color:${LIGHT.r}">1</span></div>
         <svg width="40" height="36" viewBox="0 0 64 40" fill="none" stroke="#FFD23F" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 H54"/><path d="M42 8 L56 20 L42 32"/></svg>
         <div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX.b};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE.b}">${shape('b', 24)}</div></div><span style="color:${LIGHT.b}">2</span></div>
         <svg width="40" height="36" viewBox="0 0 64 40" fill="none" stroke="#FFD23F" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 H54"/><path d="M42 8 L56 20 L42 32"/></svg>
-        <div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX.r};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE.r}">${shape('r', 24)}</div></div><span style="color:${LIGHT.r}">3</span></div>
+        <div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX.g};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE.g}">${shape('g', 24)}</div></div><span style="color:${LIGHT.g}">3</span></div>
       </div>`;
     },
     create(ctx) {
       const GOAL = 150;
       let dist = 0;
-      let last = null;
+      const lastBy = { r: -1e9, g: -1e9, b: -1e9 };   // 버튼마다 마지막 누른 때 (겹쳐 들어온 터치 거르기)
       let score = 0;
       let finishedAt = 0;
-      let stumbleUntil = 0;
       let taps = [];
       const shown = {};
 
@@ -36,8 +38,8 @@
       ctx.stage.innerHTML = '';
       const wrap = el(`<div class="rc-wrap">
         <div class="rc-track"><div class="rc-finish"></div><div class="rc-lanes" style="grid-template-columns:repeat(${runners.length},minmax(0,1fr))"></div></div>
-        <div class="rc-meter"><div class="rc-meter-top"><span class="rc-hint"><i style="background:${HEX.r}"></i><b>→</b><i style="background:${HEX.b}"></i> 번갈아 연타!</span><span class="rc-rate"><em>0.0</em> 회/초</span></div>
-        <div class="rc-pips">${'<span></span>'.repeat(12)}</div></div></div>`);
+        <div class="rc-meter"><div class="rc-meter-top"><span class="rc-hint"><i style="background:${HEX.r}"></i><i style="background:${HEX.g}"></i><i style="background:${HEX.b}"></i> 아무 버튼이나 연타!</span><span class="rc-rate"><em>0.0</em> 회/초</span></div>
+        <div class="rc-pips">${'<span></span>'.repeat(15)}</div></div></div>`);
       ctx.stage.appendChild(wrap);
       const lanesEl = wrap.querySelector('.rc-lanes');
       const pips = Array.from(wrap.querySelectorAll('.rc-pips span'));
@@ -77,7 +79,7 @@
           const rate = taps.length;
           rateEl.textContent = rate.toFixed(1);
           pips.forEach((p, i) => {
-            p.className = i < rate ? (i < 6 ? 'on g' : i < 9 ? 'on y' : 'on r') : '';
+            p.className = i < rate ? (i < 6 ? 'on g' : i < 10 ? 'on y' : 'on r') : '';
           });
           const live = ctx.live();
           runners.forEach((p) => {
@@ -90,18 +92,10 @@
           ctx.setBadge(myRank() + '위', 'b');
         },
         onPress(c, t) {
-          if (finishedAt || t < stumbleUntil) return;
-          if (c !== 'r' && c !== 'b') return;
-          if (c === last) {
-            stumbleUntil = t + 250;
-            ctx.lock(250);
-            const pt = center(ctx, laneEls[ctx.myPid]);
-            ctx.fx.float('삐끗!', pt.x, pt.y - 30, '#FF8B95', 26);
-            ctx.sfx.soft();
-            ctx.vibrate(35);
-            return;
-          }
-          last = c;
+          if (finishedAt) return;
+          if (c !== 'r' && c !== 'g' && c !== 'b') return;
+          if (t - lastBy[c] < 22) return;      // 한 번 누른 게 두 번 들어온 것
+          lastBy[c] = t;
           dist += 1;
           taps.push(t);
           ctx.sfx.step();

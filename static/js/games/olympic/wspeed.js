@@ -15,34 +15,34 @@
     init() { return { v: 0, x: 0, last: null, lastT: -1e9, state: 0, waitUntil: 0, slipUntil: 0, q: 0, qT: 0, good: 0 }; },
     press(st, c, e, gun) {
       if (c !== 'r' && c !== 'b' && c !== 'g') return null;
-      if (e < gun) {
-        if (!st.waitUntil) { st.waitUntil = gun + 1000; st.state = 1; return { say: '부정출발! 1초 늦게 출발해요', sfx: 'bad', vib: [40, 40, 40] }; }
-        return null;
-      }
+      const dp = st.dp || O.diffP('normal');
+      if (e < gun) return O.falseStart(st, gun, 1000);
       if (st.waitUntil && e < st.waitUntil) return null;
       if (e < st.slipUntil) return null;
       const gap = e - st.lastT;
       st.last = c; st.lastT = e;
       if (st.v < 2.5) {           // 출발: 처음 몇 발은 그냥 힘차게
         st.v += 1.3; st.q = 1; st.qT = e;
+        O.boost.tap(st, e, 1);
         return { sfx: 'step', vib: 6 };
       }
       const id = ideal(st.v);
-      if (gap < id * 0.55) {
-        st.v *= 0.9; st.slipUntil = e + 260; st.state = 2; st.q = 0; st.qT = e;
+      if (gap < id * dp.skSlip[0]) {
+        st.v *= 0.9; st.slipUntil = e + dp.skSlip[1]; st.state = 2; st.q = 0; st.qT = e;
         return { say: '미끄덩!', color: '#FF8B95', sfx: 'bad', vib: [30, 20, 30], ms: 600 };
       }
-      const q = gap >= id * WIN[0] && gap <= id * WIN[1] ? 1 : 0.5;
+      const q = gap >= id * dp.skWin[0] && gap <= id * dp.skWin[1] ? 1 : 0.5;
       st.v += 1.3 * q;
       st.q = q; st.qT = e;
       if (q === 1) st.good += 1;
+      O.boost.tap(st, e, q);
       return { sfx: q === 1 ? 'good' : 'step', vib: q === 1 ? 12 : 5 };
     },
     step(st, dt, e) {
       if (st.state === 1 && e >= st.waitUntil) st.state = 0;
       if (st.state === 2 && e >= st.slipUntil) st.state = 0;
       st.v = Math.max(0, st.v - 0.02 * st.v * st.v * dt - 0.15 * dt);   // 바람 저항 (빠를수록 커요)
-      st.x += st.v * dt;
+      st.x += st.v * dt * O.boost.k(st);
     }
   };
 
@@ -64,22 +64,24 @@
     icon: ICON,
     D, view: 34, marks: 50, surface: 'ice', winter: true, gear: 'skates', noMeter: true,
     buttons: ['r', 'g', 'b'],
-    rules: ['아무 버튼이나 눌러 얼음을 밀어요', '리듬 막대가 초록 칸에 왔을 때 다음 발! 쭉~ 빨라져요', '너무 빨리 누르면 미끄덩, 늦으면 힘이 약해요 · 빨라질수록 리듬도 빨라져요'],
+    rules: ['아무 버튼이나 눌러 얼음을 밀어요', '리듬 막대가 초록 칸에 왔을 때 다음 발! 쭉~ 빨라져요', '너무 빨리 누르면 미끄덩, 늦으면 힘이 약해요 · 빨라질수록 리듬도 빨라져요', '쭉! 밀 때마다 부스터 게이지가 차요 · 다 차면 [부스터!] 톡'],
     illus() {
       const b = (c, n) => `<div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX[c]};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE[c]}">${shape(c, 24)}</div></div><span style="color:${LIGHT[c]}">${n}</span></div>`;
       return `<div class="il-row">${b('r', '쭉')}<svg width="60" height="26" viewBox="0 0 60 26"><rect x="2" y="8" width="56" height="10" rx="5" fill="rgba(255,255,255,.12)"/><rect x="32" y="6" width="18" height="14" rx="4" fill="#2ED573"/><rect x="2" y="8" width="38" height="10" rx="5" fill="#7FD3FF"/></svg>${b('b', '쭉')}</div>`;
     },
     sim,
     tau: 3.2,
+    boost: { cap: 117, ms: 5500 },
     phRate: (v) => 1.5 + v * 0.36,
     hud,
     tick(tr, st, e) {
       const S = tr.sk;
       if (!S) return;
       const id = ideal(st.v);
-      const full = id * WIN[1] * 1.15;
-      S.zone.style.left = `${(id * WIN[0] / full) * 100}%`;
-      S.zone.style.width = `${(id * (WIN[1] - WIN[0]) / full) * 100}%`;
+      const W = st.dp ? st.dp.skWin : WIN;
+      const full = id * W[1] * 1.15;
+      S.zone.style.left = `${(id * W[0] / full) * 100}%`;
+      S.zone.style.width = `${(id * (W[1] - W[0]) / full) * 100}%`;
       S.fill.style.width = `${Math.min(100, ((e - st.lastT) / full) * 100)}%`;
       S.v.textContent = Math.round(st.v * 3.6);
       if (st.qT !== S.lastQ && e - st.qT < 400) {

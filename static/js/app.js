@@ -11,12 +11,14 @@
 
   // 다른 모듈이 끼어들 수 있는 자리 (메시지 받을 때, 상태 바뀔 때, 결과·최종 화면)
   // olyPanel: 올림픽 대기실 종목 카드를 그린 뒤 (혼자 연습 버튼 등)
-  const HOOKS = { message: [], state: [], result: [], final: [], olyPanel: [] };
+  // lobby: 대기실을 다 그린 뒤 (올림픽 레벨·입장 등급 표시 등)
+  const HOOKS = { message: [], state: [], result: [], final: [], olyPanel: [], lobby: [] };
   // 혼자 연습처럼 서버 없이 도는 화면이 패드 입력을 잠깐 가져갈 때 (null 이면 방 경기로)
   let padTaker = null;
 
   const KEY_SESSION = 'arichae_session';
   const KEY_PROFILE = 'arichae_profile';
+  const KEY_DEV = 'arichae_dev';     // 이 기기 번호 (가입 없이 올림픽 레벨을 기억해요)
   const LENGTHS = [
     { n: 3, name: '짧게', sub: '3게임 · 약 3분' },
     { n: 5, name: '보통', sub: '5게임 · 약 5분' },
@@ -85,6 +87,28 @@
   }
   function clearKey(key) {
     try { localStorage.removeItem(key); } catch (e) { /* 무시 */ }
+  }
+
+  // 기기 번호: 처음 한 번 만들어 두고 계속 써요 (저장이 막혀 있으면 이번에만 쓰는 번호)
+  let devId = '';
+  function deviceId() {
+    if (devId) return devId;
+    try { devId = localStorage.getItem(KEY_DEV) || ''; } catch (e) { devId = ''; }
+    if (!/^[A-Za-z0-9_-]{8,40}$/.test(devId)) {
+      const a = new Uint8Array(12);
+      try { crypto.getRandomValues(a); } catch (e) { for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256); }
+      devId = 'd' + Array.from(a, (x) => x.toString(16).padStart(2, '0')).join('');
+      try { localStorage.setItem(KEY_DEV, devId); } catch (e) { /* 저장이 안 돼도 이번엔 써요 */ }
+    }
+    return devId;
+  }
+
+  // 올림픽 레벨 배지 (등급 색: 이지 초록 · 노멀 파랑 · 하드 주황 · 헬 빨강/검정)
+  const tierOfLv = (lv) => (lv >= 30 ? 'hell' : lv >= 20 ? 'hard' : lv >= 10 ? 'normal' : 'easy');
+  function lvBadge(p, force) {
+    if (!p || p.bot || !(force || isOly())) return '';
+    const lv = Math.max(1, p.lv || 1);
+    return `<span class="olv-b olv-${tierOfLv(lv)}" title="레벨 ${lv}">Lv${lv}</span>`;
   }
 
   function deviceName() {
@@ -218,18 +242,22 @@
 
   async function lookupRoom(code) {
     try {
-      const r = await fetch('/api/room/' + encodeURIComponent(code), { cache: 'no-store' });
+      const r = await fetch('/api/room/' + encodeURIComponent(code) + '?dev=' + encodeURIComponent(deviceId()), { cache: 'no-store' });
       const d = await r.json();
       const line = $('#invite-line');
       if (!d.exists) {
-        line.style.display = '';
+        line.style.display = 'block';
         line.innerHTML = '방을 찾을 수 없어요. 코드를 확인해 주세요';
         S.taken = [];
         renderHomePicker();
         return false;
       }
-      line.style.display = '';
-      line.innerHTML = `<b>${esc(d.hostName)}</b>님의 방에 초대됐어요 · ${d.count}/${d.max}명`;
+      line.style.display = 'block';   // (CSS 기본이 숨김이라 'block' 으로 보여줘요)
+      const band = { easy: [1, 9], normal: [10, 19], hard: [20, 29], hell: [30, 999] }[d.tier];
+      const blocked = d.mode === 'olympic' && band && d.myLv && (d.myLv < band[0] || d.myLv > band[1]);
+      line.innerHTML = `<b>${esc(d.hostName)}</b>님의 방에 초대됐어요 · ${d.count}/${d.max}명`
+        + (d.mode === 'olympic' && d.tier && d.tier !== 'all'
+          ? `<span class="olv-inv olv-t-${esc(d.tier)}${blocked ? ' no' : ''}">🏅 ${esc(d.tierLabel)} 방${d.myLv ? ` · 내 레벨 Lv${d.myLv}` : ''}${blocked ? ' · 들어갈 수 없어요' : ''}</span>` : '');
       S.taken = d.taken || [];
       renderHomePicker();
       return true;
@@ -305,7 +333,7 @@
     btn.textContent = '들어가는 중…';
     try {
       await connect();
-      send({ t: 'join', room: code, name, animal: S.profile.animal, device: deviceName() });
+      send({ t: 'join', room: code, name, animal: S.profile.animal, device: deviceName(), dev: deviceId() });
     } catch (e) {
       failJoin('서버에 연결할 수 없어요. 인터넷 연결을 확인하고 잠시 뒤 다시 눌러 주세요');
     }
@@ -323,6 +351,7 @@
     btn.disabled = false;
     btn.textContent = S.mode === 'create' ? '방 만들기' : '입장하기';
     $('#home-err').textContent = msg;
+    try { $('#home-err').scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { /* 무시 */ }
   }
 
   /* ================================================================
@@ -447,7 +476,7 @@
       S.connecting = true;
       try {
         await connect();
-        send({ t: 'rejoin', room: S.code, pid: S.pid, token: S.token });
+        send({ t: 'rejoin', room: S.code, pid: S.pid, token: S.token, dev: deviceId() });
       } catch (e) {
         S.connecting = false;
         scheduleReconnect();
@@ -642,7 +671,7 @@
         : '';
       return `<div class="prow${isMe ? ' me' : ''}${p.connected ? '' : ' off'}">
         <div class="av">${A.svg(p.animal)}</div>
-        <div class="who"><div class="nm">${esc(p.name)}${p.isHost ? '<span class="tag host">방장</span>' : ''}${isMe ? '<span class="tag me">나</span>' : ''}</div>
+        <div class="who"><div class="nm">${lvBadge(p)}${esc(p.name)}${p.isHost ? '<span class="tag host">방장</span>' : ''}${isMe ? '<span class="tag me">나</span>' : ''}</div>
         <div class="sub">${sub}</div></div>${st}${kick}</div>`;
     }).join('') + (room.players.length < room.maxPlayers
       ? `<div class="empty-row"><div class="slots">${'<span></span>'.repeat(Math.min(3, room.maxPlayers - room.players.length))}</div>빈 자리 ${room.maxPlayers - room.players.length}개 · 링크로 바로 들어올 수 있어요</div>`
@@ -683,6 +712,7 @@
     }
 
     renderToggles();
+    HOOKS.lobby.forEach((fn) => { try { fn(isHost); } catch (e) { console.error(e); } });
   }
 
   // 참가자는 '준비 완료' 버튼을 방 코드 바로 아래(위쪽)에, 방장은 설정을 다 보고 누르도록 맨 아래에
@@ -794,7 +824,7 @@
         <span class="ec-no">${n ? n : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'}</span>
       </button>`;
     }).join('');
-    if (!list.length) $('#oly-cards').innerHTML = '<div class="oly-soon">❄️ 동계 종목(스피드스케이팅·쇼트트랙·스키점프·봅슬레이·알파인 회전·바이애슬론)은 곧 나와요!</div>';
+    if (!list.length) $('#oly-cards').innerHTML = '<div class="oly-soon">❄️ 동계 종목(스피드스케이팅·쇼트트랙·스키점프·봅슬레이·알파인 회전)은 곧 나와요!</div>';
     const secs = evs.reduce((t, id) => t + ((G.get(id) || {}).dur || 40) + 14, 0);
     $('#oly-note').textContent = evs.length ? `${evs.length}종목 · 약 ${Math.max(1, Math.round(secs / 60))}분 · 누른 순서대로` : '누른 순서대로 진행해요';
     const o = room.oly || { ai: 0, lv: 3 };
@@ -1011,7 +1041,8 @@
     if (!room) return;
     const url = inviteBase() + '/?room=' + room.code;
     const host = playerById(room.hostPid);
-    const text = `${host ? host.name : ''}님이 아리채 오락실에 초대했어요! 방 코드 ${room.code}`;
+    const tier = room.mode === 'olympic' && window.OlyLevel ? window.OlyLevel.tierNote(room) : '';
+    const text = `${host ? host.name : ''}님이 아리채 오락실에 초대했어요! 방 코드 ${room.code}${tier ? ` · ${tier}` : ''}`;
     if (navigator.share) {
       try {
         await navigator.share({ title: '아리채 오락실', text, url });
@@ -1181,6 +1212,7 @@
     S.scoreShown = 0;
     S.hurry = false;
     S.lastSecond = -1;
+    S.ctxStart = 0;
     $('#stage').innerHTML = '';
     S.fitScale = 1;
     S.fitCheckAt = 0;
@@ -1249,8 +1281,11 @@
       fx: { burst, float: floatText, shake, flash },
       ev: cur.ev || {},
       bots: cur.bots || {},
+      diff: 'normal',              // 방 경기는 늘 노멀 규칙 (난이도는 혼자 연습만)
+      now: () => serverNow() - pauseShift(),   // 부스터 버튼을 누른 시각 (게임 시계 · 멈췄던 만큼 늦춰요)
       finish: () => { if (!S.ended) finishPlay(); }
     };
+    S.ctxStart = cur.startAt;      // 판을 만들 때의 시작 시각 (멈췄다 다시 하면 서버 시각이 밀려요 → 그 차이만큼 게임 시계를 늦춰요)
     S.inst = S.def.create(ctx);
     S.started = true;
     S.inst.start(t);
@@ -1378,7 +1413,7 @@
     box.innerHTML = list.map((x) => `<div class="rv${x.isMe ? ' me' : ''}${x.p.connected ? '' : ' off'}">
       <span class="rk${x.rank === 1 && x.score > 0 ? ' first' : ''}">${x.rank}</span>
       <div class="av">${avatar(x.p)}</div>
-      <span class="nm">${x.isMe ? '나' : esc(x.p.name)}</span><span class="sc">${x.text != null ? esc(x.text) : fmtNum(x.score)}</span></div>`).join('');
+      <span class="nm">${lvBadge(x.p)}${x.isMe ? '나' : esc(x.p.name)}</span><span class="sc">${x.text != null ? esc(x.text) : fmtNum(x.score)}</span></div>`).join('');
   }
 
   function tickPlay(t) {
@@ -1405,8 +1440,9 @@
     if (S.def && S.def.botLive && cur.bots) {
       Object.keys(cur.bots).forEach((pid) => { S.live[pid] = S.def.botLive(cur.bots[pid], t - cur.startAt, cur); });
     }
+    const gt = t - pauseShift();   // 게임 시계 (멈췄던 시간만큼 늦게)
     if (S.inst && !S.ended) {
-      S.inst.tick(t);
+      S.inst.tick(gt);
       const pn = performance.now();
       const sc = S.inst.score();
       const val = S.def.streamValue ? JSON.stringify([S.inst.value(), S.inst.extra ? S.inst.extra() : null]) : null;
@@ -1421,7 +1457,7 @@
       }
       if (t >= endAt || (S.inst.done && S.inst.done())) finishPlay();
     } else if (S.inst && S.ended && S.def && S.def.watch) {
-      S.inst.tick(t);   // 내 경기가 끝나도 다른 선수들은 계속 움직여요
+      S.inst.tick(gt);   // 내 경기가 끝나도 다른 선수들은 계속 움직여요
     }
     renderRivals(false);
   }
@@ -1670,17 +1706,24 @@
   /* ---------- 입력 ---------- */
   function press(c) {
     if (padTaker) { if (performance.now() >= S.lockUntil) padTaker.press(c); return; }
-    if (!S.inst || S.ended || S.spectator || !S.def) return;
+    if (!S.inst || S.ended || S.spectator || !S.def || isPaused()) return;   // 멈춘 동안 누른 건 안 받아요 (기록에도 안 남아요)
     if (!S.def.buttons.includes(c)) return;
     if (performance.now() < S.lockUntil) return;
     if (S.def.pressSound !== false) SND.SFX.press(c);
-    S.inst.onPress(c, serverNow());
+    S.inst.onPress(c, serverNow() - pauseShift());
+  }
+
+  // 부스터 (패드 말고 키보드·시험용): 혼자 연습 중이면 연습으로
+  function boost() {
+    if (padTaker) { if (padTaker.boost) padTaker.boost(); return; }
+    if (!S.inst || S.ended || S.spectator || isPaused() || typeof S.inst.onBoost !== 'function') return;
+    S.inst.onBoost(serverNow() - pauseShift());
   }
 
   function release(c) {
     if (padTaker) { if (padTaker.release) padTaker.release(c); return; }
-    if (!S.inst || S.ended || S.spectator || !S.def) return;
-    if (typeof S.inst.onRelease === 'function') S.inst.onRelease(c, serverNow());
+    if (!S.inst || S.ended || S.spectator || !S.def || isPaused()) return;
+    if (typeof S.inst.onRelease === 'function') S.inst.onRelease(c, serverNow() - pauseShift());
   }
 
   function setupPad() {
@@ -1717,6 +1760,9 @@
     };
     document.addEventListener('keydown', (e) => {
       if (!$('#s-play').classList.contains('active')) return;
+      // 키보드 x · f = 필살기 부스터 (컴퓨터로 할 때)
+      const kk = (e.key || '').toLowerCase();
+      if ((kk === 'x' || kk === 'f') && !e.repeat) { e.preventDefault(); boost(); return; }
       const c = KEYS[(e.key || '').toLowerCase()];
       if (!c) return;
       e.preventDefault();
@@ -1752,7 +1798,7 @@
       return `<div class="pd p${pos}"><div class="spot" aria-hidden="true"></div>
         ${e.rank === 1 ? '<svg class="crown" width="44" height="30" viewBox="0 0 44 30" aria-hidden="true"><path d="M4 26 L2 6 L13 15 L22 2 L31 15 L42 6 L40 26 Z" fill="#FFD23F" stroke="#C99A00" stroke-width="2.5" stroke-linejoin="round"/><circle cx="22" cy="17" r="3" fill="#FF4757"/></svg>' : ''}
         <div class="av" style="width:${c.av}px;height:${c.av}px;border-color:${c.c}">${avatar(p)}</div>
-        <span class="nm">${p.pid === S.pid ? '나' : esc(p.name)}</span>
+        <span class="nm">${lvBadge(p)}${p.pid === S.pid ? '나' : esc(p.name)}</span>
         <span class="sc" style="color:${c.c}">${valueOf(e)}</span>
         <div class="block" style="height:${c.h}px;background:${c.c};box-shadow:inset 0 6px 0 rgba(255,255,255,.35),0 6px 0 ${c.s}">${e.rank}</div>
       </div>`;
@@ -1766,11 +1812,12 @@
       const isMe = s.pid === S.pid;
       const mv = s.move > 0 ? `<span class="mv up">▲ ${s.move}</span>` : s.move < 0 ? `<span class="mv down">▼ ${-s.move}</span>` : '<span class="mv same">–</span>';
       const gain = gains && gains[s.pid] != null ? `<span class="gain">+${gains[s.pid]}</span>` : '';
+      const xpg = gains && gains.xp && gains.xp[s.pid] ? `<span class="olv-xpg">+${gains.xp[s.pid]} XP</span>` : '';
       const tot = s.medals ? medalsHTML(s.medals) : fmtNum(s.total);
       return `<div class="srow${isMe ? ' me' : ''}" style="animation-delay:${(d0 + i * 0.08).toFixed(2)}s">
         <span class="rk${s.rank === 1 ? ' first' : ''}">${s.rank}</span>
         <div class="av">${avatar(p)}</div>
-        <span class="nm">${isMe ? '나 (' + esc(p.name) + ')' : esc(p.name)}</span>${s.medals ? '' : gain}
+        <span class="nm">${lvBadge(p)}${isMe ? '나 (' + esc(p.name) + ')' : esc(p.name)}${xpg}</span>${s.medals ? '' : gain}
         <span class="tot">${tot}</span>${gains ? mv : ''}</div>`;
     }).join('');
   }
@@ -1842,8 +1889,8 @@
         ? `내 기록 <b>${valOf(mine)}</b> · ${mine.rank}위${mine.medal ? ` · ${medalIcon(mine.medal - 1, 18)} <b>${MEDAL_TXT[mine.medal - 1]}</b>` : ''}${rankUp}`
         : `내 기록 <b>${fmtNum(mine.score)}점</b> · ${mine.rank}위 · 순위 점수 +${mine.points}${rankUp}`)
       : '이번 게임은 구경했어요';
-    const gains = {};
-    res.rows.forEach((r) => { gains[r.pid] = r.points; });
+    const gains = { xp: {} };
+    res.rows.forEach((r) => { gains[r.pid] = r.points; if (r.xp) gains.xp[r.pid] = r.xp; });
     const learn = $('#result-learn');
     if (def.edu && typeof def.learn === 'function') {
       const lv = levelFor(def);
@@ -1944,9 +1991,111 @@
     });
   }
 
+  /* ================================================================
+     잠깐 멈춤 (방장만) — 서버가 시계를 세우고, 다시 시작하면 이번 판 시각을 멈춘 만큼 밀어요
+     폰은 '판을 만들 때 시작 시각'과 '지금 시작 시각'의 차이만큼 게임 시계를 늦춰요 (누른 기록·유령이 그대로 맞아요)
+     ================================================================ */
+  const isPaused = () => !!(S.room && S.room.current && S.room.current.pausedAt);
+  function pauseShift() {
+    const cur = S.room && S.room.current;
+    return S.inst && S.ctxStart && cur && cur.startAt ? cur.startAt - S.ctxStart : 0;
+  }
+  const PAUSE_IC = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4.2" height="14" rx="1.5" fill="currentColor"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.5" fill="currentColor"/></svg>';
+  const PZ = { btn: null, ov: null, key: '', cd: '', bgm: false, placeT: 0 };
+  function setupPause() {
+    PZ.btn = document.createElement('button');
+    PZ.btn.type = 'button';
+    PZ.btn.id = 'btn-pause';
+    PZ.btn.className = 'pz-btn';
+    PZ.btn.setAttribute('aria-label', '잠깐 멈춤');
+    PZ.btn.innerHTML = PAUSE_IC;
+    document.body.appendChild(PZ.btn);
+    PZ.btn.addEventListener('click', () => { SND.unlock(); SND.SFX.click(); SND.vibrate(15); send({ t: 'pause' }); });
+    PZ.ov = document.createElement('div');
+    PZ.ov.id = 'pause-ov';
+    PZ.ov.className = 'pz-ov';
+    PZ.ov.setAttribute('role', 'dialog');
+    PZ.ov.setAttribute('aria-label', '잠깐 멈춤');
+    document.body.appendChild(PZ.ov);
+    PZ.ov.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-pz]');
+      if (!b) return;
+      const a = b.dataset.pz;
+      SND.unlock();
+      if (a === 'resume') { SND.SFX.go(); send({ t: 'resume' }); }
+      else if (a === 'quit') { SND.SFX.click(); PZ.ov.classList.add('ask'); }
+      else if (a === 'no') { SND.SFX.click(); PZ.ov.classList.remove('ask'); }
+      else if (a === 'yes') { SND.SFX.bad(); send({ t: 'abort' }); PZ.ov.classList.remove('ask'); }
+    });
+    // 멈춘 동안 화면이 끌리거나 아래 패드가 눌리지 않게
+    PZ.ov.addEventListener('pointerdown', (e) => e.stopPropagation());
+  }
+  function pauseHTML(isHost) {
+    const host = playerById(S.room.hostPid);
+    return `<div class="pz-card">
+      <div class="pz-ic">${PAUSE_IC}</div>
+      <b class="disp pz-t">잠깐 멈춤</b>
+      <span class="pz-sub">${isHost ? '계속하면 3·2·1 뒤에 이어서 해요' : `${esc(host ? host.name : '방장')}님이 잠깐 멈췄어요 · 곧 이어서 해요`}</span>
+      <div class="pz-cd disp" aria-live="assertive"></div>
+      ${isHost ? `<div class="pz-acts"><button type="button" class="btn btn-green" data-pz="resume">▶ 계속하기</button>
+        <button type="button" class="btn btn-ghost pz-quit" data-pz="quit">그만하고 대기실로</button></div>
+      <div class="pz-ask"><b class="disp">정말 그만할까요?</b><span>이번 판은 기록·메달·XP 없이 끝나요<br>방과 참가자·설정은 그대로예요</span>
+        <div class="pz-acts"><button type="button" class="btn btn-red" data-pz="yes">그만하기</button><button type="button" class="btn btn-ghost" data-pz="no">아니요, 계속 멈춤</button></div></div>` : '<span class="pz-hint">방장만 다시 시작하거나 그만할 수 있어요</span>'}
+    </div>`;
+  }
+  // 매 프레임: 방장 멈춤 버튼 · 멈춤 화면 · 3·2·1
+  function tickPause() {
+    const room = S.room;
+    const live = room && ['intro', 'play', 'result'].includes(room.phase) && room.current && room.current.startAt && !padTaker;
+    const isHost = !!(room && room.hostPid === S.pid);
+    const paused = live && isPaused();
+    // 방장 버튼: 플레이 화면은 시간 칸 오른쪽 · 설명·결과 화면은 오른쪽 위
+    const showBtn = live && isHost && !paused;
+    PZ.btn.classList.toggle('show', !!showBtn);
+    if (showBtn && performance.now() - PZ.placeT > 400) {
+      PZ.placeT = performance.now();
+      const tb = room.phase === 'play' || (room.phase === 'intro' && S.started) ? $('#s-play .hud-time') : null;
+      const r = tb && tb.getBoundingClientRect();
+      if (r && r.width) { PZ.btn.style.left = Math.round(r.right + 8) + 'px'; PZ.btn.style.top = Math.round(r.top + r.height / 2 - 18) + 'px'; PZ.btn.style.right = 'auto'; }
+      else { PZ.btn.style.left = 'auto'; PZ.btn.style.right = '12px'; PZ.btn.style.top = 'calc(10px + env(safe-area-inset-top))'; }
+    }
+    if (!paused) {
+      if (PZ.ov.classList.contains('show')) {
+        PZ.ov.classList.remove('show', 'ask');
+        PZ.key = '';
+        if (PZ.bgm && room && room.phase === 'play' && S.def && S.def.music !== false && !S.ended) SND.BGM.start(148);
+        PZ.bgm = false;
+      }
+      return;
+    }
+    const key = `${room.current.pausedAt}:${isHost}`;
+    if (key !== PZ.key) {
+      if (!PZ.key) {
+        SND.SFX.whistle ? SND.SFX.whistle() : SND.SFX.tick();
+        SND.vibrate([40, 40, 40]);
+        PZ.bgm = room.phase === 'play' && S.def && S.def.music !== false;
+        SND.BGM.stop();
+      }
+      PZ.key = key;
+      PZ.ov.innerHTML = pauseHTML(isHost);
+      PZ.ov.classList.add('show');
+    }
+    const ra = room.current.resumeAt;
+    PZ.ov.classList.toggle('counting', !!ra);
+    const cd = ra ? String(Math.max(1, Math.ceil((ra - serverNow()) / 1000))) : '';
+    if (cd !== PZ.cd) {
+      PZ.cd = cd;
+      const el = PZ.ov.querySelector('.pz-cd');
+      if (el) { el.textContent = cd; el.classList.remove('pop'); void el.offsetWidth; if (cd) el.classList.add('pop'); }
+      if (cd) { SND.SFX.tick(); SND.vibrate(15); }
+    }
+  }
+
   function loop() {
     try {
       const room = S.room;
+      if (PZ.btn) tickPause();
+      if (room && isPaused()) { requestAnimationFrame(loop); return; }   // 멈춘 동안 화면도 멈춰요
       if (room) {
         const t = serverNow();
         if (room.phase === 'intro' && room.current && room.current.startAt) {
@@ -2061,6 +2210,7 @@
     });
     setupResume();
     setupInstall();
+    setupPause();
 
     try {
       const r = await fetch('/api/info', { cache: 'no-store' });
@@ -2076,7 +2226,7 @@
       banner('이전 방으로 다시 연결하는 중…');
       try {
         await connect();
-        send({ t: 'rejoin', room: S.code, pid: S.pid, token: S.token });
+        send({ t: 'rejoin', room: S.code, pid: S.pid, token: S.token, dev: deviceId() });
       } catch (e) {
         scheduleReconnect();
       }
@@ -2090,7 +2240,7 @@
   window.App = {
     $, $$, esc, S, G, A, SND,
     send, toast, banner, showScreen, me, playerById, fmtNum, serverNow, setTheme, confetti, later,
-    podiumHTML, standingsHTML, wakeLock, avatar, medalIcon,
+    podiumHTML, standingsHTML, wakeLock, avatar, medalIcon, lvBadge, tierOfLv, deviceId, boost,
     hooks: HOOKS,
     // 플레이 화면 도구 (혼자 연습이 방 경기와 같은 화면·효과를 쓰게)
     play: { setScore, setBadge, lockPad, burst, floatText, shake, flash, edgeFlash, sparkleHud, tickScore, stylePad, cleanupGame, showGo },

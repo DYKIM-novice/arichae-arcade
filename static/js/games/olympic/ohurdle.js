@@ -12,6 +12,10 @@
   const SAFE = [0.12, 0.9];  // 이 사이(뛴 시간 비율)에 허들을 지나야 안 걸려요
 
   const base = O.mashRunner({ kick: 0.9, drag: 1.0, vmax: 12 });
+  // 난이도 값 (없으면 노멀)
+  const safeOf = (st) => (st.dp ? st.dp.hSafe : SAFE);
+  const airOf = (st) => (st.dp ? st.dp.hAir : AIR);
+  const stumOf = (st) => (st.dp ? st.dp.hStum : [0.45, 380]);
   const sim = {
     init() { return Object.assign(base.init(), { air: 0, airT: 0, stumble: 0, knock: 0, hi: 0, landT: 0 }); },
     press(st, c, e, gun) {
@@ -28,20 +32,22 @@
       if (st.state === 1 && e >= st.waitUntil) st.state = 0;
       const x0 = st.x;
       st.v *= Math.exp(-(st.air ? 0.25 : 1.0) * dt);
-      st.x += st.v * dt;
+      st.x += st.v * dt * O.boost.k(st);
       let f = 0;
       if (st.air) {
-        f = (e - st.airT) / (AIR * 1000);
+        f = (e - st.airT) / (airOf(st) * 1000);
         if (f >= 1) { st.air = 0; st.landT = e; f = 0; }
       }
       // 허들을 지나는 순간
       while (st.hi < H.length && st.x >= H[st.hi]) {
         if (x0 <= H[st.hi] + 0.001) {
-          const ok = st.air && f >= SAFE[0] && f <= SAFE[1];
+          const sf = safeOf(st);
+          const ok = st.air && f >= sf[0] && f <= sf[1];
           if (!ok) {
+            const sm = stumOf(st);
             st.knock |= 1 << st.hi;
-            st.v *= 0.45;
-            st.stumble = e + 380;
+            st.v *= sm[0];
+            st.stumble = e + sm[1];
             st.state = 2;
             st.bump = (st.bump || 0) + 1;
           }
@@ -70,13 +76,14 @@
     D,
     view: 15,
     buttons: ['r', 'g', 'b'],
-    rules: ['빨강·파랑 아무거나 연타해서 달려요', '허들 바로 앞에서 초록! 폴짝 뛰어넘어요', '너무 일찍·늦게 뛰면 허들에 걸려 넘어지고 느려져요'],
+    rules: ['빨강·파랑 아무거나 연타해서 달려요 (손가락 여러 개도 OK)', '허들 바로 앞에서 초록! 폴짝 뛰어넘어요', '너무 일찍·늦게 뛰면 허들에 걸려 넘어지고 느려져요', '게이지가 차면 큰 [부스터!]를 톡 · 한 번만 슝!'],
     illus() {
       const b = (c, n) => `<div class="il-btn"><div class="il-bez"><div class="il-gb" style="background:${HEX[c]};box-shadow:inset 0 5px 0 rgba(255,255,255,.35),0 6px 0 ${SHADE[c]}">${shape(c, 24)}</div></div><span style="color:${LIGHT[c]}">${n}</span></div>`;
       return `<div class="il-row">${b('r', '달려')}${b('b', '달려')}<svg width="44" height="40" viewBox="0 0 44 40"><path d="M10 36 V20 M34 36 V20" stroke="#fff" stroke-width="3"/><rect x="6" y="15" width="32" height="6" rx="2" fill="#fff" stroke="#FF4757" stroke-width="1.5"/><path d="M2 12 Q22 -8 42 12" fill="none" stroke="#FFD23F" stroke-width="2.5" stroke-dasharray="4 3"/></svg>${b('g', '점프!')}</div>`;
     },
     sim,
     tau: 1.4,
+    boost: { cap: 78, ms: 3600 },
     extra: (st) => [Math.round((st.airF || 0) * 100) / 100, st.knock || 0],
     botExtra(perf, s, x, extra) {
       // AI: 허들 2m 앞에서 뛰어 1.6m 뒤에 내려요 · 서버가 정한 허들은 걸려요

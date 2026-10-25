@@ -35,7 +35,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))   # 같은 폴더의 records.py
@@ -43,6 +43,7 @@ from records import RecordStore  # noqa: E402
 import boards as BG  # noqa: E402
 import cards as CG  # noqa: E402
 import olympic as OL  # noqa: E402
+import profiles as PF  # noqa: E402
 from cardgames import ENGINES as _CARD_ENGINES  # noqa: E402
 from partygames import ENGINES as _PARTY_ENGINES  # noqa: E402
 import aiworker  # noqa: E402
@@ -65,6 +66,8 @@ INTRO_MS = 6000          # 미니게임 설명 + 3초 카운트다운
 RESULT_MS = 8000         # 결과 발표 화면
 GRACE_MS = 1500          # 플레이 종료 후 최종 점수 수신 대기
 HOST_HANDOVER_SEC = 20   # 방장이 끊긴 뒤 방장 넘기기까지 대기
+PAUSE_MAX_MS = 10 * 60 * 1000   # 잠깐 멈춤은 10분까지 (넘으면 대기실로) · 방장이 끊기면 20초 뒤 다른 사람이 방장이 되어 이어서 할 수 있어요
+RESUME_MS = 3000         # 다시 시작 전 3·2·1
 ROOM_IDLE_SEC = 30 * 60  # 아무도 접속 안 한 방 정리
 WS_IDLE_SEC = 30         # 이 시간 동안 아무 신호가 없으면 끊긴 것으로 처리 (기기는 2초마다 신호를 보냄)
 SEND_TIMEOUT_SEC = 4     # 한 기기에 보내기가 이 시간 안에 안 끝나면 그 기기만 끊어요 (방 전체가 멈추지 않게)
@@ -97,6 +100,7 @@ RANK_POINTS = [100, 80, 65, 50, 40, 30, 20, 10]
 
 log = logging.getLogger("arichae")
 STORE = RecordStore(DATA_DIR)
+PROFILES = PF.ProfileStore(DATA_DIR)   # 올림픽관 레벨 (기기마다 · profiles.json)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
 
 mimetypes.add_type("text/javascript", ".js")
@@ -287,6 +291,10 @@ class Player:
         self.athlete = ""                        # 올림픽 선수 캐릭터
         self.is_bot = False                      # 올림픽 AI 선수
         self.medals = [0, 0, 0]                  # 올림픽 금·은·동
+        self.dev = ""                            # 기기 번호 (레벨을 이 번호로 기억해요 · 없으면 Lv1)
+        self.lv = 1                              # 올림픽 레벨
+        self.xp_in = 0                           # 이번 레벨에서 모은 XP
+        self.xp_need = PF.need_for(1)
 
     def public(self, host_pid: str) -> dict:
         return {
@@ -304,7 +312,14 @@ class Player:
             "athlete": self.athlete,
             "medals": self.medals,
             "bot": self.is_bot,
+            "lv": self.lv,
+            "xp": [self.xp_in, self.xp_need],
         }
+
+    def load_level(self) -> None:
+        """기기 번호로 레벨 불러오기"""
+        info = PROFILES.info(self.dev)
+        self.lv, self.xp_in, self.xp_need = info["lv"], info["xpIn"], info["xpNeed"]
 
     # 방 저장용: 연결(ws)은 빼고 저장 → 되살리면 '연결 끊김' 상태로 시작해요
     def __getstate__(self) -> dict:
@@ -359,7 +374,7 @@ class Room:
         self.cengine = None                        # table 카드게임 규칙 (서버만 알아요: 모든 패)
         self.cmoves = 0                            # 사람이 둔 수 세기 (AI 가 따로 생각하는 동안 판이 바뀌었나)
         self.events: List[str] = []                # 올림픽관: 고른 종목 (누른 순서)
-        self.oly = {"ai": 3, "lv": 3, "season": "summer"}   # 올림픽관: AI 선수 수 · 단계 · 하계/동계
+        self.oly = {"ai": 3, "lv": 3, "season": "summer", "tier": "all"}   # 올림픽관: AI 선수 수 · 단계 · 하계/동계 · 입장 등급
         self.bots: Dict[str, Player] = {}          # 올림픽관: 이번 대회 AI 선수
 
     # 방 저장용: 돌아가는 작업(task)은 빼고, 게임 규칙(cengine)은 따로 묶어요
@@ -374,6 +389,15 @@ class Room:
     def __setstate__(self, d: dict) -> None:
         self.__init__(d.get("code", ""))
         self.__dict__.update(d)
+        if isinstance(self.oly, dict):
+            self.oly.setdefault("tier", "all")   # 예전에 저장된 방은 '전체'
+        # 빠진 종목(예: 바이애슬론)은 고른 목록에서 조용히 빼요
+        self.events = [g for g in (self.events or []) if g in OLY_GAMES]
+
+    def tier(self) -> str:
+        """올림픽 방 입장 등급 (all 이면 누구나)"""
+        t = self.oly.get("tier", "all") if isinstance(self.oly, dict) else "all"
+        return t if t in PF.TIERS else "all"
 
     # ---------- 공통 ----------
     def connected_players(self) -> List[Player]:
@@ -529,16 +553,23 @@ class Room:
                     self.current["aiDoneAt"] = start_at + scaled(max([v["done"] for v in bots.values()] or [0]))
                 self.phase = "intro"
                 await self.broadcast_state()
-                await self.sleep_until(start_at)
+                await self.wait_key("startAt")      # 멈춤이면 기다려요 (다시 시작하면 시각이 그만큼 밀려요)
 
                 self.phase = "play"
                 await self.broadcast_state()
                 while True:
+                    if self.current.get("pausedAt"):
+                        if self.pause_too_long():
+                            return
+                        await asyncio.sleep(0.2)
+                        continue
                     # 음악관: 곡이 끝나면(끝난 뒤 3초) 남은 시간을 기다리지 않고 끝내요 (cutAt)
-                    cut_at = self.current.get("cutAt") or end_at
+                    cut_at = self.current.get("cutAt") or self.current["endAt"]
                     if now_ms() >= cut_at + scaled(GRACE_MS):
                         break
                     await asyncio.sleep(0.2)
+                    if self.current.get("pausedAt"):
+                        continue
                     if self.live_dirty:
                         self.live_dirty = False
                         await self.broadcast_live()
@@ -548,6 +579,8 @@ class Room:
                     if (self.mode == "olympic" and self.all_finished(humans_only=True)
                             and now_ms() >= self.current.get("aiDoneAt", 0)):
                         await asyncio.sleep(scaled(GRACE_MS) / 1000)
+                        if self.current.get("pausedAt"):
+                            continue
                         break
                 await self.broadcast_live()
 
@@ -555,7 +588,7 @@ class Room:
                 self.phase = "result"
                 self.current["resultEnd"] = now_ms() + scaled(RESULT_MS)
                 await self.broadcast_state()
-                await self.sleep_until(self.current["resultEnd"])
+                await self.wait_key("resultEnd")
 
             self.phase = "final"
             self.current = {}
@@ -566,6 +599,62 @@ class Room:
             log.exception("게임 진행 중 오류")
             self.phase = "lobby"
             await self.broadcast_state()
+
+    # ---------- 잠깐 멈춤 (방장만) ----------
+    # 멈춘 동안 시계를 세우고, 다시 시작하면 이번 판의 시각(시작·끝·결과 등)을 멈춘 시간만큼 뒤로 밀어요.
+    # 폰은 판을 만들 때의 시작 시각과 지금 시작 시각의 차이만큼 게임 시계를 늦춰요 → 누른 기록(log)은 그대로 이어져요.
+    TIME_KEYS = ("introAt", "startAt", "endAt", "cutAt", "resultEnd", "aiDoneAt")
+
+    def pause(self) -> bool:
+        if self.phase not in ("intro", "play", "result") or not self.current or self.current.get("pausedAt"):
+            return False
+        self.current["pausedAt"] = now_ms()
+        self.current.pop("resumeAt", None)
+        return True
+
+    def resume(self) -> bool:
+        if not self.current.get("pausedAt") or self.current.get("resumeAt"):
+            return False
+        self.current["resumeAt"] = now_ms() + RESUME_MS
+        asyncio.ensure_future(self.finish_resume(self.current["resumeAt"]))
+        return True
+
+    async def finish_resume(self, at: int) -> None:
+        await asyncio.sleep(max(0, at - now_ms()) / 1000)
+        cur = self.current
+        if not cur or cur.get("resumeAt") != at or not cur.get("pausedAt"):
+            return   # 그사이 그만했거나 다시 멈췄어요
+        dt = now_ms() - int(cur["pausedAt"])
+        for k in self.TIME_KEYS:
+            if cur.get(k):
+                cur[k] = int(cur[k]) + dt
+        cur["pausedMs"] = int(cur.get("pausedMs", 0)) + dt
+        cur.pop("pausedAt", None)
+        cur.pop("resumeAt", None)
+        log.info("[%s] 다시 시작 (%.1f초 멈췄어요)", self.code, dt / 1000)
+        await self.broadcast_state()
+
+    def pause_too_long(self) -> bool:
+        p = self.current.get("pausedAt") if self.current else None
+        if p and now_ms() - int(p) > PAUSE_MAX_MS:
+            log.info("[%s] 너무 오래 멈춰서 대기실로", self.code)
+            asyncio.ensure_future(self.back_to_lobby())
+            return True
+        return False
+
+    async def wait_key(self, key: str) -> None:
+        """current[key] 시각까지 기다려요 · 멈춘 동안은 계속 기다려요 (시각이 밀려요)"""
+        while True:
+            if self.current.get("pausedAt"):
+                if self.pause_too_long():
+                    await asyncio.sleep(1)
+                    return
+                await asyncio.sleep(0.2)
+                continue
+            left = int(self.current.get(key) or 0) - now_ms()
+            if left <= 0:
+                return
+            await asyncio.sleep(min(left / 1000, 0.2))
 
     async def sleep_until(self, t_ms: int) -> None:
         while True:
@@ -647,6 +736,8 @@ class Room:
                     row["rec"] = {"board": board, "rank": got[0], "id": got[1]["id"]}
             rows.append(row)
 
+        if self.mode == "olympic":
+            self.award_xp(rows, active)
         # 올림픽은 메달 순서(금 → 은 → 동 → 점수)로 순위를 매겨요
         if self.mode == "olympic":
             def key(p):
@@ -671,6 +762,22 @@ class Room:
             standings.append(row)
         self.standings = standings
         self.last_result = {"index": self.index, "game": self.sequence[self.index], "rows": rows}
+
+    def award_xp(self, rows: List[dict], active: List[Player]) -> None:
+        """올림픽 한 종목 끝: 사람 선수마다 XP (참가 · 순위 · 메달 · 개인 기록) — 결과 줄에 xp·lv·lvUp 을 붙여요"""
+        gid = self.sequence[self.index]
+        n = len(active)
+        for row in rows:
+            p = self.players.get(row["pid"])
+            if not p or p.is_bot or not p.dev or not row.get("played"):
+                continue
+            got = PROFILES.award_event(p.dev, gid, int(row["score"]), int(row["rank"]), n, int(row.get("medal") or 0))
+            p.lv, p.xp_in, p.xp_need = got["lv"], got["xpIn"], got["xpNeed"]
+            row["xp"] = got["gained"]
+            row["xpParts"] = got["parts"]
+            row["lv"] = got["lv"]
+            if got["lvUp"]:
+                row["lvUp"] = got["prev"]
 
     def record_board(self) -> Tuple[str, str]:
         """이번 판 기록이 들어갈 기록판 이름: 오락실=게임, 과학관=게임:난이도, 음악관=music:곡"""
@@ -1157,6 +1264,12 @@ async def save_rooms_loop() -> None:
             save_rooms()
         except Exception:
             log.exception("방 저장 오류")
+        try:
+            if PROFILES.dirty:
+                PROFILES.dirty = False
+                PROFILES.save()
+        except Exception:
+            log.exception("레벨 저장 오류")
 
 
 def restore_rooms() -> None:
@@ -1199,7 +1312,7 @@ def restore_rooms() -> None:
         room.empty_since = t
         # 오락실·과학관·음악관 미니게임은 진행 중이던 것만 끝내고 대기실로 (최종 결과 화면은 그대로)
         if room.phase in ("intro", "play", "result"):
-            room.phase, room.index, room.current, room.sequence = "lobby", -1, {}, []
+            room.phase, room.index, room.current, room.sequence = "lobby", -1, {}, []   # (멈춰 있던 판도 대기실로)
         if room.bsess:
             shift_times(room.bsess, at, dt)
         if room.csess:
@@ -1279,6 +1392,7 @@ async def ws_session(ws: WebSocketConn) -> None:
                     animal = str(msg.get("animal") or "")
                     name = clean_name(msg.get("name"))
                     device = str(msg.get("device") or "")[:10]
+                    dev = PF.clean_dev(msg.get("dev"))
                     if animal not in ANIMALS:
                         await reply({"t": "error", "code": "bad_animal", "msg": "캐릭터를 골라주세요"})
                         continue
@@ -1294,6 +1408,13 @@ async def ws_session(ws: WebSocketConn) -> None:
                     if len(target.players) >= MAX_PLAYERS:
                         await reply({"t": "error", "code": "full", "msg": f"방이 꽉 찼어요 (최대 {MAX_PLAYERS}명)"})
                         continue
+                    # 올림픽 등급 방: 레벨이 그 등급에 맞아야 들어와요 (기기 번호가 없으면 Lv1)
+                    my_lv = PROFILES.level(dev)
+                    tier = target.tier()
+                    if target.players and target.mode == "olympic" and not PF.tier_allows(tier, my_lv):
+                        await reply({"t": "error", "code": "tier", "tier": tier, "lv": my_lv,
+                                     "msg": f"이 방은 {PF.tier_label(tier)} 방이에요 · 내 레벨은 Lv{my_lv}이라 들어갈 수 없어요"})
+                        continue
                     if animal in target.taken_animals():
                         await reply({"t": "error", "code": "animal_taken", "msg": "다른 가족이 먼저 고른 캐릭터예요",
                                      "taken": target.taken_animals()})
@@ -1301,6 +1422,9 @@ async def ws_session(ws: WebSocketConn) -> None:
                     room = target
                     room.join_counter += 1
                     player = Player(secrets.token_hex(6), name, animal, device, room.join_counter)
+                    player.dev = dev
+                    PROFILES.touch(dev, name)
+                    player.load_level()
                     if room.phase in ("intro", "play", "result"):
                         player.active_from = room.index + 1
                     player.athlete = room.free_athlete()
@@ -1322,6 +1446,9 @@ async def ws_session(ws: WebSocketConn) -> None:
                         await reply({"t": "error", "code": "rejoin_failed", "msg": "다시 입장해 주세요"})
                         continue
                     room, player = r, p
+                    if not player.dev and PF.clean_dev(msg.get("dev")):
+                        player.dev = PF.clean_dev(msg.get("dev"))   # 예전 기기(번호 없이 들어온 사람)는 이때 번호를 받아요
+                    player.load_level()
                     old = player.ws
                     attach(room, player, ws)
                     if old is not None and old is not ws:
@@ -1399,6 +1526,12 @@ async def ws_session(ws: WebSocketConn) -> None:
                         pass
                 if msg.get("olv") in OL.AI_LEVELS:
                     room.oly["lv"] = msg["olv"]
+                    changed = True
+                if msg.get("otier") in PF.TIERS:
+                    # 입장 등급: 이미 들어온 사람은 그대로 · 새로 들어오는 사람만 막아요 · AI 단계도 등급에 맞게
+                    room.oly["tier"] = msg["otier"]
+                    if msg["otier"] in PF.TIER_AI:
+                        room.oly["lv"] = PF.TIER_AI[msg["otier"]]
                     changed = True
                 if isinstance(msg.get("songs"), list):
                     songs = [str(g) for g in msg["songs"] if str(g) in MUSIC_SONGS]
@@ -1499,6 +1632,8 @@ async def ws_session(ws: WebSocketConn) -> None:
             elif t in ("prog", "final") and room.phase in ("play", "intro"):
                 if msg.get("g") != room.index or player.active_from > room.index:
                     continue
+                if room.current.get("pausedAt") and t == "prog":
+                    continue   # 멈춘 동안의 진행값은 받지 않아요
                 try:
                     score = max(0, min(10_000_000, int(msg.get("score") or 0)))
                     value = float(msg.get("v") or 0)
@@ -1532,6 +1667,23 @@ async def ws_session(ws: WebSocketConn) -> None:
                     cur["cutAt"] = at
                     await room.broadcast_state()
 
+            elif t == "pxp" and room.phase in ("lobby", "final"):
+                # 혼자 연습 한 판 → 작은 XP (하루 한도 · 기기 번호가 있어야 해요)
+                gid = str(msg.get("gid") or "")
+                diff = str(msg.get("diff") or "normal")
+                if not player.dev or gid not in OLY_GAMES or diff not in PF.PXP_DIFF:
+                    continue
+                try:
+                    score = max(0, min(10_000_000, int(msg.get("score") or 0)))
+                except (TypeError, ValueError):
+                    continue
+                got = PROFILES.award_practice(player.dev, gid, diff, score, bool(msg.get("win")))
+                before = player.lv
+                player.lv, player.xp_in, player.xp_need = got["lv"], got["xpIn"], got["xpNeed"]
+                await reply(dict(got, t="pxp", gid=gid))
+                if got["gained"] or player.lv != before:
+                    await room.broadcast_state()
+
             elif t == "record_edit":
                 saved = STORE.edit(str(msg.get("id") or ""), player.pid, msg.get("name"), msg.get("comment"))
                 await reply({"t": "record_saved", "ok": bool(saved), "entry": saved})
@@ -1543,6 +1695,20 @@ async def ws_session(ws: WebSocketConn) -> None:
                 await handle_card(room, player, msg, reply, is_host)
 
             elif t == "again" and is_host and room.phase in ("final", "result", "intro", "play", "board", "card"):
+                await room.back_to_lobby()
+
+            elif t == "pause" and is_host:
+                if room.pause():
+                    log.info("[%s] 잠깐 멈춤", room.code)
+                    await room.broadcast_state()
+
+            elif t == "resume" and is_host:
+                if room.resume():
+                    await room.broadcast_state()
+
+            elif t == "abort" and is_host and room.phase in ("intro", "play", "result", "board", "card", "final"):
+                # 그만하고 대기실로: 하던 판은 기록·메달·XP 없이 끝내요 (결과 계산 전에 멈추니까요)
+                log.info("[%s] 방장이 그만하고 대기실로", room.code)
                 await room.back_to_lobby()
 
             elif t == "kick" and is_host:
@@ -1779,6 +1945,11 @@ async def handle_http(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                     "count": len(room.players),
                     "max": MAX_PLAYERS,
                     "phase": room.phase,
+                    "mode": room.mode,
+                    "tier": room.tier(),
+                    "tierLabel": PF.tier_label(room.tier()),
+                    # 초대받은 화면에서 '내 레벨로 들어갈 수 있나' 미리 알려줘요
+                    "myLv": PROFILES.level(PF.clean_dev(parse_qs(urlsplit(target).query).get("dev", [""])[0])),
                 }, head_only)
         elif path.startswith("/static/"):
             # 주소에 ?v=버전 이 붙은 파일은 내용이 바뀌면 주소도 바뀌니 오래 저장해도 돼요
@@ -1843,6 +2014,7 @@ async def main() -> None:
             pass   # 윈도우: Ctrl+C 는 아래 KeyboardInterrupt 에서 저장해요
     await stop.wait()
     save_rooms(force=True)
+    PROFILES.save()
     log.info("방 %d개 저장하고 꺼요", len(rooms))
     server.close()   # 열린 연결은 기다리지 않아요 (기기들은 새 서버에 다시 연결돼요)
     if AI_POOL is not None:
@@ -1856,6 +2028,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         try:
             save_rooms(force=True)
+            PROFILES.save()
         except Exception:
             pass
         print("\n서버를 껐어요. 다음에 또 만나요!")
