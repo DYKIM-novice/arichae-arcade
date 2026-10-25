@@ -2838,3 +2838,46 @@ g.opr-ghost { opacity: .45; }
 .osh-peng .fl, .osh-peng .fr { transform-box: fill-box; transform-origin: 50% 0; animation: oshFlap .35s ease-in-out infinite alternate; }
 @keyframes oshFlap { from { transform: rotate(-12deg); } to { transform: rotate(14deg); } }
 .ofx-photo { top: 6px; width: 40%; }
+
+/* === music === 음악관 헬(z) 난이도 · 좌우중간 반박자 콤보 */
+:root {
+  --hell-flame: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 32'%3E%3Cpath d='M12 1c1 6 8 9 8 18a8 8 0 0 1-16 0c0-5 3-7 4-11 1 3 2 4 3 4 1-4 0-7 1-11z' fill='%23FF4A1C'/%3E%3Cpath d='M12 14c.5 3 4 5 4 9a4 4 0 0 1-8 0c0-3 2-4 2.5-6 .6 1.5 1 2 1.5 2 .3-2 0-3 0-5z' fill='%23FFD23F'/%3E%3C/svg%3E");
+}
+.levels.four button.lv-z {
+  grid-column: 1 / -1; min-height: 50px; flex-direction: row; gap: 10px; position: relative; overflow: hidden;
+  color: #FF9A80; border: 2px solid #5A0E0E;
+  background: var(--hell-flame) left 10px bottom -6px / 18px 24px repeat-x, linear-gradient(180deg, #1A0606, #0A0303);
+  background-blend-mode: normal; box-shadow: inset 0 -3px 0 rgba(0,0,0,.5);
+}
+.levels.four button.lv-z b { font-size: 21px; letter-spacing: 2px; }
+.levels.four button.lv-z span { font-size: 11px; opacity: .9; }
+.levels.four button.lv-z::before, .levels.four button.lv-z::after {
+  content: ''; width: 18px; height: 24px; flex-shrink: 0; background: var(--hell-flame) center / contain no-repeat;
+}
+.levels.four button.lv-z.on {
+  color: #FFF2E0; border-color: #FF3B1F;
+  background: var(--hell-flame) left 6px bottom -4px / 20px 27px repeat-x, linear-gradient(180deg, #000 0%, #3A0000 45%, #B3120A 100%);
+  box-shadow: 0 4px 0 #3A0000, 0 0 22px rgba(255,59,31,.55); text-shadow: 0 2px 0 #000, 0 0 10px rgba(255,90,31,.9);
+}
+.levels.four button.lv-z.on::before, .levels.four button.lv-z.on::after { animation: hellFlick .5s ease-in-out infinite alternate; }
+@keyframes hellFlick { from { transform: scale(1, .9) translateY(1px); } to { transform: scale(1.05, 1.1) translateY(-1px); } }
+.lv-pill.lv-z, .rec-lv.lv-z {
+  color: #FFE7D0; padding-left: 17px;
+  background: var(--hell-flame) 4px 50% / 10px 13px no-repeat, linear-gradient(135deg, #000, #5A0000 55%, #E0261A);
+  box-shadow: 0 0 8px rgba(255,59,31,.5);
+}
+/* 헬 연주 화면: 검붉은 배경 + 아래에서 일렁이는 불꽃 */
+.rh-wrap.mb.hell { background: radial-gradient(ellipse at 50% 110%, rgba(255,60,20,.38), transparent 55%), linear-gradient(180deg, #120404, #2A0505 70%, #3A0A04); }
+.rh-wrap.mb.hell .rh-lane { background: linear-gradient(180deg, rgba(255,80,40,.02), rgba(255,80,40,.09)); }
+.rh-wrap.mb.hell::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 34px; pointer-events: none; opacity: .75;
+  background: var(--hell-flame) 0 100% / 22px 30px repeat-x; animation: hellFlick .45s ease-in-out infinite alternate; transform-origin: bottom;
+}
+.rh-wrap.mb.hell .rh-song { color: #FFB199; text-shadow: 0 2px 0 rgba(0,0,0,.6), 0 0 14px rgba(255,59,31,.7); }
+/* 콤보 음표: 노란 테두리 점선 + 첫 음표에 "콤보!" */
+.rh-note.run { outline: 2px dashed rgba(255,226,122,.85); outline-offset: 2px; }
+.rh-note.run-first::after { content: '콤보!'; position: absolute; left: 50%; top: -15px; transform: translateX(-50%); white-space: nowrap; font-size: 11px; font-family: var(--disp); color: #2A1E00; background: #FFE27A; border-radius: 7px; padding: 0 6px; box-shadow: 0 2px 0 rgba(0,0,0,.35); }
+.rh-runcue { position: absolute; left: 0; right: 0; top: 42px; z-index: 3; text-align: center; font-size: 17px; pointer-events: none; text-shadow: 0 2px 0 rgba(0,0,0,.5); }
+.stage .rh-runcue.pop, .rh-runcue.pop { animation: runCue 1.5s forwards; }
+@keyframes runCue { 0% { opacity: 0; transform: scale(.6); } 12% { opacity: 1; transform: scale(1.12); } 22% { transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; } }
+/* === music === */

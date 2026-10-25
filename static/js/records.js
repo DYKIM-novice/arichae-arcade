@@ -18,7 +18,7 @@
     { k: 'olympic', name: '올림픽' }
   ];
   const LV_SHORT = { e: '초등', m: '중등', h: '고등' };
-  const MLV = { e: '하', m: '중', h: '상', x: '특상' };
+  const MLV = { e: '하', m: '중', h: '상', x: '특상', z: '헬' };   /* === music === z(헬) */
   const TROPHY = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/><path d="M12 14v3M8 21h8M9 17h6v4H9z"/></svg>';
   const MEDAL = ['#FFD23F', '#C9C3E6', '#FF8A3D'];
 
@@ -127,7 +127,7 @@
     const o = opts || {};
     const mine = R.mine.some((m) => m.id === e.id);
     const medal = rank <= 3 ? `style="--mc:${MEDAL[rank - 1]}"` : '';
-    const lvTag = e.detail && MLV[e.detail] ? `<span class="rec-lv">${MLV[e.detail]}</span>` : '';
+    const lvTag = e.detail && MLV[e.detail] ? `<span class="rec-lv lv-${e.detail}">${MLV[e.detail]}</span>` : '';   /* === music === lv-z = 헬 배지 */
     const where = o.board ? `<span class="rec-where">${esc(boardName(o.board))}</span>` : '';
     const when = o.week ? `<span class="rec-when">${esc(o.week)}</span>` : `<span class="rec-when">${fmtDate(e.at)}</span>`;
     return `<div class="rec-row${rank <= 3 ? ' top' : ''}${mine ? ' mine' : ''}" ${medal}>

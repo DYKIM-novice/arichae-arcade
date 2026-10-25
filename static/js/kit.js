@@ -155,10 +155,10 @@
   // 과학관에서 고를 수 있는 게임 (games.json 의 edu 중 "pick": false 가 아닌 것, 적힌 순서대로)
   G.EDU = MANIFEST ? (MANIFEST.games.edu || []).filter((m) => m.pick !== false).map((m) => m.id) : [];
 
-  G.LEVEL_NAME = { e: '초등', m: '중등', h: '고등', x: '고등' };
+  G.LEVEL_NAME = { e: '초등', m: '중등', h: '고등', x: '고등', z: '고등' };   /* === music === z(헬) */
   // 고른 난이도가 없는 게임은 가장 가까운 단계로
   G.effLevel = function (def, lv) {
-    const order = ['e', 'm', 'h', 'x'];   // x(특상)는 음악관 전용
+    const order = ['e', 'm', 'h', 'x', 'z'];   // x(특상)·z(헬)는 음악관 전용  /* === music === */
     const levels = (def && def.levels) || order;
     if (levels.includes(lv)) return lv;
     const i = order.indexOf(lv);

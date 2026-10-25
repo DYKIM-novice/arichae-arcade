@@ -811,11 +811,13 @@
   function renderMusicPanel(isHost, lv) {
     const room = S.room;
     const dis = isHost ? '' : 'disabled';
-    const mlv = ['e', 'm', 'h', 'x'].includes(lv) ? lv : 'm';
-    const MNAME = { e: ['하', '보통 빠르기'], m: ['중', '빠르게·높은 소리'], h: ['상', '두 배 음표+화음'], x: ['특상', '더 빠르게+화음 두 번'] };
+    /* === music === 헬(z) 추가: 특상 다음 줄에 넓게 */
+    const mlv = ['e', 'm', 'h', 'x', 'z'].includes(lv) ? lv : 'm';
+    const MNAME = { e: ['하', '보통 빠르기'], m: ['중', '빠르게·콤보 조금'], h: ['상', '두 배 음표+화음'], x: ['특상', '더 빠르게+화음 두 번'], z: ['헬', '최고 빠르기 · 박마다 화음 · 긴 콤보 · 엄격 판정'] };
     const songs = room.songs || [];
-    $('#mlevels').innerHTML = ['e', 'm', 'h', 'x'].map((k) =>
+    $('#mlevels').innerHTML = ['e', 'm', 'h', 'x', 'z'].map((k) =>
       `<button type="button" data-lv="${k}" class="lv-${k}${mlv === k ? ' on' : ''}" ${dis} aria-pressed="${mlv === k}"><b class="disp">${MNAME[k][0]}</b><span>${MNAME[k][1]}</span></button>`).join('');
+    /* === music === */
     $('#song-cards').innerHTML = (G.MUSIC_SONGS || []).map((sg) => {
       const n = songs.indexOf(sg.id) + 1;
       return `<button type="button" class="ec ec-y${n ? ' on' : ''}" data-song="${sg.id}" ${dis} aria-pressed="${!!n}">

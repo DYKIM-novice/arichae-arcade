@@ -82,7 +82,7 @@ EDU_PICKABLE = [g["id"] for g in MANIFEST["games"]["edu"] if g.get("pick", True)
 MUSIC_SONGS = tuple(MANIFEST["songs"])   # 음악관: 방장이 곡을 골라 순서대로 오르골 연주회
 BOARD_CFG = BG.BoardConfig(MANIFEST["games"].get("board", []))   # 보드게임관
 CARD_CFG = CG.CardConfig(MANIFEST["games"].get("card", []), MANIFEST["games"].get("party", []))   # 카드게임관 + 놀이마당
-LEVELS = ("e", "m", "h", "x")     # 초·중·고 (+ 음악관 특상)
+LEVELS = ("e", "m", "h", "x", "z")     # 초·중·고 (+ 음악관 특상·헬)  # === music === z = 헬
 MAX_PICKS = 10
 
 # 오락실 모드에서 최근에 한 게임을 기억 (서버가 켜져 있는 동안, 모든 방 공통)
@@ -1440,8 +1440,8 @@ async def ws_session(ws: WebSocketConn) -> None:
                     room.card["game"] = CARD_CFG.first(room.mode)
                     room.card["seats"] = []
                     changed = True
-                # 특상(x)은 음악관에만 있어요 → 다른 모드에서는 고등으로
-                if room.mode != "music" and room.level == "x":
+                # 특상(x)·헬(z)은 음악관에만 있어요 → 다른 모드에서는 고등으로  # === music ===
+                if room.mode != "music" and room.level in ("x", "z"):
                     room.level = "h"
                 if changed:
                     await room.broadcast_state()
