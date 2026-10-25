@@ -43,6 +43,7 @@ from records import RecordStore  # noqa: E402
 import boards as BG  # noqa: E402
 import cards as CG  # noqa: E402
 import olympic as OL  # noqa: E402
+import rpg as RP  # noqa: E402  /* === rpg === */ 회귀 RPG 같이 모드 진행자
 from cardgames import ENGINES as _CARD_ENGINES  # noqa: E402
 from partygames import ENGINES as _PARTY_ENGINES  # noqa: E402
 import aiworker  # noqa: E402
@@ -361,12 +362,19 @@ class Room:
         self.events: List[str] = []                # 올림픽관: 고른 종목 (누른 순서)
         self.oly = {"ai": 3, "lv": 3, "season": "summer"}   # 올림픽관: AI 선수 수 · 단계 · 하계/동계
         self.bots: Dict[str, Player] = {}          # 올림픽관: 이번 대회 AI 선수
+        # === rpg === 회귀 RPG: 같이 모험 판 · 진행 틱 · 설정(AI 동료 수) · 사람마다 회차 배지
+        self.rsess = None
+        self.rtask: Optional[asyncio.Task] = None
+        self.rgcfg = {"ai": 0}
+        self.rgmeta: Dict[str, dict] = {}
+        # === rpg ===
 
     # 방 저장용: 돌아가는 작업(task)은 빼고, 게임 규칙(cengine)은 따로 묶어요
     def __getstate__(self) -> dict:
         d = self.__dict__.copy()
         d["task"] = None
         d["ctask"] = None
+        d["rtask"] = None   # === rpg ===
         eng = d.pop("cengine", None)
         d["_eng"] = (engine_sig(eng), pickle.dumps(eng, protocol=pickle.HIGHEST_PROTOCOL)) if eng is not None else None
         return d
@@ -411,6 +419,11 @@ class Room:
             "events": self.events,
             "oly": self.oly,
             "bots": [b.public(self.host_pid) for b in self.bots.values()],
+            # === rpg ===
+            "rsess": self.rsess.public() if self.rsess else None,
+            "rgcfg": self.rgcfg,
+            "rgmeta": self.rgmeta,
+            # === rpg ===
         }
 
     async def broadcast(self, payload: dict) -> None:
@@ -697,6 +710,12 @@ class Room:
         if self.ctask and not self.ctask.done():
             self.ctask.cancel()
         self.ctask = None
+        # === rpg ===
+        if self.rtask and not self.rtask.done():
+            self.rtask.cancel()
+        self.rtask = None
+        self.rsess = None
+        # === rpg ===
         for p in self.players.values():
             p.ready = False
             p.active_from = 0
@@ -1200,6 +1219,8 @@ def restore_rooms() -> None:
         # 오락실·과학관·음악관 미니게임은 진행 중이던 것만 끝내고 대기실로 (최종 결과 화면은 그대로)
         if room.phase in ("intro", "play", "result"):
             room.phase, room.index, room.current, room.sequence = "lobby", -1, {}, []
+        if room.phase == "rpg":   # === rpg === 같이 모험은 대기실로 (회귀 기록은 폰마다 남아 있어요)
+            room.phase, room.rsess = "lobby", None
         if room.bsess:
             shift_times(room.bsess, at, dt)
         if room.csess:
@@ -1372,7 +1393,7 @@ async def ws_session(ws: WebSocketConn) -> None:
                     if length in (3, 5, 10):
                         room.length = length
                         changed = True
-                if msg.get("mode") in ("arcade", "edu", "music", "board", "card", "party", "olympic"):
+                if msg.get("mode") in ("arcade", "edu", "music", "board", "card", "party", "olympic", "rpg"):   # === rpg ===
                     room.mode = msg["mode"]
                     changed = True
                 if msg.get("level") in LEVELS:
@@ -1394,6 +1415,12 @@ async def ws_session(ws: WebSocketConn) -> None:
                 if "oai" in msg:
                     try:
                         room.oly["ai"] = max(0, min(OL.MAX_LANES - 1, int(msg["oai"])))
+                        changed = True
+                    except (TypeError, ValueError):
+                        pass
+                if "rgai" in msg:   # === rpg === AI 동료 수
+                    try:
+                        room.rgcfg["ai"] = max(0, min(RP.MAX_HEROES - 1, int(msg["rgai"])))
                         changed = True
                     except (TypeError, ValueError):
                         pass
@@ -1457,6 +1484,17 @@ async def ws_session(ws: WebSocketConn) -> None:
                     continue
                 if room.mode == "olympic" and not room.events:
                     await reply({"t": "error", "code": "no_picks", "msg": "올림픽 종목을 하나 이상 골라주세요"})
+                    continue
+                if room.mode == "rpg":   # === rpg === 같이 모험 시작
+                    room.rsess = RP.make_session(room, now_ms(), OL.ATHLETE_IDS)
+                    room.phase = "rpg"
+                    for p in room.players.values():
+                        p.ready = False
+                    log.info("[%s] 회귀 RPG 시작 (%d명)", room.code, len(room.rsess.heroes))
+                    await room.broadcast_state()
+                    if room.rtask and not room.rtask.done():
+                        room.rtask.cancel()
+                    room.rtask = asyncio.ensure_future(RP.run_loop(room, now_ms, room.broadcast))
                     continue
                 if room.mode == "board":
                     seats = BG.resolve_seats(room, BOARD_CFG)
@@ -1542,7 +1580,17 @@ async def ws_session(ws: WebSocketConn) -> None:
             elif t in ("cprog", "cact", "cend", "crematch") and room.phase == "card" and room.csess:
                 await handle_card(room, player, msg, reply, is_host)
 
-            elif t == "again" and is_host and room.phase in ("final", "result", "intro", "play", "board", "card"):
+            # === rpg === 회귀 RPG: 배지(아무 때나) · 모험 중 소식
+            elif t == "rgmeta":
+                m = msg.get("m")
+                if isinstance(m, dict) and len(json.dumps(m)) < 300:
+                    room.rgmeta[player.pid] = {k: int(v) for k, v in m.items() if isinstance(v, (int, float)) and k in ("loop", "stars", "clears", "best", "first")}
+                    if room.phase == "lobby":
+                        await room.broadcast_state()
+            elif t in ("rgpose", "rghit", "rgparry", "rgpick", "rgready") and room.phase == "rpg" and room.rsess:
+                room.rsess.on_msg(player.pid, msg, now_ms())
+            # === rpg ===
+            elif t == "again" and is_host and room.phase in ("final", "result", "intro", "play", "board", "card", "rpg"):   # === rpg === (+rpg)
                 await room.back_to_lobby()
 
             elif t == "kick" and is_host:

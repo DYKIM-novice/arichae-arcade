@@ -590,7 +590,7 @@
         renderResult();
         showScreen('s-result');
       }
-    } else if (room.phase === 'board' || room.phase === 'card') {
+    } else if (room.phase === 'board' || room.phase === 'card' || room.phase === 'rpg') {   /* === rpg === (+rpg: 화면은 rpg/game.js) */
       // 보드게임관·카드게임관: 화면은 board/hall.js · cards/hall.js 가 그려요
       if (changed) { cleanupGame(); S.playIndex = -1; SND.BGM.stop(); setTheme('base'); }
     } else if (room.phase === 'final') {
@@ -659,7 +659,8 @@
     const readyCount = others.filter((p) => p.ready).length + 1;
     const total = others.length + 1;
     const mainBtn = $('#btn-main');
-    const hall = room.mode === 'board' ? window.BoardHall : room.mode === 'card' || room.mode === 'party' ? window.CardHall : null;
+    const hall = room.mode === 'board' ? window.BoardHall : room.mode === 'card' || room.mode === 'party' ? window.CardHall
+      : room.mode === 'rpg' ? window.RpgHall : null;   /* === rpg === */
     if (isHost && hall) {
       const bm = hall.lobbyMain();
       mainBtn.className = 'btn btn-green' + (bm.wait ? ' wait' : '');
@@ -712,18 +713,23 @@
     const board = room.mode === 'board';
     const card = room.mode === 'card' || room.mode === 'party';   // 놀이마당도 카드게임관 틀로
     const oly = room.mode === 'olympic';
+    const rpg = room.mode === 'rpg';   /* === rpg === */
     $('#settings').classList.toggle('edu', edu);
     $('#settings').classList.toggle('oly', oly);
     $('#settings').classList.toggle('music', music);
     $('#settings').classList.toggle('board', board);
     $('#settings-note').textContent = isHost ? '눌러서 바꿀 수 있어요' : '방장만 바꿀 수 있어요';
     $$('#mode-seg button').forEach((b) => {
-      const on = b.dataset.mode === (card || oly ? room.mode : board ? 'board' : music ? 'music' : edu ? 'edu' : 'arcade');
+      const on = b.dataset.mode === (card || oly || rpg ? room.mode : board ? 'board' : music ? 'music' : edu ? 'edu' : 'arcade');   /* === rpg === (+rpg) */
       b.classList.toggle('on', on);
       b.disabled = !isHost;
       b.setAttribute('aria-pressed', String(on));
     });
-    $('#arcade-panel').style.display = edu || music || board || card || oly ? 'none' : '';
+    $('#arcade-panel').style.display = edu || music || board || card || oly || rpg ? 'none' : '';   /* === rpg === (+rpg) */
+    /* === rpg === */
+    if ($('#rpg-panel')) $('#rpg-panel').style.display = rpg ? '' : 'none';
+    if (rpg) { $('#edu-panel').style.display = 'none'; $('#music-panel').style.display = 'none'; if (window.RpgHall) window.RpgHall.renderLobby(isHost); return; }
+    /* === rpg === */
     $('#board-panel').style.display = board ? '' : 'none';
     $('#card-panel').style.display = card ? '' : 'none';
     $('#olympic-panel').style.display = oly ? '' : 'none';

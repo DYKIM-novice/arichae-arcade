@@ -308,6 +308,9 @@
     setVibe,
     isMuted: () => muted,
     isVibe: () => vibeOn,
-    canVibrate: () => typeof navigator.vibrate === 'function'
+    canVibrate: () => typeof navigator.vibrate === 'function',
+    /* === rpg === 회귀 RPG 효과음(rpg/sfx.js)이 같은 소리 길(음소거·압축)을 쓰도록 */
+    raw: { tone, noise }
+    /* === rpg === */
   };
 })();
