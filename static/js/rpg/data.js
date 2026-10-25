@@ -8,7 +8,13 @@
          (난이도 고르기는 없어요: 회귀할수록 쉬워지니까 한 가지로 충분해요)
        · 적 공격의 hits 는 '타 수'예요 (서버 rpg.py 도 그대로 읽어요). 실제 시각·간격·색은 sim.js 가 만들어요
    - 1장 「꽃비 항구와 울음곶」 (rpg_story.md 6절): 적 열쇠(mushroom·bat·golem·boss)는 저장·서버·시험과 맞추려고 그대로 두고
-     이름과 그림(art = static/img/rpg/<화풍>/<art>.webp)만 바꿨어요 · 집게 게 · 갈매기 떼 · 구르는 대포 · 짐 상자 · 적 캐럭선(중간 보스, mid) · 폭풍 문어 */
+     이름과 그림(art = static/img/rpg/<화풍>/<art>.webp)만 바꿨어요 · 집게 게 · 갈매기 떼 · 구르는 대포 · 짐 상자 · 적 캐럭선(중간 보스, mid) · 폭풍 문어
+   - 2단계 돈·장비·스탯 (rpg_story.md 6절)
+       · 적의 shell = 쓰러뜨리면 받는 조개껍데기 · pts = 쓰러뜨리면 받는 스탯 점수 (캐럭선·문어)
+       · econ: 패링 한 번 조개 = parry + ⌊comboStep × (콤보 − 1)⌋ (최대 comboMax) · 상점은 shopAfter 번 방(0 = 부두)을 지나 출항 전
+               weapons atk = 반격·강반격 피해 +비율 · armors def = 받는 피해 −비율 · price = 조개 값 (회귀하면 돈·장비 0)
+       · stats: 처음 base · 힘 str = 반격 +비율/점 · 민첩 agi = 판정 +ms/점 (agiCap 까지) · 체력 vit = 최대 HP +/점 · keep = 회귀 때 남는 비율(50%)
+       · 2단계 밸런스(자동 플레이어 중앙값 아이 5 · 중학생 2 · 어른 1회차)에 맞춰 적 피해를 약 20% 올렸어요 (스콜 빗줄기 합 36은 그대로) */
 (function (root) {
   'use strict';
   const DATA = /*JSON*/{
@@ -38,45 +44,45 @@
     "flow": {"firstWalk": 1500, "nextWalk": 1300, "roomWalk": 2200, "dieAnim": 650, "cardMax": 12000, "readyMax": 30000},
     "enemies": {
       "mushroom": {
-        "name": "집게 게", "art": "e_crab", "hp": 840, "xp": 6, "size": 1.0, "first": 1000, "gap": [1400, 2200], "stun": 900,
+        "name": "집게 게", "art": "e_crab", "hp": 840, "xp": 6, "shell": 6, "size": 1.0, "first": 1000, "gap": [1400, 2200], "stun": 900,
         "pats": [
-          {"id": "bonk", "name": "집게 찍기", "w": 1, "wind": 1050, "hits": [0], "dmg": 12, "icon": "g", "rec": 350}
+          {"id": "bonk", "name": "집게 찍기", "w": 1, "wind": 1050, "hits": [0], "dmg": 14, "icon": "g", "rec": 350}
         ]
       },
       "bat": {
-        "name": "갈매기 떼", "art": "e_gulls", "hp": 670, "xp": 7, "size": 0.9, "first": 800, "gap": [1150, 1800], "stun": 900,
+        "name": "갈매기 떼", "art": "e_gulls", "hp": 670, "xp": 7, "shell": 6, "size": 0.9, "first": 800, "gap": [1150, 1800], "stun": 900,
         "pats": [
-          {"id": "double", "name": "두 번 쪼기", "w": 2, "wind": 900, "hits": [0, 420], "dmg": 9, "icon": "g", "rec": 300},
-          {"id": "swoop", "name": "급강하", "w": 1, "wind": 1150, "hits": [0], "dmg": 13, "icon": "g", "rec": 350}
+          {"id": "double", "name": "두 번 쪼기", "w": 2, "wind": 900, "hits": [0, 420], "dmg": 11, "icon": "g", "rec": 300},
+          {"id": "swoop", "name": "급강하", "w": 1, "wind": 1150, "hits": [0], "dmg": 16, "icon": "g", "rec": 350}
         ]
       },
       "golem": {
-        "name": "구르는 대포", "art": "e_cannon", "hp": 1610, "xp": 12, "size": 1.25, "first": 1200, "gap": [1700, 2500], "stun": 1000,
+        "name": "구르는 대포", "art": "e_cannon", "hp": 1610, "xp": 12, "shell": 10, "size": 1.25, "first": 1200, "gap": [1700, 2500], "stun": 1000,
         "pats": [
-          {"id": "slam", "name": "대포 돌진", "w": 2, "wind": 1500, "hits": [0], "dmg": 23, "icon": "g", "rec": 400, "vuln": 1700},
-          {"id": "poke", "name": "포신 휘두르기", "w": 1, "wind": 1000, "hits": [0], "dmg": 11, "icon": "g", "rec": 300}
+          {"id": "slam", "name": "대포 돌진", "w": 2, "wind": 1500, "hits": [0], "dmg": 28, "icon": "g", "rec": 400, "vuln": 1700},
+          {"id": "poke", "name": "포신 휘두르기", "w": 1, "wind": 1000, "hits": [0], "dmg": 13, "icon": "g", "rec": 300}
         ]
       },
       "crates": {
-        "name": "미끄러지는 짐 상자", "art": "e_crates", "hp": 760, "xp": 7, "size": 1.0, "first": 900, "gap": [1300, 2000], "stun": 900,
+        "name": "미끄러지는 짐 상자", "art": "e_crates", "hp": 760, "xp": 7, "shell": 7, "size": 1.0, "first": 900, "gap": [1300, 2000], "stun": 900,
         "pats": [
-          {"id": "slide", "name": "상자 미끄럼", "w": 2, "wind": 1000, "hits": [0], "dmg": 12, "icon": "g", "rec": 320},
-          {"id": "pile", "name": "와르르 두 상자", "w": 1, "wind": 1100, "hits": [0, 450], "dmg": 8, "icon": "g", "rec": 350}
+          {"id": "slide", "name": "상자 미끄럼", "w": 2, "wind": 1000, "hits": [0], "dmg": 14, "icon": "g", "rec": 320},
+          {"id": "pile", "name": "와르르 두 상자", "w": 1, "wind": 1100, "hits": [0, 450], "dmg": 10, "icon": "g", "rec": 350}
         ]
       },
       "caravel": {
-        "name": "적 캐럭선", "art": "e_caravel", "hp": 1600, "xp": 24, "size": 1.4, "first": 1400, "gap": [1300, 2000], "stun": 900, "mid": true,
+        "name": "적 캐럭선", "art": "e_caravel", "hp": 1600, "xp": 24, "shell": 25, "pts": 4, "size": 1.4, "first": 1400, "gap": [1300, 2000], "stun": 900, "mid": true,
         "pats": [
-          {"id": "volley", "name": "일제 포격", "w": 2, "wind": 1300, "hits": [0, 450, 900], "dmg": 9, "icon": "g", "rec": 450},
-          {"id": "ram", "name": "뱃머리 들이받기", "w": 1, "wind": 1600, "hits": [0], "dmg": 18, "icon": "g", "rec": 500, "vuln": 1500}
+          {"id": "volley", "name": "일제 포격", "w": 2, "wind": 1300, "hits": [0, 450, 900], "dmg": 11, "icon": "g", "rec": 450},
+          {"id": "ram", "name": "뱃머리 들이받기", "w": 1, "wind": 1600, "hits": [0], "dmg": 22, "icon": "g", "rec": 500, "vuln": 1500}
         ]
       },
       "boss": {
-        "name": "울음곶의 폭풍 문어", "art": "e_octopus", "hp": 12000, "xp": 60, "size": 2.0, "first": 1600, "gap": [900, 1500], "stun": 750, "boss": true,
+        "name": "울음곶의 폭풍 문어", "art": "e_octopus", "hp": 12000, "xp": 60, "shell": 60, "pts": 6, "size": 2.0, "first": 1600, "gap": [900, 1500], "stun": 750, "boss": true,
         "rage": 0.5, "rageWind": 0.85, "rageGap": 0.8,
         "pats": [
-          {"id": "triple", "name": "촉수 3연타", "w": 3, "wind": 1300, "hits": [0, 460, 920], "dmg": 15, "icon": "g", "rec": 450},
-          {"id": "smash", "name": "돛대 내려찍기", "w": 2, "wind": 2000, "hits": [0], "dmg": 48, "icon": "r", "brk": 0.08, "brkStun": 1900, "rec": 600, "vuln": 1300, "seq": ["r", "g", "b"]},
+          {"id": "triple", "name": "촉수 3연타", "w": 3, "wind": 1300, "hits": [0, 460, 920], "dmg": 18, "icon": "g", "rec": 450},
+          {"id": "smash", "name": "돛대 내려찍기", "w": 2, "wind": 2000, "hits": [0], "dmg": 56, "icon": "r", "brk": 0.08, "brkStun": 1900, "rec": 600, "vuln": 1300, "seq": ["r", "g", "b"]},
           {"id": "fire", "name": "스콜 빗줄기", "w": 2, "wind": 1600, "hits": [0, 320, 640], "dmg": 12, "icon": "g", "all": true, "rec": 400, "vuln": 1500}
         ]
       }
@@ -102,6 +108,20 @@
       {"id": "star", "c": "b", "name": "행운 별", "desc": "경험치 +30%", "max": 3},
       {"id": "potion", "c": "x", "name": "회복 물약", "desc": "체력 40% 회복", "max": 99}
     ],
+    "econ": {
+      "shopAfter": 0, "parry": 1, "comboStep": 0.5, "comboMax": 6,
+      "weapons": [
+        {"id": "w1", "name": "녹슨 커틀러스", "desc": "반격 피해 +20%", "atk": 0.2, "price": 20},
+        {"id": "w2", "name": "선원의 세이버", "desc": "반격 피해 +40%", "atk": 0.4, "price": 45},
+        {"id": "w3", "name": "별빛 레이피어", "desc": "반격 피해 +65%", "atk": 0.65, "price": 80}
+      ],
+      "armors": [
+        {"id": "a1", "name": "가죽 조끼", "desc": "받는 피해 -12%", "def": 0.12, "price": 20},
+        {"id": "a2", "name": "사슬 갑옷", "desc": "받는 피해 -22%", "def": 0.22, "price": 45},
+        {"id": "a3", "name": "별철 흉갑", "desc": "받는 피해 -32%", "def": 0.32, "price": 80}
+      ]
+    },
+    "stats": {"base": 10, "keep": 0.5, "str": 0.05, "agi": 6, "agiCap": 36, "vit": 6},
     "meta": {
       "xpK": 0.33, "xpCap": 4, "clearBonus": 10, "foreMs": 400, "foreKeep": 6,
       "nodes": [

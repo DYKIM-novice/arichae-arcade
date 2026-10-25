@@ -7,7 +7,10 @@
        2) sim 이 내보낸 일(W.ev)을 읽어 효과 · 소리 · 진동 · 대사를 내기
    - 패링 연출 (rpg_story.md 1절 1·2·4·5·6·7 + 진동 + 강반격 컷인 그림) 은 rpg-demo(demo.js) 에서 옮겨 왔어요
    - 그림 경로는 art.js(RpgArt.src) 한 곳 · 이야기는 story.js · 회귀 기록 저장은 meta.js (대기실과 같은 기록)
-   - 다음 단계 자리 (지금은 화면 없음): 조개 돈·상점·스탯(50% 이월) · 대포 게이지·세 버튼 일제 사격 · 격침 장면 · 콩게 숨은그림 · 화풍 바꾸기
+   - 2단계 (rpg_story.md 6절 '돈·장비·스탯'): 조개껍데기(HUD 🐚) · 부두 상점(s_shop, 부두 방을 지나 출항 전) · 보스(캐럭선·문어)를 잡으면
+       스탯 점수 나누기(힘·민첩·체력) · 회귀하면 스탯은 오른 만큼의 50% 이월, 조개·장비는 0 (여관 정산에 "힘 20 → 15")
+       → 규칙 계산은 전부 sim.js (buyGear · spendPt · settle) · 이 파일은 화면만
+   - 다음 단계 자리 (지금은 화면 없음): 대포 게이지·세 버튼 일제 사격 · 격침 장면 · 콩게 숨은그림 · 보리 반응 · 화풍 바꾸기
        → 정산은 settleRun(), 출항 전은 beforeDepart(), 강반격은 onStrong() 에서 이어 붙이면 돼요
    - 시험용 주소: ?auto=kid|teen|adult (자동 플레이어가 하고 장면도 저절로 넘겨요) · &speed=1~8 · &g=m|f
    - 시험 손잡이: window.__ch1 */
@@ -71,7 +74,8 @@
     mode: 'boot', g: SAVE.g === 'f' ? 'f' : 'm', token: 0,
     W: null, hero: null, meta: null, res: null, room: 0,
     bg: 'bg_harbor', focus: 0.55, bgPrev: '', focusPrev: 0.5, bgFade: 0, weather: 'petals', tint: 0,
-    foe: null, ending: null, rw: null, scene: null, cardsKey: '', cardsAt: 0, innReadyAt: 0, white: 0
+    foe: null, ending: null, rw: null, scene: null, cardsKey: '', cardsAt: 0, innReadyAt: 0, white: 0,
+    stat: null, shopAt: 0
   };
   let clock = 0;
   let simAcc = 0;
@@ -339,6 +343,8 @@
     $('skip').classList.toggle('hide', !(m === 'scene' && G.scene && G.scene.o.skip));
     $('title').classList.toggle('hide', m !== 'title');
     $('inn').classList.toggle('hide', m !== 'inn');
+    $('shop').classList.toggle('hide', m !== 'shop');
+    $('stat').classList.toggle('hide', m !== 'stats');
     if (!play) { $('cards').classList.add('hide'); setTutBtn(null); }
     layout();
   }
@@ -396,6 +402,8 @@
     $('rec').textContent = m.loop > 1 || m.clears
       ? `지금 ${m.loop}회차${m.stars ? ' · ★' + m.stars : ''} · 기억 조각 ${m.shards}${m.clears ? ' · 클리어 ' + m.clears + '번' : ''}`
       : '처음 출항해요';
+    const sv = m.stats || {};
+    if (S.STAT_KEYS.some((k) => sv[k] > S.SD.base)) $('rec').textContent += ' · ' + S.STAT_KEYS.map((k) => S.STAT_NAME[k] + ' ' + sv[k]).join(' · ');
     document.querySelectorAll('.hero').forEach((b) => {
       b.classList.toggle('on', !!SAVE.g && b.dataset.g === G.g);
       drawPic(b.querySelector('canvas'), 'c_hero_' + b.dataset.g, true);
@@ -489,6 +497,7 @@
     setMode('play');
     enterRoom(0, true);
     $('loopChip').textContent = `${G.meta.loop}회차${G.meta.stars ? ' ★' + G.meta.stars : ''}`;
+    hudLast.sh = -1;
     view = snap();
   }
   function enterRoom(i, first) {
@@ -626,6 +635,12 @@
         break;
       }
       case 'roomClear': sndCardsIn(); break;
+      case 'shell':
+        if (e.why === 'kill') addNum(L.w - 60, 70, '+' + e.n + ' 🐚', '#ffe2a8', 22, '');
+        bumpShell();
+        break;
+      case 'pts': G.ptsKind = e.kind; addPop('스탯 점수 +' + e.n + '!', '#9fd8ff', 0.95, -40); break;
+      case 'shop': after(AUTO ? 300 : 700, showShop); break;
       case 'pick': sndCard(); break;
       case 'room': $('foe').classList.add('off'); G.foe = null; enterRoom(e.room, false); break;
       case 'down': sndHurt(); vib([100, 50, 200]); break;
@@ -752,6 +767,7 @@
   function cardsUi() {
     const W = G.W; const h = G.hero;
     const el = $('cards');
+    if (W.phase === 'cards' && h.pts > 0 && !G.ending) { el.classList.add('hide'); G.cardsKey = ''; showStats(G.ptsKind || 'caravel', null); return; }
     if (!(W.phase === 'cards' && h.cards && !G.ending)) { if (!el.classList.contains('hide')) el.classList.add('hide'); G.cardsKey = ''; return; }
     const key = h.cards.join(',') + ':' + h.rerolled;
     if (key === G.cardsKey) return;
@@ -789,13 +805,15 @@
     const W = G.W;
     G.ending = { clear, at: clock };
     setTutBtn(null);
-    settleRun(clear, W);
     if (clear) {
+      // 문어 스탯 점수는 클리어 장면 뒤에 나누고 → 그다음 정산 (나눈 점수도 50% 이월돼요)
       fx.gold = 1; fx.goldK = 1.3; fx.freeze = 500;
       sndTitle(true); vib([80, 40, 80, 40, 240]);
       banner(D.enemies.boss.name + ' 격파!', '폭풍이 걷혀요…', 2600, 'huge');
-      after(2800, () => playScene(ST.CLEAR, { auto: false, skip: true, onDone: () => showInn(true) }));
+      const fin = () => { settleRun(true, W); showInn(true); };
+      after(2800, () => playScene(ST.CLEAR, { auto: false, skip: true, onDone: () => { if (G.hero.pts > 0) showStats('boss', fin); else fin(); } }));
     } else {
+      settleRun(clear, W);
       banner('배가 가라앉아요…', '', 1500);
       after(1500, rewindSeq);
     }
@@ -884,11 +902,163 @@
   }
   function depart() {
     if (G.mode !== 'inn' || clock < G.innReadyAt) return;
+    if (AUTO) autoNodes();
     beforeDepart();
     playScene(ST.harborBeats(Meta.get().loop), { auto: false, skip: true, onDone: startRun });
   }
-  // 출항 전 (다음 단계: 부두 상점 · 장비)
+  // 출항 전 (항구 장면 앞 · 지금은 할 일 없음 — 상점은 부두 방을 지난 뒤에 열려요)
   function beforeDepart() { /* 다음 단계 자리 */ }
+  // 자동 플레이어: 기억의 나무를 싼 것부터 (시험 harness 와 같은 규칙)
+  function autoNodes() {
+    for (let k = 0; k < 20; k++) {
+      let best = null;
+      ['hp', 'combo', 'reroll'].forEach((id) => { const c = Meta.cost(id); if (c != null && c <= Meta.get().shards && (!best || c < best.c)) best = { id, c }; });
+      if (!best || !Meta.buy(best.id)) return;
+    }
+  }
+
+  /* ================================================================
+     부두 상점 (s_shop) — 부두 방(1번 방)을 지나고 출항 전에 · 규칙은 sim.js (buyGear)
+     ================================================================ */
+  function showShop() {
+    const W = G.W; const h = G.hero;
+    if (!W || W.phase !== 'shop' || G.mode !== 'play') return;
+    G.shopPrev = { bg: G.bg, focus: G.focus, weather: G.weather };
+    setBg('s_shop', 0.5, false);
+    setWeather('petals');
+    fx.nums.length = 0; fx.pops.length = 0;
+    setMode('shop');
+    G.shopAt = clock;
+    sndCardsIn();
+    const tl = ST.shopLine(G.meta.loop);
+    const box = $('shopTalk');
+    if (tl) {
+      box.classList.remove('hide');
+      box.querySelector('b').textContent = ST.nameOf(tl.who);
+      box.querySelector('p').textContent = ST.sayText(tl.text, G.g);
+      drawPic(box.querySelector('canvas'), ST.artOf(tl.who, G.g));
+    } else box.classList.add('hide');
+    renderShop();
+    if (AUTO) after(900, () => { S.botShop(h); renderShop(); after(700, leaveShop); });
+  }
+  function renderShop() {
+    const h = G.hero;
+    if (!h) return;
+    $('purse').textContent = '🐚 ' + h.shell;
+    [['w', 'wRow', 'wNow', S.EC.weapons], ['a', 'aRow', 'aNow', S.EC.armors]].forEach(([slot, rowId, nowId, list]) => {
+      const cur = S.GEAR[h.gear[slot]];
+      $(nowId).textContent = cur ? '지금: ' + cur.name : '지금: 없음';
+      const row = $(rowId); row.innerHTML = '';
+      list.forEach((g) => {
+        const b = document.createElement('button');
+        const on = h.gear[slot] === g.id;
+        const lower = cur && S.GEAR[g.id].tier <= cur.tier && !on;
+        const can = S.canBuy(h, g.id);
+        b.className = 'item' + (on ? ' on' : '') + (can ? ' can' : '');
+        b.dataset.id = g.id;
+        b.disabled = !can;
+        const nb = document.createElement('b'); nb.textContent = g.name;
+        const sm = document.createElement('small'); sm.textContent = g.desc;
+        const it = document.createElement('i'); it.textContent = on ? '착용 중' : lower ? '더 좋은 것 있음' : '🐚 ' + g.price;
+        b.append(nb, sm, it);
+        row.append(b);
+      });
+    });
+  }
+  function buyItem(id) {
+    const h = G.hero;
+    if (G.mode !== 'shop' || clock - G.shopAt < 400) return;
+    if (S.buyGear(h, id)) {
+      sndBuy(); vib(30);
+      renderShop();
+      const b = document.querySelector(`.item[data-id="${id}"]`);
+      if (b) b.classList.add('buy');
+      bumpShell();
+    } else { sndFail(); const pu = $('purse'); pu.classList.remove('nope'); void pu.offsetWidth; pu.classList.add('nope'); }
+  }
+  function leaveShop() {
+    const W = G.W; const h = G.hero;
+    if (G.mode !== 'shop' || !W) return;
+    S.leaveShop(W, h);
+    sndCard(); vib(20);
+    const pv = G.shopPrev || {};
+    setBg(pv.bg || 'bg_harbor', pv.focus == null ? 0.55 : pv.focus, false);
+    setWeather(pv.weather || 'petals');
+    setMode('play');
+    hudLast.sh = -1;
+    banner('출항!', h.gear.w || h.gear.a ? [S.GEAR[h.gear.w], S.GEAR[h.gear.a]].filter(Boolean).map((g) => g.name).join(' · ') : '', 1600);
+  }
+
+  /* ================================================================
+     스탯 점수 나누기 (보스 · 중간 보스를 잡은 뒤) — 규칙은 sim.js (spendPt)
+     ================================================================ */
+  const STAT_COL = { str: 'r', agi: 'g', vit: 'b' };
+  const STAT_HOW = { str: '반격·강반격이 세져요', agi: '패링 판정이 조금 넉넉해져요', vit: '최대 체력이 늘어요' };
+  function showStats(kind, onDone) {
+    const h = G.hero;
+    if (!h || G.mode === 'stats') return;
+    fx.nums.length = 0; fx.pops.length = 0;
+    G.stat = { kind, onDone, snap: { stats: Object.assign({}, h.stats), pts: h.pts, hp: h.hp }, at: clock };
+    setMode('stats');
+    $('statTitle').textContent = `스탯 점수 +${h.pts}!`;
+    $('statSub').textContent = ST.STAT_SUB[kind] || '';
+    $('statNote').textContent = `회귀하면 이번에 오른 만큼의 절반이 남아요 (예: 힘 10 → 20 이면 15) · 민첩은 판정 +${S.SD.agiCap}ms 까지만`;
+    sndLvup(); vib([40, 30, 80]);
+    renderStats();
+    if (AUTO) after(800, () => { S.botStats(h); renderStats(); after(600, doneStats); });
+  }
+  function renderStats() {
+    const h = G.hero;
+    $('ptsN').textContent = h.pts;
+    const rows = $('statRows'); rows.innerHTML = '';
+    S.STAT_KEYS.forEach((k) => {
+      const v = h.stats[k];
+      const d = document.createElement('div');
+      d.className = 'srow c-' + STAT_COL[k]; d.dataset.k = k;
+      const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = S.STAT_NAME[k];
+      const vl = document.createElement('div'); vl.className = 'val'; vl.textContent = v;
+      const ef = document.createElement('div'); ef.className = 'ef';
+      ef.textContent = S.statText(k, v);
+      const sm = document.createElement('small');
+      const capped = k === 'agi' && S.statEffect('agi', v) >= S.SD.agiCap;
+      sm.textContent = capped ? '이미 최대예요 · 다른 곳에 써요' : `+1 → ${S.statText(k, v + 1)} · ${STAT_HOW[k]}`;
+      ef.append(sm);
+      const b = document.createElement('button');
+      b.textContent = '+'; b.dataset.k = k; b.disabled = !(h.pts > 0) || capped;
+      b.setAttribute('aria-label', S.STAT_NAME[k] + ' 올리기');
+      d.append(nm, vl, ef, b);
+      rows.append(d);
+    });
+    $('statGo').disabled = h.pts > 0;
+    $('statGo').style.opacity = h.pts > 0 ? 0.45 : 1;
+    $('statUndo').classList.toggle('hide', !G.stat || h.pts === G.stat.snap.pts);
+  }
+  function addStat(k) {
+    const h = G.hero;
+    if (G.mode !== 'stats' || !G.stat || clock - G.stat.at < 300) return;
+    if (k === 'agi' && S.statEffect('agi', h.stats.agi) >= S.SD.agiCap) { sndFail(); return; }
+    if (!S.spendPt(h, k)) { sndFail(); return; }
+    sndBuy(); vib(25);
+    renderStats();
+    const r = $('statRows').querySelector(`[data-k="${k}"]`);
+    if (r) r.classList.add('up');
+  }
+  function undoStats() {
+    const h = G.hero; const st = G.stat;
+    if (!st || G.mode !== 'stats') return;
+    h.stats = Object.assign({}, st.snap.stats); h.pts = st.snap.pts;
+    S.refresh(h); h.hp = Math.min(h.st.maxHp, st.snap.hp);
+    sndCard(); renderStats();
+  }
+  function doneStats() {
+    const h = G.hero; const st = G.stat;
+    if (!st || G.mode !== 'stats' || h.pts > 0) return;
+    G.stat = null;
+    sndCard(); vib(20);
+    if (st.onDone) { st.onDone(); return; }
+    setMode('play');
+    hudLast.ht = '';
+  }
 
   /* ================================================================
      효과 한 걸음 — fdt: 효과 시각 · wdt: 세상 시각(멈춤 땐 0)
@@ -1618,7 +1788,8 @@
   }
 
   /* 화면 틀 (체력 · 게이지 · 적 체력) — 바뀔 때만 써요 */
-  const hudLast = { hp: -1, ga: -1, eh: -1, full: null, ht: '', lv: '' };
+  const hudLast = { hp: -1, ga: -1, eh: -1, full: null, ht: '', lv: '', sh: -1 };
+  function bumpShell() { const el = $('shellChip'); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
   function updateHud() {
     const v = view; const h = G.hero;
     if (!v || !h) return;
@@ -1632,6 +1803,7 @@
     if (ht !== hudLast.ht) { $('hpTxt').textContent = ht; hudLast.ht = ht; }
     const lv = 'Lv ' + h.lv;
     if (lv !== hudLast.lv) { $('lvTxt').textContent = lv; hudLast.lv = lv; }
+    if (h.shell !== hudLast.sh) { $('shellChip').textContent = '🐚 ' + h.shell; hudLast.sh = h.shell; }
   }
 
   /* ================================================================
@@ -1641,6 +1813,8 @@
     audioInit();
     if (G.mode === 'scene') { tapScene(); return; }
     if (G.mode === 'inn') { const n = D.meta.nodes.find((x) => x.c === c); if (n) buyNode(n.id); return; }
+    if (G.mode === 'stats') { const k = Object.keys(STAT_COL).find((x) => STAT_COL[x] === c); if (k) addStat(k); return; }
+    if (G.mode === 'shop') return;
     if (G.mode !== 'play' || G.ending) return;
     const W = G.W; const h = G.hero;
     if (W.phase === 'cards' && h.cards) { pickSlot(IDX[c]); return; }
@@ -1691,6 +1865,11 @@
   $('reroll').addEventListener('click', () => { if (G.W && S.reroll(G.W, G.hero)) { sndCardsIn(); G.cardsKey = ''; drain(); } });
   $('nodeRow').addEventListener('click', (e) => { const b = e.target.closest('.node'); if (b && !b.disabled) { audioInit(); buyNode(b.dataset.node); } });
   $('innGo').addEventListener('click', () => { audioInit(); depart(); });
+  ['wRow', 'aRow'].forEach((id) => $(id).addEventListener('click', (e) => { const b = e.target.closest('.item'); if (b) { audioInit(); buyItem(b.dataset.id); } }));
+  $('shopGo').addEventListener('click', () => { audioInit(); if (clock - G.shopAt > 400) leaveShop(); });
+  $('statRows').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b && b.dataset.k) { audioInit(); addStat(b.dataset.k); } });
+  $('statUndo').addEventListener('click', () => { audioInit(); undoStats(); });
+  $('statGo').addEventListener('click', () => { audioInit(); doneStats(); });
   function leave() {
     try {
       if (document.referrer && new URL(document.referrer).origin === location.origin && history.length > 1) { history.back(); return; }
@@ -1748,6 +1927,7 @@
     // 시험용: 화면이 가려져 프레임이 느릴 때 ms 만큼 16ms 씩 직접 돌려요
     run(ms) { for (let k = 0; k < ms; k += 16) tickFrame(16); return G.mode; },
     input: onPress, pickHero, tapScene, skip: endScene, depart, showTitle, showInn,
+    buy: buyItem, leaveShop, addStat, undoStats, doneStats, get hero() { return G.hero; },
     meta: () => Meta.get(), resetMeta: () => Meta.reset()
   };
 })();

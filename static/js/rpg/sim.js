@@ -21,6 +21,9 @@
   const PR = D.parry;
   const DT = 8;
   const COLORS = ['r', 'g', 'b'];
+  const EC = D.econ;
+  const SD = D.stats;
+  const STAT_KEYS = ['str', 'agi', 'vit'];
 
   /* ---------------- 작은 도구 ---------------- */
   function rng(seed) {
@@ -65,6 +68,7 @@
   const PAT = {};
   Object.keys(D.enemies).forEach((k) => { D.enemies[k].pats.forEach((p) => { PAT[p.id] = Object.assign({ enemy: k }, p); }); });
   const COLOR_NAME = { r: '빨강', g: '초록', b: '파랑', x: '' };
+  const STAT_NAME = { str: '힘', agi: '민첩', vit: '체력' };
   function emptyUpg() { const u = {}; D.cards.forEach((c) => { u[c.id] = 0; }); return u; }
   // 빨강 칸 = 공격 카드, 초록 칸 = 패링 카드, 파랑 칸 = 필살·몸 카드 (버튼 색 = 카드 색)
   function drawCards(R, upg) {
@@ -74,20 +78,88 @@
     });
   }
 
+  /* ---------------- 조개껍데기 · 장비 · 스탯 (rpg_story.md 6절 '돈·장비·스탯') ----------------
+     - 조개: 적을 쓰러뜨리면 적마다 shell 만큼 · 패링 한 번마다 콤보가 길수록 더 (parryShell)
+     - 장비: 무기(w) = 반격·강반격 피해 +% · 방어구(a) = 받는 피해 −% · 칸마다 하나 (더 좋은 것을 사면 바꿔 끼워요)
+     - 스탯: 힘 = 반격 피해 +5%/점 · 민첩 = 패링 판정 +6ms/점 (최대 +36ms) · 체력 = 최대 HP +6/점 (모두 처음 10에서부터) */
+  const GEAR = {};
+  EC.weapons.forEach((g, i) => { GEAR[g.id] = Object.assign({ slot: 'w', tier: i + 1 }, g); });
+  EC.armors.forEach((g, i) => { GEAR[g.id] = Object.assign({ slot: 'a', tier: i + 1 }, g); });
+  function baseStats() { return { str: SD.base, agi: SD.base, vit: SD.base }; }
+  function fixStats(v) {
+    const o = baseStats();
+    if (v && typeof v === 'object') STAT_KEYS.forEach((k) => { const n = Math.floor(Number(v[k])); if (n >= SD.base) o[k] = n; });
+    return o;
+  }
+  // 스탯 하나가 주는 효과 (화면 설명과 계산이 같은 함수를 써요)
+  function statEffect(k, v) {
+    const d = Math.max(0, (v == null ? SD.base : v) - SD.base);
+    if (k === 'str') return SD.str * d;                       // 반격 피해 +비율
+    if (k === 'agi') return Math.min(SD.agiCap, SD.agi * d);  // 판정 폭 +ms (상한)
+    if (k === 'vit') return SD.vit * d;                       // 최대 HP +
+    return 0;
+  }
+  function statText(k, v) {
+    const e = statEffect(k, v);
+    if (k === 'str') return `반격 피해 +${Math.round(e * 100)}%`;
+    if (k === 'agi') return `패링 판정 +${e}ms${e >= SD.agiCap ? ' (최대)' : ''}`;
+    if (k === 'vit') return `최대 체력 +${e}`;
+    return '';
+  }
+  // 회귀 규칙: 스탯 = 이번 생 처음 수치 + ⌊(죽기 직전까지 오른 만큼) × 50%⌋  (예: 힘 10 → 20 이면 15)
+  function carryStats(start, end) {
+    const a = fixStats(start); const b = fixStats(end); const o = {};
+    STAT_KEYS.forEach((k) => { o[k] = a[k] + Math.floor(Math.max(0, b[k] - a[k]) * SD.keep); });
+    return o;
+  }
+  // 패링 한 번에 받는 조개 (콤보가 길수록 많이 · 상한 comboMax)
+  function parryShell(combo) { return Math.min(EC.comboMax, EC.parry + Math.floor(EC.comboStep * Math.max(0, (combo || 1) - 1))); }
+  function addShell(W, h, n, why) {
+    if (!n || n <= 0) return;
+    h.shell += n; h.stat.shell += n;
+    emit(W, 'shell', { h: h.id, n, why, total: h.shell });
+  }
+  // 상점: 같은 칸의 지금 장비보다 좋은 것만, 돈이 있을 때만
+  function canBuy(h, id) {
+    const g = GEAR[id];
+    if (!g) return false;
+    const cur = GEAR[h.gear[g.slot]];
+    return (!cur || g.tier > cur.tier) && h.shell >= g.price;
+  }
+  function buyGear(h, id) {
+    if (!canBuy(h, id)) return false;
+    const g = GEAR[id];
+    h.shell -= g.price;
+    h.gear[g.slot] = id;
+    refresh(h);
+    return true;
+  }
+  function leaveShop(W, h) { h.shopped = true; }
+  // 스탯 점수 쓰기 (보스를 잡으면 받은 점수)
+  function spendPt(h, k) {
+    if (!(h.pts > 0) || STAT_KEYS.indexOf(k) < 0) return false;
+    h.pts--; h.stats[k]++;
+    refresh(h);
+    return true;
+  }
+
   /* ---------------- 용사 능력치 ---------------- */
   function needXp(lv) { return HD.xpBase + HD.xpGrow * (lv - 1); }
   function calcStats(h) {
     const u = h.upg; const m = h.meta; const lv = h.lv;
+    const sv = h.stats || baseStats(); const gr = h.gear || {};
+    const wg = GEAR[gr.w]; const ag = GEAR[gr.a];
+    const cK = (1 + statEffect('str', sv.str)) * (1 + (wg ? wg.atk : 0));   // 힘 · 무기 → 반격·강반격
     return {
       atk: HD.atk * (1 + HD.lvAtk * (lv - 1)),
-      maxHp: Math.round(HD.hp * (1 + 0.15 * (m.hp || 0)) + HD.lvHp * (lv - 1) + 20 * u.tough),
+      maxHp: Math.round(HD.hp * (1 + 0.15 * (m.hp || 0)) + HD.lvHp * (lv - 1) + 20 * u.tough + statEffect('vit', sv.vit)),
       comboMult: 1 + 0.2 * u.slash,                       // 자동 공격
-      strongMult: HD.strong.mult * (1 + 0.4 * u.heavy),   // 강반격
+      strongMult: HD.strong.mult * (1 + 0.4 * u.heavy) * cK,   // 강반격
       strongNeed: u.heavy ? HD.strong.need - 1 : HD.strong.need,
       vamp: 3 * u.vamp,
-      take: Math.max(0.2, 1 - HD.wallCut * u.wall),        // 맞을 때 받는 피해 비율
-      parryWin: 40 * u.parry,                             // 판정 폭 더하기(ms)
-      counterMult: HD.counterMult * (1 + 0.3 * u.parry),
+      take: Math.max(0.2, (1 - HD.wallCut * u.wall) * (1 - (ag ? ag.def : 0))),   // 맞을 때 받는 피해 비율 (방어구 포함)
+      parryWin: 40 * u.parry + statEffect('agi', sv.agi),  // 판정 폭 더하기(ms) · 민첩은 상한이 있어요
+      counterMult: HD.counterMult * (1 + 0.3 * u.parry) * cK,
       parryHeal: 6 * u.calm,
       gaugeMult: 1 + 0.3 * u.charge,
       specMult: HD.spec.mult * (1 + 0.35 * u.nova),
@@ -103,7 +175,7 @@
 
   /* 용사 하나 — o: { id, name, ath, kind: me|bot|remote, meta: {loop, hp, combo, reroll, stars, fore}, mem: {id, lv} } */
   function makeHero(o) {
-    const meta = Object.assign({ loop: 1, hp: 0, combo: 0, reroll: 0, stars: 0, fore: [] }, o.meta || {});
+    const meta = Object.assign({ loop: 1, hp: 0, combo: 0, reroll: 0, stars: 0, fore: [], stats: null }, o.meta || {});
     if (!Array.isArray(meta.fore)) meta.fore = [];
     const h = {
       id: o.id, name: o.name || '용사', ath: o.ath || 'dino', kind: o.kind || 'me', meta,
@@ -113,7 +185,9 @@
       jd: {}, pend: [], counters: [], streak: 0, combo: 0, killer: '',
       frz: 0, inv: 0, down: false, seq: 0,
       cards: null, rerolls: meta.reroll || 0, rerolled: 0, picks: [],
-      stat: { hits: 0, parries: 0, hurts: 0, dodges: 0, dealt: 0, taken: 0, specs: 0, kills: 0, strongs: 0, fail: { color: 0, early: 0, late: 0, miss: 0 } }
+      // 이번 생의 조개 돈 · 장비 (회귀하면 0 · 없음) · 스탯 (회귀해도 오른 만큼의 50% 남아요) · 아직 안 쓴 스탯 점수
+      shell: 0, gear: { w: '', a: '' }, stats: fixStats(meta.stats), stats0: fixStats(meta.stats), pts: 0, shopped: false,
+      stat: { hits: 0, parries: 0, hurts: 0, dodges: 0, dealt: 0, taken: 0, specs: 0, kills: 0, strongs: 0, shell: 0, fail: { color: 0, early: 0, late: 0, miss: 0 } }
     };
     // 전생의 검술(영구) · 스킬 기억(지난 생에서 가장 키운 카드)
     if (meta.combo) h.upg.slash = Math.max(h.upg.slash, meta.combo);
@@ -384,6 +458,7 @@
     h.frz = W.t + HD.parryStop;
     if (W.enemy) W.enemy.frz = W.t + HD.slowmo;
     emit(W, 'parry', { h: h.id, a: a.id, i, final, c: x.c, strong, streak: strong ? h.st.strongNeed : h.streak, combo: h.combo, cm });
+    addShell(W, h, parryShell(h.combo), 'combo');
     W.dir.parried(W, h, a, i, final);
   }
   function doDodge(W, h, a, i) {
@@ -521,7 +596,15 @@
         if (E && !E.dead && !W.atks.some((a) => !a.over) && t >= E.nextAt && t >= E.stun) startAttack(W, E);
         W.atks = W.atks.filter((a) => !(a.over && t > a.hits[a.hits.length - 1] + 700));
       }
-      if (W.phase === 'cards' && W.heroes.every((h) => !h.cards)) nextRoom(W);
+      // 카드(와 스탯 점수)를 다 고르면 → 부두 방(1번 방)을 지난 뒤엔 상점 → 출항(다음 방)
+      if (W.phase === 'cards' && W.heroes.every((h) => !h.cards && !(local(h) && h.pts > 0))) {
+        if (W.room === EC.shopAfter && !W.shopDone) {
+          W.shopDone = true; W.phase = 'shop';
+          W.heroes.forEach((h) => { h.shopped = !local(h); });
+          emit(W, 'shop', { room: W.room });
+        } else nextRoom(W);
+      }
+      if (W.phase === 'shop' && W.heroes.every((h) => h.shopped)) nextRoom(W);
     },
     hit(W, h, dmg, kind) {
       const E = W.enemy;
@@ -637,7 +720,14 @@
     W.killed++;
     if (h) h.stat.kills++;
     emit(W, 'kill', { e: E.eid, kind: E.kind, boss: E.boss, h: h ? h.id : '' });
-    W.heroes.forEach((x) => { if (local(x)) { x.pend = []; gainXp(W, x, E.xp); } });
+    const dk = D.enemies[E.kind] || {};
+    W.heroes.forEach((x) => {
+      if (!local(x)) return;
+      x.pend = []; gainXp(W, x, E.xp);
+      addShell(W, x, dk.shell || 0, 'kill');
+      // 보스(중간 보스 캐럭선 포함)를 잡으면 스탯 점수
+      if (dk.pts) { x.pts += dk.pts; emit(W, 'pts', { h: x.id, n: dk.pts, kind: E.kind }); }
+    });
     W.enc++;
     if (W.enc < W.plan[W.room].length) {
       W.phase = 'walk';
@@ -704,6 +794,18 @@
   }
   function botThink(W, h, b) {
     const t = W.t; const sk = b.sk; const R = b.R;
+    // 스탯 점수 (보스를 잡은 뒤) → 카드보다 먼저
+    if (W.phase === 'cards' && h.pts > 0) {
+      if (!b.ptAt) b.ptAt = t + 300;
+      if (t >= b.ptAt) { b.ptAt = 0; botStats(h); }
+      return;
+    }
+    // 부두 상점
+    if (W.phase === 'shop' && !h.shopped) {
+      if (!b.shopAt) b.shopAt = t + sk.pickMs;
+      if (t >= b.shopAt) { b.shopAt = 0; botShop(h); leaveShop(W, h); }
+      return;
+    }
     if (W.phase === 'cards' && h.cards) {
       if (!b.pickAt) b.pickAt = t + sk.pickMs * (0.6 + 0.8 * R());
       if (t >= b.pickAt) {
@@ -769,13 +871,32 @@
     }
   }
 
+  // 자동 플레이어의 장보기: 방어구(살아남기) 먼저, 남으면 무기 · 살 수 있는 가장 좋은 것
+  function botShop(h) {
+    const best = (list) => list.slice().reverse().find((g) => canBuy(h, g.id));
+    for (let k = 0; k < 4; k++) {
+      const a = best(EC.armors); if (a) { buyGear(h, a.id); continue; }
+      const w = best(EC.weapons); if (w) { buyGear(h, w.id); continue; }
+      break;
+    }
+  }
+  // 자동 플레이어의 스탯 고르기: 가장 낮은 것부터 (체력 → 민첩 → 힘 순, 민첩은 상한까지만)
+  function botStats(h) {
+    while (h.pts > 0) {
+      const agiFull = statEffect('agi', h.stats.agi) >= SD.agiCap;
+      const order = ['vit', 'agi', 'str'].filter((k) => !(k === 'agi' && agiFull));
+      const lo = order.reduce((m, k) => (h.stats[k] < h.stats[m] ? k : m), order[0]);
+      spendPt(h, lo);
+    }
+  }
+
   /* ================================================================
      전생 정산 (회귀할 때 넘어가는 것) — 저장은 meta.js, 계산은 여기
      meta: { v, loop, shards, nodes{combo,hp,reroll}, mem, stars, deaths, clears, bestRoom, firstClear, earned, playMs,
              fore[] 나를 쓰러뜨린 공격 id(예지 · 최근 것 몇 개만) }
      ================================================================ */
   function newMeta() {
-    return { v: 2, loop: 1, shards: 0, nodes: { combo: 0, hp: 0, reroll: 0 }, mem: null, stars: 0, deaths: 0, clears: 0, bestRoom: 0, firstClear: 0, earned: 0, playMs: 0, fore: [] };
+    return { v: 2, loop: 1, shards: 0, nodes: { combo: 0, hp: 0, reroll: 0 }, mem: null, stars: 0, deaths: 0, clears: 0, bestRoom: 0, firstClear: 0, earned: 0, playMs: 0, fore: [], stats: baseStats() };
   }
   // 옛 저장(v1)도 그대로 읽어요 — 없는 칸은 새로 채우고, 모르는 공격 id 는 버려요
   function fixMeta(m) {
@@ -788,6 +909,7 @@
     o.loop = Math.max(1, Math.floor(o.loop));
     if (o.mem && !(CARD[o.mem.id] && o.mem.lv > 0)) o.mem = null;
     o.fore = Array.isArray(m.fore) ? m.fore.filter((id) => PAT[id]).slice(-D.meta.foreKeep) : [];
+    o.stats = fixStats(m.stats);
     return o;
   }
   function cardLabel(id, lv) {
@@ -823,8 +945,23 @@
     if (fore) lines.push({ k: 'fore', label: '💭예지', text: `${fore.name} 색이 0.4초 먼저 보여요`, pat: fore.id, isNew: fore.isNew });
     if (mem) lines.push({ k: 'mem', label: '스킬 기억', text: cardLabel(mem.id, mem.lv), c: CARD[mem.id].c });
     if (run.clear) lines.push({ k: 'star', label: '★고난 해금', text: '★' + m.stars, val: m.stars });
+    // 스탯은 오른 만큼의 50% 이월 · 조개 돈과 장비는 0 (회귀 규칙)
+    let stats = null;
+    if (run.hero && run.hero.stats) {
+      const start = fixStats(run.hero.stats0 || m.stats);
+      const from = fixStats(run.hero.stats);
+      stats = { start, from, to: carryStats(start, from) };
+      m.stats = stats.to;
+      STAT_KEYS.forEach((k) => {
+        const same = stats.from[k] === stats.to[k];
+        lines.push({ k: 'stat', key: k, label: STAT_NAME[k], text: same ? `${stats.to[k]} (그대로)` : `${stats.from[k]} → ${stats.to[k]}`, from: stats.from[k], to: stats.to[k] });
+      });
+      const gearN = ['w', 'a'].map((sl) => (GEAR[run.hero.gear && run.hero.gear[sl]] || {}).name).filter(Boolean);
+      lines.push({ k: 'reset', label: '조개껍데기', text: `${run.hero.shell || 0} → 0` });
+      lines.push({ k: 'reset', label: '장비', text: gearN.length ? `${gearN.join(' · ')} → 없음` : '없음' });
+    }
     lines.push({ k: 'total', label: '모은 기억 조각', val: m.shards });
-    return { meta: m, gained, lines, mem, fore };
+    return { meta: m, gained, lines, mem, fore, stats };
   }
   function nodeCost(meta, id) {
     const n = D.meta.nodes.find((x) => x.id === id);
@@ -842,7 +979,7 @@
   // 영웅 만들 때 쓰는 값 (회차 · 영구 노드 · ★ · 예지)
   function heroMeta(meta) {
     const m = fixMeta(meta);
-    return { loop: m.loop, hp: m.nodes.hp, combo: m.nodes.combo, reroll: m.nodes.reroll, stars: m.stars, fore: m.fore.slice() };
+    return { loop: m.loop, hp: m.nodes.hp, combo: m.nodes.combo, reroll: m.nodes.reroll, stars: m.stars, fore: m.fore.slice(), stats: fixStats(m.stats) };
   }
 
   const api = {
@@ -852,7 +989,9 @@
     winOf, hitsOf, busy, judgePress, genHits, chance,
     offerCards, reroll, pickCard, applyCard, drawCards, bestCard, cardLabel,
     soloDir, startAttack, killEnemy, nextRoom, stunEnemy, breakCheck, rageCheck, emit, heroById,
-    makeBrain, botThink, newMeta, fixMeta, settle, nodeCost, buyNode, heroMeta
+    makeBrain, botThink, newMeta, fixMeta, settle, nodeCost, buyNode, heroMeta,
+    EC, SD, GEAR, STAT_KEYS, STAT_NAME, baseStats, fixStats, statEffect, statText, carryStats, parryShell, addShell,
+    canBuy, buyGear, leaveShop, spendPt, botShop, botStats
   };
   root.RpgSim = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

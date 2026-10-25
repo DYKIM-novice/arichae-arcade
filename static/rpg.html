@@ -42,6 +42,9 @@
   #foe.boss #foeBar i { background: linear-gradient(90deg, #8b5cff, #d76bff); }
   #foe.off #foeName, #foe.off #foeBar { visibility: hidden; }
   #loopChip { color: #bfe9ff; }
+  #shellChip { color: #ffe2a8; padding: 0 9px; }
+  #shellChip.bump { animation: bump .35s ease-out; }
+  @keyframes bump { 40% { transform: scale(1.18); filter: brightness(1.5); } }
 
   /* 아래: 체력 · 게이지 · 연속 · 버튼 3개 */
   #panel { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
@@ -174,6 +177,49 @@
   .node.nope { animation: nope .3s; }
   @keyframes nope { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
   #innBtns { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
+  .ln.stat b { color: #9fd8ff; } .ln.reset b { color: #ff9f9f; }
+
+  /* 부두 상점 (s_shop) · 출항 전 */
+  #shop { display: flex; flex-direction: column; align-items: center; gap: 10px; background: linear-gradient(180deg, rgba(3, 5, 12, .25), rgba(3, 5, 12, .5) 40%, rgba(3, 5, 12, .88)); }
+  #shop h2, #stat h2 { margin: 8px 0 0; font-size: 30px; font-weight: 900; color: var(--gold); text-shadow: 0 3px 0 #6b3d00, 0 0 24px rgba(255, 200, 80, .5); text-align: center; }
+  #shop .sub, #stat .sub { font-size: 13px; color: #dfe6f3; text-align: center; text-shadow: 0 2px 4px #000; line-height: 1.5; }
+  .purse { font-size: 22px; font-weight: 900; color: #ffe2a8; background: rgba(6, 10, 22, .8); border: 1px solid rgba(255, 226, 168, .35); border-radius: 999px; padding: 8px 18px; }
+  .purse.nope { animation: nope .3s; }
+  .shelf { width: 100%; max-width: 420px; background: rgba(6, 10, 22, .8); border: 1px solid rgba(255, 255, 255, .12); border-radius: 16px; padding: 8px 10px 10px; }
+  .shelf h3 { margin: 0 0 7px; font-size: 13px; color: #dfe6f3; display: flex; justify-content: space-between; gap: 8px; }
+  .shelf h3 em { font-style: normal; color: var(--dim); font-weight: 700; font-size: 12px; }
+  .row3 { display: flex; gap: 7px; }
+  .item { flex: 1; min-width: 0; border-radius: 13px; border: 2px solid rgba(255, 255, 255, .22); background: rgba(14, 20, 36, .92); color: var(--ink);
+    padding: 8px 3px 7px; font: 800 12px/1.3 var(--font); display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; }
+  .item b { font-size: 12.5px; word-break: keep-all; }
+  .item small { font-size: 10.5px; color: #cbd5e6; font-weight: 700; }
+  .item i { font-style: normal; font-size: 12px; color: #ffe2a8; }
+  .item.can { border-color: var(--gold); box-shadow: 0 0 12px rgba(255, 210, 90, .3); }
+  .item.on { border-color: #7dffb0; background: rgba(20, 60, 40, .85); }
+  .item.on i { color: #7dffb0; }
+  .item:disabled:not(.on) { opacity: .5; }
+  .item.buy { animation: pick .35s ease-out; }
+  #shopTalk { width: 100%; max-width: 420px; display: flex; gap: 10px; align-items: center; background: rgba(6, 10, 22, .8); border-radius: 16px; padding: 8px 12px 8px 8px; }
+  #shopTalk canvas { width: 56px; height: 56px; flex: none; border-radius: 12px; background: radial-gradient(circle at 50% 40%, #2a3654, #0b1020); }
+  #shopTalk b { display: block; font-size: 12px; color: var(--gold); }
+  #shopTalk p { margin: 2px 0 0; font-size: 13.5px; font-weight: 700; line-height: 1.45; }
+  .note { font-size: 11.5px; color: #ffb3b3; text-align: center; text-shadow: 0 2px 4px #000; }
+
+  /* 스탯 점수 나누기 (보스를 잡은 뒤) */
+  #stat { display: flex; flex-direction: column; align-items: center; gap: 10px; background: linear-gradient(180deg, rgba(3, 5, 12, .55), rgba(3, 5, 12, .72) 40%, rgba(3, 5, 12, .92)); }
+  .pts { font-size: 20px; font-weight: 900; color: #fff; background: rgba(6, 10, 22, .8); border-radius: 999px; padding: 8px 18px; border: 1px solid rgba(255, 255, 255, .25); }
+  .pts em { font-style: normal; color: var(--gold); font-size: 26px; }
+  #statRows { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 8px; }
+  .srow { display: flex; align-items: center; gap: 10px; background: rgba(6, 10, 22, .84); border: 2px solid; border-radius: 16px; padding: 10px 10px 10px 14px; }
+  .srow.c-r { border-color: var(--red); } .srow.c-g { border-color: var(--green); } .srow.c-b { border-color: var(--blue); }
+  .srow .nm { flex: none; width: 46px; font-size: 17px; font-weight: 900; }
+  .srow .val { flex: none; width: 40px; font-size: 24px; font-weight: 900; color: var(--gold); text-align: center; font-variant-numeric: tabular-nums; }
+  .srow .ef { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 700; color: #dfe6f3; line-height: 1.4; }
+  .srow .ef small { display: block; color: var(--dim); font-size: 11px; }
+  .srow button { flex: none; width: 54px; height: 54px; border-radius: 14px; border: 0; font: 900 26px/1 var(--font); color: #fff; }
+  .srow.c-r button { background: linear-gradient(180deg, #ff7381, #e3233a); } .srow.c-g button { background: linear-gradient(180deg, #5ef0a0, #14a85a); } .srow.c-b button { background: linear-gradient(180deg, #6fb0ff, #1f5fe0); }
+  .srow button:disabled { filter: grayscale(.8) brightness(.5); }
+  .srow.up { animation: pick .35s ease-out; }
 </style>
 </head>
 <body>
@@ -184,6 +230,7 @@
     <button class="chip" id="exit" aria-label="나가기">✕</button>
     <div id="foe" class="off"><div id="where"></div><div id="foeName"></div><div id="foeBar"><i id="foeFill"></i></div></div>
     <div class="chip" id="loopChip">1회차</div>
+    <div class="chip" id="shellChip" aria-label="조개껍데기">🐚 0</div>
   </div>
 
   <div id="talk"><canvas width="108" height="108"></canvas><div><b></b><p></p></div></div>
@@ -236,6 +283,26 @@
     <div id="innTalk" class="hide"><canvas width="128" height="128"></canvas><div><b></b><p></p></div></div>
     <div id="nodes"><h3><span>기억의 나무 · 영원히 남아요</span><em id="shards"></em></h3><div id="nodeRow"></div></div>
     <div id="innBtns"><button class="ghost" id="innExit">나가기</button><button class="big" id="innGo">출항!</button></div>
+  </div>
+
+  <div id="shop" class="over hide">
+    <h2>부두 상점</h2>
+    <div class="sub">출항 전에 조개껍데기로 장비를 갖춰요</div>
+    <div class="purse" id="purse">🐚 0</div>
+    <div id="shopTalk"><canvas width="112" height="112"></canvas><div><b></b><p></p></div></div>
+    <div class="shelf"><h3><span>무기 · 반격이 세져요</span><em id="wNow"></em></h3><div class="row3" id="wRow"></div></div>
+    <div class="shelf"><h3><span>방어구 · 덜 아파요</span><em id="aNow"></em></h3><div class="row3" id="aRow"></div></div>
+    <div class="note">별나침반이 되감기면 조개껍데기와 장비는 사라져요</div>
+    <button class="big" id="shopGo">출항!</button>
+  </div>
+
+  <div id="stat" class="over hide">
+    <h2 id="statTitle">스탯 점수!</h2>
+    <div class="sub" id="statSub"></div>
+    <div class="pts">남은 점수 <em id="ptsN">0</em></div>
+    <div id="statRows"></div>
+    <div class="note" id="statNote"></div>
+    <div id="innBtns2" style="display:flex;gap:10px"><button class="ghost" id="statUndo">되돌리기</button><button class="big" id="statGo">다 골랐어요</button></div>
   </div>
 </div>
 

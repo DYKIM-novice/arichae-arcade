@@ -80,6 +80,18 @@
   // 중간 보스(적 캐럭선)가 나타날 때
   const MID_TALK = [{ text: '빗속에서 검은 돛이 다가온다. 적 캐럭선!' }, { who: 'noeul', text: '선장님, 포문이 열려요! 포탄 색을 봐요!' }];
 
+  // 부두 상점 (s_shop · 부두 방을 지나고 출항 전) — 회차마다 노을이 말이 바뀌어요
+  const SHOP = [
+    { from: 1, who: 'noeul', text: '선장님, 출항 전에 장비 챙겨요! 조개껍데기는 아껴 봤자 배 밑에 가라앉을 뿐이라고요.' },
+    { from: 3, who: 'noeul', text: '…선장님, 고르는 게 너무 빨라요. 꼭 어제도 여기 와 본 사람처럼.' },
+    { from: 6, who: 'danchu', text: '…갑옷부터. 문어는 아파.' }
+  ];
+  // 스탯 점수 화면 (보스를 잡은 뒤) 위 한 줄
+  const STAT_SUB = {
+    caravel: '적 캐럭선을 쓰러뜨렸어요! 점수를 나눠 선장을 키워요',
+    boss: '폭풍 문어를 쓰러뜨렸어요! 다음 항해를 위해 점수를 나눠요'
+  };
+
   // 클리어 장면 (s_clear) — 누르면 넘어가요
   const CLEAR = [
     { bg: 's_clear', fx: 'stars', text: '폭풍이 걷히고, 별이 쏟아진다.' },
@@ -117,11 +129,12 @@
   }
   const roomTalk = (room, loop) => (ROOM_TALK[room] || []).filter((x) => !x.from || x.from <= loop);
   const innLine = (loop) => byLoop(INN, loop);
+  const shopLine = (loop) => byLoop(SHOP, loop);
 
-  const STORY = { CHAR, ROOMS, OPENING, HARBOR, INN, ROOM_TALK, MID_TALK, CLEAR, sayText, byLoop, artOf, nameOf, harborBeats, roomTalk, innLine };
+  const STORY = { CHAR, ROOMS, OPENING, HARBOR, INN, ROOM_TALK, MID_TALK, SHOP, STAT_SUB, CLEAR, sayText, byLoop, artOf, nameOf, harborBeats, roomTalk, innLine, shopLine };
   // 1장에 쓰는 그림 전부 (미리 불러오기 · 시험)
   STORY.ART_IDS = (function () {
-    const s = new Set(['c_hero_m', 'c_hero_f', 'fx_parry_cutin_m', 'fx_parry_cutin_f', 's_inn', 's_clear', 's_opening_sink']);
+    const s = new Set(['c_hero_m', 'c_hero_f', 'fx_parry_cutin_m', 'fx_parry_cutin_f', 's_inn', 's_clear', 's_opening_sink', 's_shop']);
     Object.keys(CHAR).forEach((k) => { s.add(artOf(k, 'm')); s.add(artOf(k, 'f')); });
     ROOMS.forEach((r) => s.add(r.bg));
     return Array.from(s);
