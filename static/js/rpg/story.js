@@ -13,7 +13,8 @@
     noeul: { name: '노을이', art: 'c_noeul', role: '항해사' },
     danchu: { name: '단추', art: 'c_danchu', role: '갑판장' },
     granny: { name: '부엉이 할머니', art: 'c_owl_granny', role: '늙은 항해사' },
-    bori: { name: '보리', art: 'c_bori', role: '배 고양이' }
+    bori: { name: '보리', art: 'c_bori', role: '배 고양이' },
+    kong: { name: '콩게', art: 'c_kong', role: '밀항자' }
   };
 
   // 방 6개 (방 5개 + 보스) — 배경 · 날씨(효과) · 소리 크기 · 이름
@@ -29,11 +30,12 @@
   // 오프닝 30초 (A안 · 건너뛰기 가능) — 마지막 컷이 끝나면 바로 방 1 (첫 패링 안내)
   const OPENING = [
     { bg: 's_opening_sink', focus: 0.62, fx: 'sink', who: 'noeul', text: '선장님!!', ms: 2600 },
-    { bg: 's_opening_sink', focus: 0.8, fx: 'rewind', text: '배가 가라앉는 순간, 별나침반 바늘이 거꾸로 돌기 시작했다…', ms: 2600 },
+    { bg: 's_opening_sink', focus: 0.8, fx: 'rewind', text: '배가 가라앉는 순간, 누군가 선장의 손을 꽉 붙잡았다. 그리고 별나침반 바늘이 거꾸로 돌기 시작했다…', ms: 3600 },
     { bg: 'bg_harbor', focus: 0.55, fx: 'petals', who: 'hero', text: '…어? 아침이네?', ms: 3600 },
     { bg: 'bg_harbor', focus: 0.55, fx: 'bori', who: 'bori', text: '(배 고양이 보리가 발밑에 몸을 비빈다) 냐아—', ms: 3400 },
     { bg: 'bg_harbor', focus: 0.3, who: 'granny', text: { m: '…쿨쿨. (실눈) 거기 젊은이, 바다는 처음이니?', f: '…쿨쿨. (실눈) 거기 아가씨, 바다는 처음이니?' }, ms: 3600 },
     { bg: 'bg_harbor', focus: 0.3, fx: 'compass', who: 'granny', text: '이 별나침반을 가져가렴. 바람이 멈추는 순간을 놓치지 마렴.', ms: 4200 },
+    { bg: 'bg_harbor', focus: 0.3, who: 'granny', text: '(다시 눈을 감으며) …이번엔 오래 버티렴.', ms: 3000 },
     { bg: 'bg_harbor', focus: 0.7, who: 'noeul', text: '선장님! 짐 쪽에 게들이 몰려와요!', ms: 3000 }
   ];
 
@@ -75,10 +77,10 @@
     [{ who: 'danchu', text: '비 온다. 옆에서 작은 범선이 붙는다. 포탄 온다!' }, { who: 'noeul', text: '왼쪽, 가운데, 오른쪽… 포탄 색을 봐요!' }],
     [{ text: '큰 배가 스치듯 지나간다! 항적 파도가 덮쳐 온다!' }, { who: 'noeul', text: '선체에 부딪히겠어요! 밀어내요!' }],
     [{ who: 'danchu', text: '꽉 잡아!' }],
-    [{ text: '구름 속에서 거대한 눈이 떠졌다. 울음곶의 폭풍 문어!' }, { who: 'noeul', text: '저게… 문어라고요?!' }]
+    [{ text: '폭풍 문어가 촉수를 들어 올린다!' }, { who: 'noeul', text: '저게… 문어라고요?!', to: 1 }, { who: 'danchu', text: '…셋. 둘. 하나. 온다.', from: 5 }]
   ];
   // 중간 보스(적 캐럭선)가 나타날 때
-  const MID_TALK = [{ text: '빗속에서 검은 돛이 다가온다. 적 캐럭선!' }, { who: 'noeul', text: '선장님, 포문이 열려요! 포탄 색을 봐요!' }];
+  const MID_TALK = [{ text: '빗속에서 갈매기 문장의 검은 돛이 다가온다. 적 캐럭선!' }, { who: 'noeul', text: '선장님, 포문이 열려요! 포탄 색을 봐요!', to: 3 }, { who: 'danchu', text: '…셋째 포문. 늘 거기부터야.', from: 4 }];
 
   // 부두 상점 (s_shop · 부두 방을 지나고 출항 전) — 회차마다 노을이 말이 바뀌어요
   const SHOP = [
@@ -98,9 +100,14 @@
     { bg: 's_clear', fx: 'stars', who: 'noeul', text: '(갑판에 셋이 나란히 누워) …있잖아요. 우리 부자가 되면 뭘 살래요?' },
     { bg: 's_clear', fx: 'stars', who: 'hero', text: { m: '나는… 저 별을 살래.', f: '나? …저 별을 살 거야.' } },
     { bg: 's_clear', fx: 'stars', who: 'danchu', text: '…바람.' },
+    { bg: 's_clear', fx: 'stars', who: 'noeul', text: '바람이요? 단추 씨는 참… 그럼 저는 바람 부는 날 먹을 생선 수프 평생치!' },
     { bg: 's_clear', fx: 'newstar', text: '그때, 별나침반 바늘이 스르륵 돌아 처음 보는 별 하나를 가리켰다.' },
+    { bg: 's_clear', fx: 'newstar', text: '나침반 뒷면에 못 보던 무늬가 떠올랐다. 반으로 쪼개진 별 하나. …나머지 반쪽은 어디에?' },
+    { bg: 's_clear', fx: 'stars', text: '멀리 울음곶 바위 틈에서, 작은 그림자 하나가 별빛을 피해 바다 밑으로 스르르 숨었다.' },
     { bg: 's_clear', fx: 'smoke', who: 'noeul', text: '선장님… 저기 수평선에, 연기가 올라와요.' },
     { bg: 's_clear', fx: 'smoke', who: 'danchu', text: '…이번엔, 안 가라앉았네.' },
+    { bg: 's_clear', fx: 'smoke', who: 'hero', text: { m: '…단추. 방금 「이번엔」이라고 했어?', f: '…단추. 방금 「이번엔」이라고 했지?' } },
+    { bg: 's_clear', fx: 'smoke', who: 'danchu', text: '(모른 척 돛줄을 감는다) …잘 자, 선장.' },
     { bg: 's_clear', fx: 'end', text: '다음 이야기: 2장 「안개 섬의 등대」', end: true }
   ];
 
@@ -111,6 +118,123 @@
     (list || []).forEach((x) => { if ((x.from || 1) <= (loop || 1) && (!best || (x.from || 1) >= (best.from || 1))) best = x; });
     return best;
   }
+  /* 방 사이 장면 (rpg_story.md 7-6) — 방 i 에 들어가기 직전, 멈춰서 누르며 보는 짧은 장면 (건너뛰기 가능 · 자동 플레이에선 생략)
+     - BRIDGE[i] = 방 i-1 을 지나고 방 i 로 가는 길 (1: 부두·상점 → 잔잔한 바다 … 5: 울음곶 앞 → 보스)
+     - 한 줄: { who, text, from, to, alt }  · from~to 회차에만 나와요 (to 없으면 끝까지)
+       · alt: 회차마다 돌려 쓰는 여러 벌 (글자 또는 { who, text }) → 회차 % 벌 수
+     - 1회차가 가장 길고(4~6줄), 2회차부터는 선장이 앞일을 말하고 동료가 반응하는 2~3줄
+     - 단추의 '기억' 대사는 3 · 5 · 7회차에 한 단계씩 짙어져요 (7-2 단추 떡밥) */
+  const BRIDGE = [
+    null,
+    { bg: 'bg_calm_sea', focus: 0.5, weather: 'clear', lines: [
+      { to: 1, text: '닻을 올리자 하얀 돛이 바람을 한가득 머금었다. 꽃비 항구가 점점 작아진다.' },
+      { to: 1, who: 'noeul', text: '출항 기념 간식! 노을표 생선 꼬치예요. 선장님 건 제일 큰 거… 어? 보리야!!' },
+      { to: 1, who: 'bori', text: '(꼬치를 물고 돛대 뒤로 쏙 사라진다) 냐앙.' },
+      { to: 1, who: 'kong', text: '(돛줄 틈에서 빨간 게 한 마리가 꼬치 부스러기를 집어 간다) 딸깍딸깍.' },
+      { to: 1, who: 'danchu', text: '…해초 냄새. 저기.' },
+      { to: 1, who: 'noeul', text: '저 초록 섬… 둥둥 떠다녀요? 섬이 왜 움직여요? 갈매기는 또 왜 저렇게 많고!' },
+      { from: 2, to: 5, who: 'hero', alt: [
+        { m: '노을아, 저 초록 섬은 해초 덩어리야. 부딪히면 게가 쏟아져.', f: '노을아, 저 초록 섬은 해초 덩어리야. 부딪히면 게가 쏟아질 거야.' },
+        { m: '갈매기가 먼저 와. 그다음이 해초 덩어리. 다들 준비해.', f: '갈매기가 먼저 올 거야. 그다음이 해초 덩어리. 다들 준비!' }
+      ] },
+      { from: 2, to: 3, who: 'noeul', text: '…네? 망원경도 안 보셨잖아요. 선장님, 오늘 좀 이상해요.' },
+      { from: 4, alt: [
+        { who: 'noeul', text: '또 그 표정! 좋아요, 꼬치는 숨겨 둘게요. 보리 몰래.' },
+        { who: 'bori', text: '(선장 다리에 매달려 꼬치 냄새를 킁킁) 냐아?' },
+        { who: 'noeul', text: '선장님이 맞힌 게 벌써 몇 번째예요? …무서우니까 제 점은 보지 마세요.' }
+      ] },
+      { from: 3, to: 4, who: 'danchu', text: '…보리. 꼬치. 조심.' },
+      { from: 5, to: 6, who: 'danchu', text: '꼬치는 내가 들고 있을게. …보리가 훔쳐 가는 꿈을 꿨거든.' },
+      { from: 7, who: 'danchu', text: '선장. 해초 덩어리, 왼쪽에서 와. …나도 알아. 이상하지.' }
+    ] },
+    { bg: 'bg_rain_deck', focus: 0.5, weather: 'rain', lines: [
+      { to: 1, text: '하늘 끝에서 먹구름이 몰려온다. 첫 빗방울이 갑판에 톡, 톡.' },
+      { to: 1, who: 'noeul', text: '구름이 꼭 문어 다리처럼 꼬였어요. …울음곶 쪽이에요.' },
+      { to: 1, who: 'danchu', text: '…수평선. 검은 돛.' },
+      { to: 1, who: 'noeul', text: '돛에 갈매기 문장? 저런 깃발은 처음 봐요. 설마 해적…?' },
+      { to: 1, who: 'bori', text: '(콩게를 쫓아 갑판을 한 바퀴 돌다가, 꼬리를 꼬집혔다) 냐악!' },
+      { to: 1, who: 'noeul', text: '둘 다 선실로 들어가! …아, 선장님은 말고요. 선장님은 싸우셔야죠!' },
+      { from: 2, who: 'hero', alt: [
+        { m: '작은 범선이 먼저 와. 포탄은 왼쪽, 가운데, 오른쪽. 끝에 캐럭선이 나와.', f: '작은 범선이 먼저 올 거야. 포탄은 왼쪽, 가운데, 오른쪽. 끝에 캐럭선이 나와.' },
+        { m: '검은 돛이 온다. 포탄 색만 보면 돼. 대포 게이지 모아 두자.', f: '검은 돛이 와. 포탄 색만 보면 돼. 대포 게이지 모아 두자!' }
+      ] },
+      { from: 2, to: 4, who: 'noeul', text: '…선장님, 점쟁이 하셔도 되겠어요. 오늘 저녁 메뉴도 맞혀 봐요.' },
+      { from: 5, alt: [
+        { who: 'noeul', text: '선장님이 「검은 돛」 하면 진짜 검은 돛이 와요. 이번엔 「분홍 돛」이라고 해 봐요!' },
+        { who: 'noeul', text: '저 갈매기 깃발… 선장님은 저 배를 알아요? 표정이 꼭 오래 본 사람 같아요.' },
+        { who: 'kong', text: '(보리를 피해 선장 모자 위로 기어오른다) 딸깍!' }
+      ] },
+      { from: 4, to: 6, who: 'danchu', text: '…저 캐럭선. 셋째 포문이 제일 먼저 열려. 왜 아는지는 몰라.' },
+      { from: 7, who: 'danchu', text: '선장. 갈매기 깃발은… 우리를 쫓는 게 아니야. 그 나침반을 쫓는 거야.' }
+    ] },
+    { bg: 'bg_storm_deck', focus: 0.5, weather: 'storm', lines: [
+      { to: 1, text: '캐럭선이 물러가자 바람이 울기 시작했다. 우우— 우우—' },
+      { to: 1, who: 'noeul', text: '이 소리… 울음곶이에요. 옛날 얘기로는, 아무도 기억 못 하는 하루가 저 바위 틈에서 운대요.' },
+      { to: 1, who: 'hero', text: { m: '아무도 기억 못 하는… 하루?', f: '아무도 기억 못 하는 하루…?' } },
+      { to: 1, who: 'noeul', text: '그런 날들이 바다 끝에 쌓이면 그림자가 된대요. …에이, 옛날 얘기예요! 수프나 끓일게요.' },
+      { to: 1, who: 'danchu', text: '…큰 배 온다. 엄청 큰 거. 다들 잡아.' },
+      { from: 2, who: 'hero', alt: [
+        { m: '큰 배가 스쳐 가. 항적 파도부터 막고, 선체는 밀어내!', f: '큰 배가 스쳐 갈 거야. 항적 파도부터 막고, 선체는 밀어내!' },
+        { m: '바람이 울면 큰 배가 와. …알아. 이번에도.', f: '바람이 울면 큰 배가 와. …알아, 이번에도.' }
+      ] },
+      { from: 2, to: 3, who: 'danchu', text: '…알았어. (벌써 키를 돌리고 있다)' },
+      { from: 4, to: 5, who: 'danchu', text: '…왼쪽으로 꺾을게. 왜 왼쪽인지는… 몰라. 그냥 알아.' },
+      { from: 6, alt: [
+        { who: 'noeul', text: '선장님, 울음곶 얘기 기억나요? …혹시 선장님 하루도 저기 쌓여 있어요?' },
+        { who: 'noeul', text: '수프 끓였어요. 선장님 몫은 두 그릇. …왠지 그래야 할 것 같아서요.' }
+      ] },
+      { from: 6, who: 'danchu', text: '…바람 우는 소리, 몇 번째 듣는지 세다가 잊어버렸어.' }
+    ] },
+    { bg: 'bg_cape', focus: 0.5, weather: 'storm', lines: [
+      { to: 1, text: '안개 속에서 검은 바위 곶이 솟아올랐다. 울음곶이다.' },
+      { to: 1, who: 'bori', text: '(털을 잔뜩 곤두세우고 곶을 향해) 하아악!' },
+      { to: 1, who: 'noeul', text: '보리가 저러는 거 처음 봐요… 저기 뭐가 있어요?' },
+      { to: 1, who: 'danchu', text: '선장. 나침반.' },
+      { to: 1, text: '별나침반 바늘이 파르르 떤다. 곶 너머, 아주 먼 곳의 무언가를 가리키듯.' },
+      { to: 1, who: 'noeul', text: '(빵 한 조각을 쥐여 주며) 먹고 해요. 배고프면 패링도 늦어요!' },
+      { from: 2, to: 5, who: 'hero', text: { m: '여기선 다 섞여서 와. 범선, 게, 갈매기. 버티면… 그다음이 문어야.', f: '여기선 다 섞여서 올 거야. 범선, 게, 갈매기. 버티면… 그다음이 문어야.' } },
+      { from: 2, to: 3, who: 'noeul', text: '문어요? 오늘 저녁 메뉴 말고요?' },
+      { from: 4, alt: [
+        { who: 'noeul', text: '(빵을 쥐여 주며) 선장님이 아는 거, 나중에 다 말해 줘요. 약속!' },
+        { who: 'bori', text: '(곶을 향해 또 하악질하고는 선장 뒤에 숨는다) 하악… 냥.' }
+      ] },
+      { from: 3, to: 4, who: 'danchu', text: '…여기, 싫어. 이유는 몰라.' },
+      { from: 5, to: 6, who: 'danchu', text: '…발이 기억해. 저 바위 앞에서 미끄러져.' },
+      { from: 7, who: 'danchu', text: '선장. 우리, 몇 번째야? …난 여섯까지 셌어.' }
+    ] },
+    { bg: 'bg_cape', focus: 0.5, weather: 'storm', lines: [
+      { text: '울음소리가 뚝 그쳤다. 바다가 숨을 죽인다.' },
+      { to: 1, who: 'noeul', text: '…조용해요. 너무 조용해요.' },
+      { to: 1, who: 'kong', text: '(선장 장화 속으로 쏙 숨는다) 딸깍…' },
+      { to: 1, text: '먹구름 한가운데서, 등대만 한 눈 하나가 천천히 떠졌다.' },
+      { from: 2, who: 'hero', alt: [
+        { m: '촉수는 세 번, 마지막이 제일 빨라. …이번엔 안 가라앉아.', f: '촉수는 세 번, 마지막이 제일 빨라. …이번엔 안 가라앉을 거야.' },
+        { m: '돛대를 내려찍으면 셋 다 막아. 그러면 끊겨. 스콜은 색만 봐.', f: '돛대를 내려찍으면 셋 다 막아. 그럼 끊겨! 스콜은 색만 봐.' }
+      ] },
+      { from: 2, to: 3, who: 'noeul', text: '…선장님, 꼭 여기 와 본 사람 같아요.' },
+      { from: 4, to: 5, who: 'bori', text: '(선장 발등에 앞발을 툭 올린다. 힘내라는 듯이)' },
+      { from: 6, who: 'danchu', text: '…이번엔, 안 놓쳐.' }
+    ] }
+  ];
+  function bridgeBeats(room, loop) {
+    const B = BRIDGE[room];
+    if (!B) return [];
+    const L = Math.max(1, Math.floor(loop || 1));
+    const out = [];
+    B.lines.forEach((x) => {
+      if ((x.from || 1) > L || (x.to && x.to < L)) return;
+      let who = x.who; let text = x.text;
+      if (x.alt) {
+        const a = x.alt[L % x.alt.length];
+        if (a && typeof a === 'object' && 'text' in a) { who = a.who; text = a.text; } else text = a;
+      }
+      out.push({ bg: B.bg, focus: B.focus, weather: B.weather, who, text, bridge: room });
+    });
+    return out;
+  }
+  // 장면 읽는 시간 어림 (ms) — 글자가 찍히는 시간 + 읽는 시간 + 한 컷 넘기기
+  const readMs = (beats, g) => beats.reduce((s, b) => s + 900 + sayText(b.text, g).length * 70, 0);
+
   const artOf = (who, g) => {
     const c = CHAR[who];
     if (!c) return '';
@@ -147,11 +271,13 @@
     const L = Math.max(1, Math.floor(loop || 1));
     return KONG_SPOTS[(L * 5 + 3) % n];   // 1회차는 부두(처음 방)라 찾기 쉬워요
   }
-  const roomTalk = (room, loop) => (ROOM_TALK[room] || []).filter((x) => !x.from || x.from <= loop);
+  const inLoop = (x, loop) => (!x.from || x.from <= loop) && (!x.to || x.to >= loop);
+  const roomTalk = (room, loop) => (ROOM_TALK[room] || []).filter((x) => inLoop(x, loop));
+  const midTalk = (loop) => MID_TALK.filter((x) => inLoop(x, loop));
   const innLine = (loop) => byLoop(INN, loop);
   const shopLine = (loop) => byLoop(SHOP, loop);
 
-  const STORY = { CHAR, ROOMS, OPENING, HARBOR, INN, ROOM_TALK, MID_TALK, SHOP, STAT_SUB, CLEAR, sayText, byLoop, artOf, nameOf, harborBeats, roomTalk, innLine, shopLine, KONG_SPOTS, kongSpot };
+  const STORY = { CHAR, ROOMS, OPENING, HARBOR, INN, ROOM_TALK, MID_TALK, SHOP, STAT_SUB, CLEAR, BRIDGE, sayText, byLoop, artOf, nameOf, harborBeats, bridgeBeats, readMs, roomTalk, midTalk, innLine, shopLine, KONG_SPOTS, kongSpot };
   // 1장에 쓰는 그림 전부 (미리 불러오기 · 시험)
   STORY.ART_IDS = (function () {
     const s = new Set(['c_hero_m', 'c_hero_f', 'fx_parry_cutin_m', 'fx_parry_cutin_f', 's_inn', 's_clear', 's_opening_sink', 's_shop', 'c_kong', 'c_bori']);

@@ -20,7 +20,9 @@
        · 보리: 콩게 쪽을 쳐다보며 힌트 · 여관 정산에서 선장 곁에 웅크림 · 강반격·일제 사격·콩게 찾기 때 꼬리를 세워요
        · 설정 '화풍 바꾸기' (게임 일러스트 ↔ 고전 유화 · 기기에 저장 · 없는 그림은 게임 일러스트로)
        · 폭풍 문어는 화면을 거의 채울 만큼 크게
-   - 시험용 주소: ?auto=kid|teen|adult (자동 플레이어가 하고 장면도 저절로 넘겨요) · &speed=1~8 · &g=m|f
+   - 4단계 (rpg_story.md 7절 '전체 시나리오'): 방 사이 장면 (story.js BRIDGE · roomBridge) — 방에 들어가기 직전 sim 을 멈추고
+       짧은 대화 (1회차 길게, 회차가 쌓이면 선장이 앞일을 말하고 동료가 반응 · 건너뛰기 가능 · 자동 플레이에선 생략)
+   - 시험용 주소: ?auto=kid|teen|adult (자동 플레이어가 하고 장면도 저절로 넘겨요 · 방 사이 장면은 &story=1 일 때만) · &speed=1~8 · &g=m|f
    - 시험 손잡이: window.__ch1 */
 (function () {
   'use strict';
@@ -43,6 +45,7 @@
   /* ---------------- 시험용 주소 ---------------- */
   const Q = new URLSearchParams(location.search);
   const AUTO = S.SKILLS[Q.get('auto')] ? Q.get('auto') : '';
+  const STORY_AUTO = Q.get('story') === '1';   // 시험용: 자동 플레이에서도 방 사이 장면을 보여 줘요
   const SPEED = clamp(Number(Q.get('speed')) || 1, 1, 8);
 
   /* 손맛 숫자 (데모에서 사용자가 괜찮다고 한 기본값) */
@@ -455,7 +458,7 @@
      이야기 장면 (오프닝 · 회귀 뒤 항구 · 클리어) — 누르면 넘어가요 · 오프닝은 저절로
      ================================================================ */
   function playScene(beats, o) {
-    G.token++;
+    if (!(o && o.keep)) G.token++;   // keep: 판 도중(방 사이 장면)엔 걸어 둔 타이머를 지우지 않아요
     G.scene = { beats, i: -1, o: o || {}, b: null, t: 0, typed: 0, full: '' };
     $('banner').classList.remove('on'); bannerT = 0;
     setMode('scene');
@@ -470,7 +473,7 @@
     const b = sc.beats[sc.i];
     sc.b = b; sc.t = 0; sc.typed = 0; sc.full = ST.sayText(b.text, G.g);
     setBg(b.bg, b.focus == null ? 0.5 : b.focus, false);
-    setWeather(FX_WEATHER[b.fx] || (b.bg === 'bg_harbor' ? 'petals' : b.bg === 's_clear' ? 'night' : 'none'));
+    setWeather(FX_WEATHER[b.fx] || b.weather || (b.bg === 'bg_harbor' ? 'petals' : b.bg === 's_clear' ? 'night' : 'none'));
     const say = $('say');
     say.classList.toggle('nar', !b.who);
     say.classList.toggle('endcard', !!b.end);
@@ -487,6 +490,7 @@
     if (b.fx === 'rewind') { sndRewind(2.4); bubbleBurst(50); }
     if (b.fx === 'compass' || b.fx === 'newstar') sndChing(7, true);
     if (b.who === 'bori') sndMeow();
+    if (b.who === 'kong') sndCard();
     if (b.fx === 'end') sndTitle(true);
   }
   function endScene() {
@@ -531,6 +535,18 @@
     $('loopChip').textContent = `${G.meta.loop}회차${G.meta.stars ? ' ★' + G.meta.stars : ''}`;
     hudLast.sh = -1;
     view = snap();
+  }
+  /* 방 사이 장면 (story.js BRIDGE · rpg_story.md 7-6) — 방 i 에 들어가기 직전에 sim 을 멈추고 짧게 보여 줘요
+     - 건너뛰기 단추로 한 번에 넘김 · 자동 플레이(?auto=)에선 생략 (&story=1 이면 저절로 넘기며 보여 줘요) */
+  function roomBridge(i) {
+    const beats = AUTO && !STORY_AUTO ? [] : ST.bridgeBeats(i, G.meta.loop);
+    if (!beats.length || G.ending) { enterRoom(i, false); return; }
+    playScene(beats, { auto: false, skip: true, keep: true, onDone: () => {
+      if (!G.W || G.ending) return;
+      setMode('play');
+      hudLast.sh = -1;
+      enterRoom(i, false);
+    } });
   }
   function enterRoom(i, first) {
     G.room = i;
@@ -578,6 +594,7 @@
         S.step(W, DT); simAcc -= DT; n++;
         drain();
         if (G.sink) { simAcc = 0; break; }
+        if (G.mode !== 'play') { simAcc = 0; break; }   // 방 사이 장면이 열리면 sim 을 멈춰요
       }
       if (n >= 60) simAcc = 0;
     } else if (AUTO && clock - tut.heldAt > 500) onPress(tut.c);
@@ -668,7 +685,7 @@
         const nm = $('foeName'); nm.innerHTML = '';
         if (d.mid || d.boss) { const em = document.createElement('em'); em.textContent = d.boss ? '보스' : '중간 보스'; nm.append(em); }
         nm.append(d.name);
-        if (d.mid) { banner('중간 보스!', d.name, 2200, 'huge'); talk(ST.MID_TALK); sndThunder(0.1); fx.trauma = Math.min(1, fx.trauma + 0.3); }
+        if (d.mid) { banner('중간 보스!', d.name, 2200, 'huge'); talk(ST.midTalk(G.meta.loop)); sndThunder(0.1); fx.trauma = Math.min(1, fx.trauma + 0.3); }
         break;
       }
       case 'kill': {
@@ -693,7 +710,7 @@
       case 'pts': G.ptsKind = e.kind; addPop('스탯 점수 +' + e.n + '!', '#9fd8ff', 0.95, -40); break;
       case 'shop': after(AUTO ? 300 : 700, showShop); break;
       case 'pick': sndCard(); break;
-      case 'room': $('foe').classList.add('off'); G.foe = null; enterRoom(e.room, false); break;
+      case 'room': $('foe').classList.add('off'); G.foe = null; roomBridge(e.room); break;
       case 'down': sndHurt(); vib([100, 50, 200]); break;
       case 'wipe': endRun(false); break;
       case 'clear': endRun(true); break;
