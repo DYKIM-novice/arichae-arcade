@@ -55,7 +55,7 @@
     danchu: [
       { from: 1, text: '…' },
       { from: 3, text: '…또야?' },
-      { from: 5, text: '선장. 이번엔 대포 밧줄 내가 묶을게.' },
+      { from: 5, text: '선장. 이번엔 대포는 내가 장전할게. 신호만 줘.' },
       { from: 7, text: '…선장. 이상한 꿈을 꿨어. 배가 가라앉는 꿈. 한 번이 아니야.' }
     ]
   };
@@ -72,7 +72,7 @@
   const ROOM_TALK = [
     [{ who: 'noeul', text: '게들이 또 짐을 노려요! 선장님, 막아요!', from: 2 }],
     [{ who: 'noeul', text: '바람이 이상해… 갈매기들이 돛 위로 몰려와요!' }, { text: '해초 덩어리에 부딪히자 갑판으로 게가 쏟아진다!' }],
-    [{ who: 'danchu', text: '비 온다. 대포 밧줄이 풀렸어. 굴러온다!' }],
+    [{ who: 'danchu', text: '비 온다. 옆에서 작은 범선이 붙는다. 포탄 온다!' }, { who: 'noeul', text: '왼쪽, 가운데, 오른쪽… 포탄 색을 봐요!' }],
     [{ text: '큰 배가 스치듯 지나간다! 항적 파도가 덮쳐 온다!' }, { who: 'noeul', text: '선체에 부딪히겠어요! 밀어내요!' }],
     [{ who: 'danchu', text: '꽉 잡아!' }],
     [{ text: '구름 속에서 거대한 눈이 떠졌다. 울음곶의 폭풍 문어!' }, { who: 'noeul', text: '저게… 문어라고요?!' }]
@@ -127,14 +127,34 @@
     if (loop >= 2) out.splice(1, 0, { bg: 'bg_harbor', focus: 0.55, fx: 'bori', who: 'bori', text: '(보리가 꼬리를 세우고 다가온다) 냐아—' });
     return out;
   }
+  /* 숨은 콩게 (밀항자 붉은 게 · 숨은그림) — 회차마다 숨는 곳이 바뀌어요 (같은 회차면 늘 같은 곳)
+     - room: 방 번호(0 부두 ~ 4 울음곶 앞) · x, y: 싸움 화면 안 위치 비율 (y 는 배 난간 위 높이 기준, 'rail' 이면 난간 뒤에서 빼꼼)
+     - how: rail 난간 뒤에서 빼꼼 · edge 화면 옆에서 빼꼼 · hang 밧줄에 매달림
+     - 보리(배 고양이)가 이 쪽을 쳐다보며 힌트를 줘요 */
+  const KONG_SPOTS = [
+    { room: 0, x: 0.12, how: 'rail', where: '부두 난간 뒤' },
+    { room: 0, x: 0.86, y: 0.24, how: 'hang', where: '항구 밧줄' },
+    { room: 1, x: 0.84, how: 'rail', where: '오른쪽 난간 뒤' },
+    { room: 1, x: 0.04, y: 0.5, how: 'edge', where: '왼쪽 돛줄 사이' },
+    { room: 2, x: 0.34, how: 'rail', where: '빗물 고인 난간' },
+    { room: 2, x: 0.96, y: 0.42, how: 'edge', where: '오른쪽 돛대 뒤' },
+    { room: 3, x: 0.14, y: 0.24, how: 'hang', where: '폭풍 속 밧줄' },
+    { room: 4, x: 0.7, how: 'rail', where: '울음곶 앞 난간' }
+  ];
+  // loop 회차의 숨은 곳 (5 와 8 은 서로소 → 8회차마다 한 바퀴 · 바로 다음 회차와는 늘 달라요)
+  function kongSpot(loop) {
+    const n = KONG_SPOTS.length;
+    const L = Math.max(1, Math.floor(loop || 1));
+    return KONG_SPOTS[(L * 5 + 3) % n];   // 1회차는 부두(처음 방)라 찾기 쉬워요
+  }
   const roomTalk = (room, loop) => (ROOM_TALK[room] || []).filter((x) => !x.from || x.from <= loop);
   const innLine = (loop) => byLoop(INN, loop);
   const shopLine = (loop) => byLoop(SHOP, loop);
 
-  const STORY = { CHAR, ROOMS, OPENING, HARBOR, INN, ROOM_TALK, MID_TALK, SHOP, STAT_SUB, CLEAR, sayText, byLoop, artOf, nameOf, harborBeats, roomTalk, innLine, shopLine };
+  const STORY = { CHAR, ROOMS, OPENING, HARBOR, INN, ROOM_TALK, MID_TALK, SHOP, STAT_SUB, CLEAR, sayText, byLoop, artOf, nameOf, harborBeats, roomTalk, innLine, shopLine, KONG_SPOTS, kongSpot };
   // 1장에 쓰는 그림 전부 (미리 불러오기 · 시험)
   STORY.ART_IDS = (function () {
-    const s = new Set(['c_hero_m', 'c_hero_f', 'fx_parry_cutin_m', 'fx_parry_cutin_f', 's_inn', 's_clear', 's_opening_sink', 's_shop']);
+    const s = new Set(['c_hero_m', 'c_hero_f', 'fx_parry_cutin_m', 'fx_parry_cutin_f', 's_inn', 's_clear', 's_opening_sink', 's_shop', 'c_kong', 'c_bori']);
     Object.keys(CHAR).forEach((k) => { s.add(artOf(k, 'm')); s.add(artOf(k, 'f')); });
     ROOMS.forEach((r) => s.add(r.bg));
     return Array.from(s);

@@ -8,13 +8,23 @@
          (난이도 고르기는 없어요: 회귀할수록 쉬워지니까 한 가지로 충분해요)
        · 적 공격의 hits 는 '타 수'예요 (서버 rpg.py 도 그대로 읽어요). 실제 시각·간격·색은 sim.js 가 만들어요
    - 1장 「꽃비 항구와 울음곶」 (rpg_story.md 6절): 적 열쇠(mushroom·bat·golem·boss)는 저장·서버·시험과 맞추려고 그대로 두고
-     이름과 그림(art = static/img/rpg/<화풍>/<art>.webp)만 바꿨어요 · 집게 게 · 갈매기 떼 · 구르는 대포 · 짐 상자 · 적 캐럭선(중간 보스, mid) · 폭풍 문어
+     이름과 그림(art = static/img/rpg/<화풍>/<art>.webp)만 바꿨어요 · 집게 게 · 갈매기 떼 · 작은 적 범선 · 적 캐럭선(중간 보스, mid) · 폭풍 문어
+       · 3단계(사용자 결정): 구르는 대포(golem)·짐 상자(crates)는 빼고, 그 두 자리(체력·경험치·조개·간격은 그대로)를 '작은 적 범선'(그림 e_sloop, 옆에서 나타나 색 포탄을 왼·가운데·오른쪽에서 연달아 쏨)이 써요
+         · 열쇠 golem = 튼튼한 범선 · crates = 가벼운 범선 · 여러 발 포격은 패링 반격이 여러 번 나가 쉬워지므로 한 발 피해를 조금 올려 예전 밸런스(아이 6 · 중학생 2 · 어른 1회차, harness 중앙값)에 맞췄어요
+         · ship = 배(포탄 격추 연출 · 일제 사격으로 끝내면 격침) · e_sloop 그림이 아직 없으면 e_caravel 을 작게 옆으로 그려요 (art.js)
    - 2단계 돈·장비·스탯 (rpg_story.md 6절)
        · 적의 shell = 쓰러뜨리면 받는 조개껍데기 · pts = 쓰러뜨리면 받는 스탯 점수 (캐럭선·문어)
        · econ: 패링 한 번 조개 = parry + ⌊comboStep × (콤보 − 1)⌋ (최대 comboMax) · 상점은 shopAfter 번 방(0 = 부두)을 지나 출항 전
                weapons atk = 반격·강반격 피해 +비율 · armors def = 받는 피해 −비율 · price = 조개 값 (회귀하면 돈·장비 0)
        · stats: 처음 base · 힘 str = 반격 +비율/점 · 민첩 agi = 판정 +ms/점 (agiCap 까지) · 체력 vit = 최대 HP +/점 · keep = 회귀 때 남는 비율(50%)
-       · 2단계 밸런스(자동 플레이어 중앙값 아이 5 · 중학생 2 · 어른 1회차)에 맞춰 적 피해를 약 20% 올렸어요 (스콜 빗줄기 합 36은 그대로) */
+       · 2단계 밸런스(자동 플레이어 중앙값 아이 5 · 중학생 2 · 어른 1회차)에 맞춰 적 피해를 약 20% 올렸어요 (스콜 빗줄기 합 36은 그대로)
+   - 3단계 범선 전투 (rpg_story.md 6절 '범선 전투') — 1장 화면(makeWorld 의 cannon: true)에서만 켜져요 (다른 화면은 예전 필살 그대로)
+       · hero.cannon = 대포 게이지 · 일제 사격: max 게이지 끝 · parry 패링 한 번에 차는 양(필살 충전 카드 배율 적용)
+               · 반격·자동 공격·맞음으로는 안 차요 · 맞아도 줄지 않아요(아이들이 모은 게 사라지지 않게) · 쏘면 0
+               · win 세 버튼을 이 시간(ms) 안에 다 누르면 일제 사격 · mult 일제 사격 피해 배율(공격력 × mult, 필살 강화 카드 배율 적용)
+               · delay 포탄이 날아가 닿는 시간 · inv 쏘는 동안 적 공격이 빗나가는 시간 · stop 맞은 적이 멈칫하는 시간
+       · 강반격(3연속 패링)은 화면에서 '우리 대포 한 발'로 보여 줘요 (숫자는 strong 그대로)
+       · 적의 sinkShell = 일제 사격으로 끝내면(격침) 더 받는 조개 · econ.kong = 숨은 콩게를 찾으면 받는 조개 (한 회차 한 번) */
 (function (root) {
   'use strict';
   const DATA = /*JSON*/{
@@ -34,6 +44,7 @@
       "slowmo": 300, "slowScale": 0.22, "parryStop": 120,
       "hurtMs": 300, "wallCut": 0.15,
       "gaugeMax": 250, "gaugeHit": 2, "gaugeParry": 30, "gaugeHurt": 4,
+      "cannon": {"max": 100, "parry": 15, "win": 200, "mult": 20, "delay": 260, "inv": 0, "stop": 160},
       "spec": {"dur": 1150, "hits": 5, "gap": 170, "first": 260, "mult": 2.0, "invuln": 1350, "win": 120},
       "lvAtk": 0.15, "lvHp": 20, "lvHeal": 0.3,
       "xpBase": 20, "xpGrow": 5,
@@ -57,21 +68,21 @@
         ]
       },
       "golem": {
-        "name": "구르는 대포", "art": "e_cannon", "hp": 1610, "xp": 12, "shell": 10, "size": 1.25, "first": 1200, "gap": [1700, 2500], "stun": 1000,
+        "name": "작은 적 범선", "art": "e_sloop", "hp": 1610, "xp": 12, "shell": 10, "sinkShell": 8, "size": 1.25, "first": 1200, "gap": [1700, 2500], "stun": 1000, "ship": true,
         "pats": [
-          {"id": "slam", "name": "대포 돌진", "w": 2, "wind": 1500, "hits": [0], "dmg": 28, "icon": "g", "rec": 400, "vuln": 1700},
-          {"id": "poke", "name": "포신 휘두르기", "w": 1, "wind": 1000, "hits": [0], "dmg": 13, "icon": "g", "rec": 300}
+          {"id": "slam", "name": "세 발 연속 포격", "w": 2, "wind": 1500, "hits": [0, 450, 900], "dmg": 12, "icon": "g", "rec": 400, "vuln": 1700},
+          {"id": "poke", "name": "한 발 포격", "w": 1, "wind": 1000, "hits": [0], "dmg": 16, "icon": "g", "rec": 300}
         ]
       },
       "crates": {
-        "name": "미끄러지는 짐 상자", "art": "e_crates", "hp": 760, "xp": 7, "shell": 7, "size": 1.0, "first": 900, "gap": [1300, 2000], "stun": 900,
+        "name": "작은 적 범선", "art": "e_sloop", "hp": 760, "xp": 7, "shell": 7, "sinkShell": 5, "size": 1.0, "first": 900, "gap": [1300, 2000], "stun": 900, "ship": true,
         "pats": [
-          {"id": "slide", "name": "상자 미끄럼", "w": 2, "wind": 1000, "hits": [0], "dmg": 14, "icon": "g", "rec": 320},
-          {"id": "pile", "name": "와르르 두 상자", "w": 1, "wind": 1100, "hits": [0, 450], "dmg": 10, "icon": "g", "rec": 350}
+          {"id": "slide", "name": "두 발 포격", "w": 2, "wind": 1000, "hits": [0, 450], "dmg": 10, "icon": "g", "rec": 320},
+          {"id": "pile", "name": "세 발 연속 포격", "w": 1, "wind": 1100, "hits": [0, 450, 900], "dmg": 9, "icon": "g", "rec": 350}
         ]
       },
       "caravel": {
-        "name": "적 캐럭선", "art": "e_caravel", "hp": 1600, "xp": 24, "shell": 25, "pts": 4, "size": 1.4, "first": 1400, "gap": [1300, 2000], "stun": 900, "mid": true,
+        "name": "적 캐럭선", "art": "e_caravel", "hp": 1600, "xp": 24, "shell": 25, "sinkShell": 20, "pts": 4, "size": 1.4, "first": 1400, "gap": [1300, 2000], "stun": 900, "mid": true, "ship": true,
         "pats": [
           {"id": "volley", "name": "일제 포격", "w": 2, "wind": 1300, "hits": [0, 450, 900], "dmg": 11, "icon": "g", "rec": 450},
           {"id": "ram", "name": "뱃머리 들이받기", "w": 1, "wind": 1600, "hits": [0], "dmg": 22, "icon": "g", "rec": 500, "vuln": 1500}
@@ -109,7 +120,7 @@
       {"id": "potion", "c": "x", "name": "회복 물약", "desc": "체력 40% 회복", "max": 99}
     ],
     "econ": {
-      "shopAfter": 0, "parry": 1, "comboStep": 0.5, "comboMax": 6,
+      "shopAfter": 0, "parry": 1, "comboStep": 0.5, "comboMax": 6, "kong": 5,
       "weapons": [
         {"id": "w1", "name": "녹슨 커틀러스", "desc": "반격 피해 +20%", "atk": 0.2, "price": 20},
         {"id": "w2", "name": "선원의 세이버", "desc": "반격 피해 +40%", "atk": 0.4, "price": 45},

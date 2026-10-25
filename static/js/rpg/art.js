@@ -2,18 +2,41 @@
    - 그림 경로는 이 파일의 src(id) 하나만 만들어요 → static/img/rpg/<화풍>/<id>.webp
        · 화풍 이름 하나(ART_THEME)만 바꾸면 전체가 바뀌어요 (rpg_story.md 6절 '화풍 확정')
        · 다른 화풍(예: 'oil')에 그 그림이 아직 없으면 기본 화풍('gameart') 그림을 대신 써요 (빈 화면 금지)
-       · 화풍 바꾸기 버튼(설정)은 다음 단계예요 → setTheme(name) 이 그 연결 고리예요
+       · 화풍마다 '있는 그림' 목록(THEME_FILES)을 먼저 봐요 → 없는 그림은 처음부터 기본 화풍 주소로 읽어서 깨진 그림·404가 안 나요
+           (고전 유화 그림을 넣으면 THEME_FILES.oil 에 id 를 적거나, 다 갖춰지면 '*' 로 바꿔요)
+       · 화풍 바꾸기(설정 화면 · 기기에 저장)는 setTheme(name) → 새 그림을 다 읽은 뒤에 바꿔 끼워요 (바꾸는 동안 빈 화면 없음)
+       · 대신 그림(ALIAS): 아직 없는 그림은 비슷한 그림으로 그려요 (예: 작은 적 범선 e_sloop → e_caravel 을 작게 옆으로)
+           → static/img/rpg/gameart/e_sloop.webp 를 넣기만 하면 코드 수정 없이 그 그림이 나와요 (isAlias(id) 로 화면이 그리는 법을 바꿔요)
    - 인물·적 그림은 어두운 단색 배경이 붙어 있어요 → sprite(id) 가 가장자리 배경을 지우고(색 거리 + 둥근 깃털)
      그림 크기에 맞게 잘라서 캔버스로 돌려줘요. 상자처럼 보이지 않게요.
-       · 장면이 통째로 그려진 그림(짐 상자 · 폭풍 문어)은 둥근 비네트로만 부드럽게 녹여요
+       · 장면이 통째로 그려진 그림(폭풍 문어)은 둥근 비네트로만 부드럽게 녹여요
    - 페이지 위치와 상관없이 쓰려고 이 파일 주소에서 static/ 뿌리를 알아내요 (index.html 의 대기실 · rpg.html 둘 다) */
 (function (root) {
   'use strict';
 
   const ART_THEME_DEFAULT = 'gameart';
   const KEY = 'arichae_rpg_art';
+  // 고를 수 있는 화풍 (설정 화면 순서) · 이름은 화면에 보이는 말
+  const THEMES = [
+    { id: 'gameart', name: '게임 일러스트' },
+    { id: 'oil', name: '고전 유화' }
+  ];
+  // 화풍마다 실제로 있는 그림 ('*' = 전부) — 없는 그림은 기본 화풍에서 가져와요
+  const THEME_FILES = {
+    gameart: '*',
+    oil: []
+  };
+  // 아직 그림이 없을 때 대신 그릴 그림 (파일을 넣으면 저절로 진짜 그림을 써요)
+  const ALIAS = { e_sloop: 'e_caravel' };
+  const okTheme = (t) => THEMES.some((x) => x.id === t);
   let theme = ART_THEME_DEFAULT;
-  try { const t = localStorage.getItem(KEY); if (t && /^[a-z0-9_-]+$/.test(t)) theme = t; } catch (e) { /* 저장소가 막혀도 기본 화풍 */ }
+  try { const t = localStorage.getItem(KEY); if (okTheme(t)) theme = t; } catch (e) { /* 저장소가 막혀도 기본 화풍 */ }
+
+  // 이 그림을 어느 화풍 폴더에서 읽을지 (그 화풍에 없으면 기본 화풍)
+  function has(th, id) { const f = THEME_FILES[th]; return f === '*' || (Array.isArray(f) && f.indexOf(id) >= 0); }
+  function resolve(id, th) { const t = th || theme; return has(t, id) ? t : ART_THEME_DEFAULT; }
+  // 그 화풍에 진짜로 있는 그림 수 (설정 화면 안내용)
+  function count(th, ids) { return (ids || []).filter((id) => THEME_FILES[th] === '*' || has(th, id)).length; }
 
   // static/ 뿌리 (…/static/js/rpg/art.js → …/static/)
   let ROOT = 'static/';
@@ -22,32 +45,45 @@
     if (me) ROOT = me.replace(/js\/rpg\/art\.js(\?.*)?$/, '');
   } catch (e) { /* 그대로 */ }
 
-  function src(id, th) { return ROOT + 'img/rpg/' + (th || theme) + '/' + id + '.webp'; }
+  function rawSrc(id, th) { return ROOT + 'img/rpg/' + th + '/' + id + '.webp'; }
+  function src(id, th) { return rawSrc(id, resolve(id, th)); }
 
   // 그림마다 다르게 다룰 것 (없으면 '배경 지우기 + 자르기')
   const OPT = {
-    e_crates: { mode: 'vignette' },
     e_octopus: { mode: 'vignette' }
   };
 
   const img = {};       // id → Image (다 읽은 것만)
   const wait = {};      // id → Promise
   const spr = {};       // id → 캔버스 (배경 지운 것)
+  const aliased = {};   // id → true (진짜 그림이 없어 ALIAS 그림을 쓰는 중)
 
-  function loadOne(id) {
-    if (wait[id]) return wait[id];
-    wait[id] = new Promise((done) => {
-      const tryLoad = (th, fallback) => {
+  // 그림 하나 읽기: 고른 화풍(있는 것만) → 기본 화풍 → 대신 그림(ALIAS) 순서
+  function fetchImg(id, th) {
+    return new Promise((done) => {
+      const steps = [];
+      const t0 = resolve(id, th);
+      steps.push([id, t0]);
+      if (t0 !== ART_THEME_DEFAULT) steps.push([id, ART_THEME_DEFAULT]);
+      if (ALIAS[id]) { const a = ALIAS[id]; steps.push([a, resolve(a, th)]); if (resolve(a, th) !== ART_THEME_DEFAULT) steps.push([a, ART_THEME_DEFAULT]); }
+      let k = 0;
+      const next = () => {
+        if (k >= steps.length) { if (!ALIAS[id]) console.warn('[rpg-art] 그림을 못 읽었어요:', id); done(null); return; }
+        const [sid, sth] = steps[k++];
         const im = new Image();
         im.decoding = 'async';
-        im.onload = () => { img[id] = im; done(im); };
-        im.onerror = () => {
-          if (fallback && th !== ART_THEME_DEFAULT) tryLoad(ART_THEME_DEFAULT, false);
-          else { console.warn('[rpg-art] 그림을 못 읽었어요:', id); done(null); }
-        };
-        im.src = src(id, th);
+        im.onload = () => { im._alias = sid !== id; done(im); };
+        im.onerror = next;
+        im.src = rawSrc(sid, sth);
       };
-      tryLoad(theme, true);
+      next();
+    });
+  }
+  function loadOne(id) {
+    if (wait[id]) return wait[id];
+    wait[id] = fetchImg(id, theme).then((im) => {
+      if (im) { img[id] = im; aliased[id] = !!im._alias; }
+      return im;
     });
     return wait[id];
   }
@@ -123,17 +159,26 @@
     return c;
   }
 
+  // 화풍 바꾸기: 주소가 달라지는 그림만 새로 읽고, 다 읽으면 한꺼번에 바꿔 끼워요 (그동안은 예전 그림 그대로)
   function setTheme(name) {
-    if (!name || name === theme) return;
+    if (!okTheme(name) || name === theme) return Promise.resolve(false);
+    const prev = theme;
     theme = name;
     try { localStorage.setItem(KEY, name); } catch (e) { /* 이번 접속만 */ }
-    Object.keys(img).forEach((k) => { delete img[k]; delete wait[k]; delete spr[k]; });
+    const ids = Object.keys(img).filter((id) => resolve(id, name) !== resolve(id, prev) || (ALIAS[id] && resolve(ALIAS[id], name) !== resolve(ALIAS[id], prev)));
+    return Promise.all(ids.map((id) => fetchImg(id, name).then((im) => [id, im]))).then((list) => {
+      list.forEach(([id, im]) => { if (im) { img[id] = im; aliased[id] = !!im._alias; wait[id] = Promise.resolve(im); delete spr[id]; } });
+      return true;
+    });
   }
+  function isAlias(id) { return !!aliased[id]; }
 
-  root.RpgArt = {
-    ART_THEME_DEFAULT,
+  const API = {
+    ART_THEME_DEFAULT, THEMES, THEME_FILES, ALIAS,
     get theme() { return theme; },
     get root() { return ROOT; },
-    src, load: loadOne, preload, get, sprite, setTheme
+    src, resolve, has, count, load: loadOne, preload, get, sprite, setTheme, isAlias
   };
+  root.RpgArt = API;
+  if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })(typeof window !== 'undefined' ? window : globalThis);

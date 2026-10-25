@@ -22,6 +22,7 @@
   const DT = 8;
   const COLORS = ['r', 'g', 'b'];
   const EC = D.econ;
+  const CN = HD.cannon;
   const SD = D.stats;
   const STAT_KEYS = ['str', 'agi', 'vit'];
 
@@ -135,6 +136,15 @@
     return true;
   }
   function leaveShop(W, h) { h.shopped = true; }
+  // 숨은 콩게를 찾았어요 → 조개 econ.kong (한 회차에 한 번 · 어디 숨는지는 story.js kongSpot)
+  function findKong(W, h) {
+    if (!W || !h || W.kong) return false;
+    W.kong = true;
+    h.stat.kongs++;
+    addShell(W, h, EC.kong || 0, 'kong');
+    emit(W, 'kong', { h: h.id, n: EC.kong || 0 });
+    return true;
+  }
   // 스탯 점수 쓰기 (보스를 잡으면 받은 점수)
   function spendPt(h, k) {
     if (!(h.pts > 0) || STAT_KEYS.indexOf(k) < 0) return false;
@@ -182,12 +192,12 @@
       upg: emptyUpg(), lv: 1, xp: 0, hp: 0, gauge: 0, st: null,
       act: 'walk', actT: 0, step: 0, nextStep: 0, hitDone: false, specN: 0, restUntil: 0, autoN: 0,
       keys: { r: false, g: false, b: false }, lp: { r: -1e9, g: -1e9, b: -1e9 },
-      jd: {}, pend: [], counters: [], streak: 0, combo: 0, killer: '',
+      jd: {}, pend: [], counters: [], hold: [], streak: 0, combo: 0, killer: '',
       frz: 0, inv: 0, down: false, seq: 0,
       cards: null, rerolls: meta.reroll || 0, rerolled: 0, picks: [],
       // 이번 생의 조개 돈 · 장비 (회귀하면 0 · 없음) · 스탯 (회귀해도 오른 만큼의 50% 남아요) · 아직 안 쓴 스탯 점수
       shell: 0, gear: { w: '', a: '' }, stats: fixStats(meta.stats), stats0: fixStats(meta.stats), pts: 0, shopped: false,
-      stat: { hits: 0, parries: 0, hurts: 0, dodges: 0, dealt: 0, taken: 0, specs: 0, kills: 0, strongs: 0, shell: 0, fail: { color: 0, early: 0, late: 0, miss: 0 } }
+      stat: { hits: 0, parries: 0, hurts: 0, dodges: 0, dealt: 0, taken: 0, specs: 0, volleys: 0, kongs: 0, kills: 0, strongs: 0, shell: 0, fail: { color: 0, early: 0, late: 0, miss: 0 } }
     };
     // 전생의 검술(영구) · 스킬 기억(지난 생에서 가장 키운 카드)
     if (meta.combo) h.upg.slash = Math.max(h.upg.slash, meta.combo);
@@ -205,7 +215,8 @@
       t: o.t || 0, seed: o.seed || 1, R: rng(o.seed || 1), loop: o.loop || 1, stars: o.stars || 0,
       heroes: o.heroes || [], enemy: null, atks: [], ev: [],
       phase: 'walk', room: 0, enc: 0, plan: [], spawnAt: 0, cardsAt: 0, endAt: 0, result: '',
-      eidN: 0, aidN: 0, dir: o.dir || null, net: !!o.net, done: {}, killed: 0
+      eidN: 0, aidN: 0, dir: o.dir || null, net: !!o.net, done: {}, killed: 0,
+      cannon: !!o.cannon, kong: false     // cannon: 1장 범선 전투(대포 게이지 · 일제 사격) · kong: 이번 회차에 콩게를 찾았나
     };
     if (!W.dir) W.dir = soloDir;
     if (W.dir.init) W.dir.init(W, o);
@@ -248,23 +259,22 @@
     h.keys[c] = true;
     h.lp[c] = T;
     let r = null;
-    if (fighting(W) && local(h)) r = judgePress(W, h, c, T);
-    specCheck(W, h, T);
+    if (fighting(W) && local(h)) r = armed(W, h) ? armedPress(W, h, c, T) : judgePress(W, h, c, T);
+    if (W.cannon) volleyCheck(W, h, T); else specCheck(W, h, T);
     return r;
   }
-  function release(W, h, c) {
-    if (!h || !h.keys) return;
-    if (COLORS.indexOf(c) >= 0) h.keys[c] = false;
-  }
-  function setAct(W, h, a) {
-    h.act = a; h.actT = 0; h.hitDone = false; h.seq++;
-  }
-  // 누른 버튼 하나 → 어느 타에 쓸지 정해요
-  //   1) 판정 폭 안의 아직 판정 안 된 타 (가장 이른 것) → 색이 같으면 패링, 다르면 '색이 달라요'
-  //   2) 방금 안 눌러서 맞은 타의 바로 뒤(늦음 표시 구간) → '늦어요'로 이름만 바꿔요 (다음 타를 빼앗지 않게)
-  //   3) 판정 폭 바로 앞(시도 구간 250ms) → '빨라요' (그 타는 맞아요)
-  //   그 밖의 누름은 무시해요
-  function judgePress(W, h, c, T) {
+  /* ---------------- 1장 범선 전투: 대포 게이지 · 세 버튼 일제 사격 ----------------
+     - 게이지는 패링으로만 차요 (맞아도 줄지 않아요) · 다 차면 '장전'
+     - 장전된 동안 누름 하나 (세 버튼 동시 누르기와 부딪히지 않게)
+         · 판정 폭 안 + 맞는 색 → 그 자리에서 패링 (보통 때와 똑같이 바로)
+         · 판정 폭 안 + 다른 색 / 판정 폭 바로 앞(빨라요) → 바로 실패로 매기지 않고 win(200ms) 동안 붙잡아 둬요
+             → 그 안에 세 버튼이 다 눌리면 일제 사격 + 붙잡은 누름은 없던 일 (세 버튼 중 맞는 색이 패링해 줘요)
+             → 아니면 그 누름을 원래 시각 그대로 판정 (그사이 다른 누름이 그 타를 패링했으면 없던 일)
+     - 세 버튼을 win 안에 다 누르면 일제 사격 (장전 안 됐으면 volleyNo) */
+  const gaugeMaxOf = (W) => (W && W.cannon ? CN.max : HD.gaugeMax);
+  const armed = (W, h) => !!(W && W.cannon && h.gauge >= CN.max);
+  // 누름 하나가 어느 타에 닿는지 (판정은 하지 않아요)
+  function findPress(W, h, T) {
     const { pre, post } = winOf(W, h);
     let win = null; let early = null; let late = null;
     for (const a of W.atks) {
@@ -279,6 +289,62 @@
         } else if (j.r === 'miss' && T > ti + post && T <= ti + post + HD.lateShow) { if (!late || ti > late.ti) late = { a, i, ti, j }; }
       }
     }
+    return { win, early, late };
+  }
+  function armedPress(W, h, c, T) {
+    const f = findPress(W, h, T);
+    if (f.win && hitsOf(f.win.a)[f.win.i].c === c) return judge(W, h, f.win.a, f.win.i, 'parry', c, T);
+    if (f.win || (!f.late && f.early)) {
+      const x = f.win || f.early;
+      h.hold.push({ c, T, a: x.a, i: x.i, r: f.win ? 'color' : 'early' });
+      return 'hold';
+    }
+    return judgePress(W, h, c, T);
+  }
+  // 붙잡아 둔 누름 판정 (win 이 지났거나, 그 타가 곧 '놓침'으로 처리될 때)
+  function flushHolds(W, h) {
+    if (!h.hold.length) return;
+    const post = winOf(W, h).post;
+    const keep = [];
+    const due = [];
+    for (const x of h.hold) {
+      if (W.t - x.T >= CN.win || W.t > hitsOf(x.a)[x.i].ti + post) due.push(x); else keep.push(x);
+    }
+    h.hold = keep;
+    for (const x of due) {
+      if (h.jd[hitKey(x.a, x.i)] || x.a.broken) continue;     // 그사이 다른 누름이 패링했어요 → 없던 일
+      judge(W, h, x.a, x.i, x.r, x.c, x.T);
+    }
+  }
+  function volleyCheck(W, h, T) {
+    const ts = COLORS.map((k) => h.lp[k]);
+    if (Math.min.apply(null, ts) < T - CN.win) return;
+    COLORS.forEach((k) => { h.lp[k] = -1e9; });
+    if (armed(W, h) && !h.down && W.phase === 'fight' && W.enemy && !W.enemy.dead) {
+      h.gauge = 0;
+      h.hold = [];
+      h.inv = Math.max(h.inv, W.t + CN.inv);
+      h.stat.volleys++;
+      h.counters.push({ at: W.t + CN.delay, mult: volleyMult(h), kind: 'volley' });
+      emit(W, 'volley', { h: h.id, at: W.t + CN.delay });
+    } else emit(W, 'volleyNo', { h: h.id, g: h.gauge, max: CN.max });
+  }
+  // 일제 사격 배율 = mult × 필살 강화 카드 배율 (힘·무기는 반격용이라 안 들어가요)
+  function volleyMult(h) { return CN.mult * (h.st.specMult / HD.spec.mult); }
+  function release(W, h, c) {
+    if (!h || !h.keys) return;
+    if (COLORS.indexOf(c) >= 0) h.keys[c] = false;
+  }
+  function setAct(W, h, a) {
+    h.act = a; h.actT = 0; h.hitDone = false; h.seq++;
+  }
+  // 누른 버튼 하나 → 어느 타에 쓸지 정해요
+  //   1) 판정 폭 안의 아직 판정 안 된 타 (가장 이른 것) → 색이 같으면 패링, 다르면 '색이 달라요'
+  //   2) 방금 안 눌러서 맞은 타의 바로 뒤(늦음 표시 구간) → '늦어요'로 이름만 바꿔요 (다음 타를 빼앗지 않게)
+  //   3) 판정 폭 바로 앞(시도 구간 250ms) → '빨라요' (그 타는 맞아요)
+  //   그 밖의 누름은 무시해요
+  function judgePress(W, h, c, T) {
+    const { win, early, late } = findPress(W, h, T);
     if (win) return judge(W, h, win.a, win.i, hitsOf(win.a)[win.i].c === c ? 'parry' : 'color', c, T);
     if (late) {
       late.j.r = 'late';
@@ -323,6 +389,7 @@
   function heroStep(W, h, dt) {
     if (!local(h)) return;
     const t = W.t;
+    flushHolds(W, h);
     // 닿았는데 아무도 안 누른 타: 판정 폭 뒤(ti + 뒤 폭)가 지나면 진짜로 맞아요
     if (h.pend.length) {
       const post = winOf(W, h).post;
@@ -404,23 +471,25 @@
   function dealHit(W, h, mult, kind) {
     const E = W.enemy;
     if (!E || E.dead || W.phase !== 'fight') return 0;
+    E.lastKind = kind;
     const v = 0.92 + 0.16 * W.R();
     const dmg = Math.max(1, Math.round(h.st.atk * mult * v));
     const got = W.dir.hit(W, h, dmg, kind);
     if (!got) return 0;
     let stop = kind === 'counter' ? HD.parryStop : kind === 'strong' ? HD.strong.stop : kind === 'c3' ? HD.combo[2].stop
-      : kind === 'c2' ? HD.combo[1].stop : kind === 'specEnd' ? 110 : kind === 'spec' ? 45 : HD.combo[0].stop;
+      : kind === 'c2' ? HD.combo[1].stop : kind === 'specEnd' ? 110 : kind === 'spec' ? 45 : kind === 'volley' ? CN.stop : HD.combo[0].stop;
     if (kind[0] === 'c' && kind !== 'counter' && W.t < E.vuln) stop /= HD.chanceSpeed;   // "지금이야!" 동안은 멈춤도 짧게 (리듬 전체가 2배)
     h.frz = Math.max(h.frz, W.t + stop);
     E.frz = Math.max(E.frz, W.t + stop);
     h.stat.hits++; h.stat.dealt += got;
-    if (kind !== 'spec' && kind !== 'specEnd') addGauge(W, h, HD.gaugeHit * (kind === 'strong' ? 3 : 1));
+    if (!W.cannon && kind !== 'spec' && kind !== 'specEnd') addGauge(W, h, HD.gaugeHit * (kind === 'strong' ? 3 : 1));
     return got;
   }
   function addGauge(W, h, n) {
-    const was = h.gauge >= HD.gaugeMax;
-    h.gauge = Math.min(HD.gaugeMax, h.gauge + n * h.st.gaugeMult);
-    if (!was && h.gauge >= HD.gaugeMax) emit(W, 'gaugeFull', { h: h.id });
+    const mx = gaugeMaxOf(W);
+    const was = h.gauge >= mx;
+    h.gauge = Math.min(mx, h.gauge + n * h.st.gaugeMult);
+    if (!was && h.gauge >= mx) emit(W, 'gaugeFull', { h: h.id, cannon: !!W.cannon });
   }
   function heal(W, h, n) {
     if (h.down || n <= 0) return;
@@ -452,7 +521,7 @@
     const strong = h.streak >= h.st.strongNeed;
     if (strong) { h.streak = 0; h.stat.strongs++; }
     if (h.act !== 'spec') setAct(W, h, 'parry');
-    addGauge(W, h, HD.gaugeParry);
+    addGauge(W, h, W.cannon ? CN.parry : HD.gaugeParry);
     heal(W, h, h.st.parryHeal);
     h.counters.push({ at: W.t + HD.counterDelay, mult: (strong ? h.st.strongMult : h.st.counterMult) * cm, kind: strong ? 'strong' : 'counter' });
     h.frz = W.t + HD.parryStop;
@@ -471,14 +540,14 @@
     const dmg = Math.max(1, Math.round(x.d * h.st.take));
     h.hp -= dmg; h.stat.hurts++; h.stat.taken += dmg;
     h.streak = 0; h.combo = 0;
-    addGauge(W, h, HD.gaugeHurt);
+    if (!W.cannon) addGauge(W, h, HD.gaugeHurt);     // 대포 게이지는 맞아도 그대로예요 (늘지도 줄지도 않음)
     if (h.act !== 'spec') setAct(W, h, 'hurt');
     emit(W, 'hurt', { h: h.id, a: a.id, i, dmg, r: r || 'miss', c: x.c });
     W.dir.hurt(W, h, a, i, 'hit', dmg);
     if (h.hp <= 0) knockDown(W, h, a);
   }
   function knockDown(W, h, a) {
-    h.hp = 0; h.down = true; h.pend = []; h.counters = [];
+    h.hp = 0; h.down = true; h.pend = []; h.counters = []; h.hold = [];
     h.killer = a ? a.pat : '';
     setAct(W, h, 'down');
     emit(W, 'down', { h: h.id, pat: h.killer });
@@ -719,12 +788,16 @@
     W.atks.forEach((a) => { a.over = true; a.broken = true; });
     W.killed++;
     if (h) h.stat.kills++;
-    emit(W, 'kill', { e: E.eid, kind: E.kind, boss: E.boss, h: h ? h.id : '' });
+    const by = E.lastKind || '';
     const dk = D.enemies[E.kind] || {};
+    // 일제 사격으로 끝낸 배(sinkShell 이 있는 적) = 격침 → 조개가 더 쏟아져요
+    const sink = by === 'volley' && dk.sinkShell > 0;
+    emit(W, 'kill', { e: E.eid, kind: E.kind, boss: E.boss, h: h ? h.id : '', by, sink });
     W.heroes.forEach((x) => {
       if (!local(x)) return;
-      x.pend = []; gainXp(W, x, E.xp);
+      x.pend = []; x.hold = []; gainXp(W, x, E.xp);
       addShell(W, x, dk.shell || 0, 'kill');
+      if (sink) addShell(W, x, dk.sinkShell, 'sink');
       // 보스(중간 보스 캐럭선 포함)를 잡으면 스탯 점수
       if (dk.pts) { x.pts += dk.pts; emit(W, 'pts', { h: x.id, n: dk.pts, kind: E.kind }); }
     });
@@ -749,7 +822,7 @@
     W.atks = [];
     W.heroes.forEach((h) => {
       if (!local(h)) return;
-      h.jd = {}; h.pend = [];
+      h.jd = {}; h.pend = []; h.hold = [];
       if (h.down) { h.down = false; h.hp = Math.round(h.st.maxHp * HD.reviveHp); setAct(W, h, 'walk'); emit(W, 'revive', { h: h.id }); }
       else heal(W, h, h.st.maxHp * HD.roomHeal);
     });
@@ -858,7 +931,7 @@
       }
     }
     // 3) 필살기: 세 버튼을 거의 같이
-    if (h.gauge >= HD.gaugeMax && t >= b.specAt && !b.q.length && h.act !== 'spec') {
+    if (h.gauge >= gaugeMaxOf(W) && t >= b.specAt && !b.q.length && h.act !== 'spec') {
       let go = sk.spec === 'any';
       if (sk.spec === 'smart' && E) {
         // 틈(기절·지금이야!) 이거나 위기에 공격이 올 때 · 곧 닿는 타가 없을 때
@@ -991,7 +1064,8 @@
     soloDir, startAttack, killEnemy, nextRoom, stunEnemy, breakCheck, rageCheck, emit, heroById,
     makeBrain, botThink, newMeta, fixMeta, settle, nodeCost, buyNode, heroMeta,
     EC, SD, GEAR, STAT_KEYS, STAT_NAME, baseStats, fixStats, statEffect, statText, carryStats, parryShell, addShell,
-    canBuy, buyGear, leaveShop, spendPt, botShop, botStats
+    canBuy, buyGear, leaveShop, spendPt, botShop, botStats,
+    CN, gaugeMaxOf, armed, findPress, armedPress, flushHolds, volleyCheck, volleyMult, findKong
   };
   root.RpgSim = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

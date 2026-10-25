@@ -220,6 +220,28 @@
   .srow.c-r button { background: linear-gradient(180deg, #ff7381, #e3233a); } .srow.c-g button { background: linear-gradient(180deg, #5ef0a0, #14a85a); } .srow.c-b button { background: linear-gradient(180deg, #6fb0ff, #1f5fe0); }
   .srow button:disabled { filter: grayscale(.8) brightness(.5); }
   .srow.up { animation: pick .35s ease-out; }
+
+  /* 3단계: 대포 장전(세 버튼 반짝) · 여관의 보리 · 설정(화풍 바꾸기) */
+  .btn.armed { animation: armed .55s ease-in-out infinite alternate; }
+  @keyframes armed {
+    from { box-shadow: 0 0 0 2px #ffe27a, 0 0 14px 3px rgba(255, 210, 90, .55), inset 0 -6px 0 rgba(0, 0, 0, .28); }
+    to { box-shadow: 0 0 0 5px #fff3b0, 0 0 30px 10px rgba(255, 200, 60, .85), inset 0 -6px 0 rgba(0, 0, 0, .28); filter: brightness(1.18); }
+  }
+  #innPals { display: flex; flex-direction: column; align-items: center; gap: 0; margin-top: -4px; }
+  #innPic { width: 220px; height: 110px; display: block; }
+  #innPal { margin: 0; font-size: 12.5px; font-weight: 800; color: #ffe9b0; text-shadow: 0 2px 4px #000; }
+  #titleSet { position: absolute; right: 12px; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+  #settings { position: absolute; inset: 0; z-index: 12; background: rgba(2, 4, 10, .72); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  #settings .sheet { width: 100%; max-width: 380px; background: rgba(10, 14, 28, .97); border: 1px solid rgba(255, 220, 150, .3); border-radius: 20px;
+    padding: 18px 16px; display: flex; flex-direction: column; gap: 12px; text-align: center; box-shadow: 0 20px 50px rgba(0, 0, 0, .6); }
+  #settings h2 { margin: 0; color: var(--gold); font-size: 24px; }
+  #settings h3 { margin: 0; font-size: 14px; color: #dfe6f3; }
+  #themeRow { display: flex; gap: 10px; }
+  .theme { flex: 1; min-width: 0; border-radius: 16px; border: 2px solid rgba(255, 255, 255, .2); background: rgba(14, 20, 36, .92); color: var(--ink); padding: 14px 6px; font: 900 15px/1.3 var(--font); }
+  .theme.on { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(255, 210, 90, .3); }
+  .theme small { display: block; font-size: 11px; color: var(--dim); font-weight: 700; margin-top: 5px; }
+  .tnote { margin: 0; font-size: 12px; color: #cbd5e6; line-height: 1.55; word-break: keep-all; }
+  #settings .big { align-self: center; }
 </style>
 </head>
 <body>
@@ -242,7 +264,7 @@
     <div id="stats">
       <div id="bars">
         <div class="bar"><b>체력</b><div class="track"><i id="hpFill"></i></div><span id="hpTxt"></span></div>
-        <div class="bar"><b>필살</b><div class="track"><i id="gaFill"></i></div><span id="lvTxt"></span></div>
+        <div class="bar"><b>대포</b><div class="track"><i id="gaFill"></i></div><span id="lvTxt"></span></div>
       </div>
       <div id="streak"><span id="streakN">x2</span><small>연속 패링</small></div>
     </div>
@@ -263,6 +285,7 @@
   <button class="chip hide" id="skip">건너뛰기 ▶▶</button>
 
   <div id="title" class="over hide">
+    <button class="chip" id="titleSet">⚙ 설정</button>
     <div class="ch">제1장</div>
     <h1>꽃비 항구와<br>울음곶</h1>
     <p>배가 가라앉으면 별나침반이 시간을 되감아요.<br>기억을 안고, 더 강하게 다시 출항!</p>
@@ -271,7 +294,7 @@
       <button class="hero" data-g="m"><canvas width="320" height="352"></canvas>남자 선장<small>함께 떠날 선장을 골라요</small></button>
       <button class="hero" data-g="f"><canvas width="320" height="352"></canvas>여자 선장<small>함께 떠날 선장을 골라요</small></button>
     </div>
-    <div class="how">공격이 닿는 순간, <b>고리와 같은 색</b> 버튼을 누르면 <b>패링!</b><br>세 번 이어서 패링하면 강반격 · 게이지가 차면 세 버튼 같이 = 필살기</div>
+    <div class="how">공격이 닿는 순간, <b>고리와 같은 색</b> 버튼을 누르면 <b>패링!</b><br>세 번 이어서 패링하면 우리 대포 강반격 · 대포 게이지가 차면 세 버튼 같이 = 일제 사격!</div>
     <div class="keys">키보드: A 빨강 · S 초록 · D 파랑</div>
     <button class="ghost" id="titleExit">오락실로 돌아가기</button>
   </div>
@@ -279,10 +302,11 @@
   <div id="inn" class="over hide">
     <h2 id="innTitle"></h2>
     <div class="sub" id="innSub"></div>
+    <div id="innPals"><canvas id="innPic" width="440" height="220"></canvas><p id="innPal"></p></div>
     <div id="lines"></div>
     <div id="innTalk" class="hide"><canvas width="128" height="128"></canvas><div><b></b><p></p></div></div>
     <div id="nodes"><h3><span>기억의 나무 · 영원히 남아요</span><em id="shards"></em></h3><div id="nodeRow"></div></div>
-    <div id="innBtns"><button class="ghost" id="innExit">나가기</button><button class="big" id="innGo">출항!</button></div>
+    <div id="innBtns"><button class="ghost" id="innExit">나가기</button><button class="ghost" id="innSet">⚙ 설정</button><button class="big" id="innGo">출항!</button></div>
   </div>
 
   <div id="shop" class="over hide">
@@ -303,6 +327,16 @@
     <div id="statRows"></div>
     <div class="note" id="statNote"></div>
     <div id="innBtns2" style="display:flex;gap:10px"><button class="ghost" id="statUndo">되돌리기</button><button class="big" id="statGo">다 골랐어요</button></div>
+  </div>
+
+  <div id="settings" class="hide">
+    <div class="sheet">
+      <h2>설정</h2>
+      <h3>화풍 바꾸기</h3>
+      <div id="themeRow"></div>
+      <p class="tnote" id="themeNote"></p>
+      <button class="big" id="setClose">닫기</button>
+    </div>
   </div>
 </div>
 
