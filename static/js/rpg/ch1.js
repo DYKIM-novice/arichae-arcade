@@ -1336,16 +1336,18 @@
   function foeBox(d, sp, f) {
     let h; let w; let cx = L.cx; let cy = L.ey;
     const ratio = sp ? sp.width / sp.height : 1;
+    // 사용자 요청 배율: 일반 몬스터 ×1.5, 보스(중간 보스 캐럭선 포함) ×2
+    const K = (d.boss || d.mid) ? 2 : 1.5;
     if (d.boss) {
-      // 폭풍 문어: 화면을 거의 채울 만큼 크게 (옆으로는 넘쳐도 돼요)
-      h = L.playH * 0.98; w = h * ratio;
-      if (w > L.w * 1.8) { w = L.w * 1.8; h = w / ratio; }
-      cy = L.playH * 0.4;
+      // 폭풍 문어: 화면을 넘칠 만큼 크게 (위아래·옆으로 넘쳐도 돼요)
+      h = L.playH * 0.98 * K; w = h * ratio;
+      if (w > L.w * 1.8 * K) { w = L.w * 1.8 * K; h = w / ratio; }
+      cy = L.playH * 0.55;
     } else {
-      h = L.S * (d.mid ? 1.05 : d.ship ? 0.64 : 0.6 + 0.2 * (d.size || 1));
-      h = Math.min(h, L.playH * 0.62);
+      h = L.S * (d.mid ? 1.05 : d.ship ? 0.64 : 0.6 + 0.2 * (d.size || 1)) * K;
+      h = Math.min(h, L.playH * 0.62 * K);
       w = h * ratio;
-      if (w > L.w * 1.04) { w = L.w * 1.04; h = w / ratio; }
+      if (w > L.w * 1.04 * K) { w = L.w * 1.04 * K; h = w / ratio; }
     }
     if (d.ship && !d.mid && f) cx = L.cx + (f.side || 1) * L.w * 0.2;
     return { w, h, cx, cy };
