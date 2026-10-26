@@ -113,10 +113,11 @@
     cut: null, cutPending: null,
     wind: -240, bolt: null, nextBolt: 4000, skyFlash: 0,
     sparks: [], waves: [], slashes: [], nums: [], pops: [],
-    guns: [], puffs: [], booms: [], coins: [], kongFx: null
+    guns: [], puffs: [], booms: [], coins: [], kongFx: null,
+    flashes: [], feathers: [], marks: []
   };
   const P = { rain: [], spray: [], petals: [], bubbles: [], stars: [], shoot: [], smoke: [] };
-  const CAP = { spark: 140, num: 24, pop: 8, wave: 10, slash: 12, spray: 46, petal: 16, gun: 14, puff: 70, boom: 18, coin: 40 };
+  const CAP = { spark: 140, num: 24, pop: 8, wave: 10, slash: 12, spray: 46, petal: 16, gun: 14, puff: 70, boom: 18, coin: 40, flash: 12, feather: 28, mark: 8 };
 
   /* ================================================================
      화면 배치 (세로 폰 · DPR 2 상한)
@@ -331,6 +332,17 @@
     noise(t, 0.002, 0.75 * v, far ? 0.22 : 0.5, 'lowpass', far ? 900 : 1700, 90, 0.7, AU.brown);
     noise(t, 0.001, 0.45 * v, 0.07, 'bandpass', 2600, 700, 0.8);
     if (!far) tone('triangle', 70, 28, t + 0.02, 0.01, 0.5 * v, 0.9);
+  }
+  // 평타 대포 "펑" — 작고 낮은 쿵 소리 (칭보다 훨씬 작게) · 빠르게 이어지면 건너뛰거나 작아져요
+  function sndThump(mid) {
+    if (!AU.ctx) return;
+    const t = now(); const gap = t - (AU.thumpT == null ? -9 : AU.thumpT);
+    if (gap < 0.07) return;
+    AU.thumpT = t;
+    const v = (mid ? 1 : 0.8) * clamp(gap / 0.32, 0.45, 1);
+    tone('sine', 120, 42, t, 0.003, 0.24 * v, 0.17);
+    noise(t, 0.002, 0.2 * v, 0.13, 'lowpass', 560, 110, 0.7, AU.brown);
+    noise(t, 0.001, 0.045 * v, 0.03, 'bandpass', 1100, 450, 0.9);
   }
   // "펑!" 포탄 격추
   function sndPop() {
@@ -637,7 +649,7 @@
         const x = hx[i];
         if (t < x.show || t > x.ti + 650) continue;
         const j = hero.jd[a.id + ':' + i];
-        hits.push({ ti: x.ti, c: x.c, show: x.show, reveal: x.reveal, jr: j ? j.r : '', a: a.id, i, n: a.n });
+        hits.push({ ti: x.ti, c: x.c, show: x.show, reveal: x.reveal, jr: j ? j.r : '', a: a.id, i, n: a.n, pat: a.pat });
       }
     }
     return {
@@ -653,6 +665,7 @@
     switch (e.k) {
       case 'tele':
         sndWhoosh();
+        if (e.pat === 'ram') { addPop('뱃머리 들이받기!', '#ffb08a', 0.8, -130); sndCreak(); fx.trauma = Math.min(1, fx.trauma + 0.15); }
         // 7 첫 패링은 반드시 성공: 1회차 첫 방의 첫 공격
         if (!tut && G.meta.loop === 1 && W.room === 0 && !G.tutDone) {
           const a = W.atks.find((x) => x.id === e.a);
@@ -660,8 +673,8 @@
         }
         break;
       case 'judge': onJudge(e); break;
-      case 'parry': fxParry(e); break;
-      case 'hurt': fxHurt(e); break;
+      case 'parry': fxParry(e); foeFx(e, true); break;
+      case 'hurt': fxHurt(e); foeFx(e, false); break;
       case 'hit': fxHit(e); break;
       case 'break':
         addPop('끊었다!', '#ffe27a', 1.5, -70);
@@ -762,7 +775,7 @@
     const cmTxt = e.cm > 1 ? ' · 피해 ×' + e.cm.toFixed(2).replace(/0$/, '') : '';
     // 모바일에서 잘리지 않게 30% 작게 (사용자 요청)
     if (chain >= 2) addPop('x' + chain + cmTxt, '#ffd25a', (0.8 + Math.min(chain, 8) * 0.12) * 0.7, 0, false, L.rj + 46);
-    if (isShip()) shootDown(e);
+    if (isShip() && patOf(e) !== 'ram') shootDown(e);
     fx.cutPending = cut ? {
       text: strong ? '강반격!' : '패링!',
       sub: strong ? '우리 대포 발사! · 연속 ' + (e.streak || 3) + '번 · 반격 ×5' + cmTxt : (e.tut ? '첫 패링 성공! 바람이 멈췄다' : '폭풍이 멈췄다'),
@@ -780,7 +793,7 @@
   }
   // 우리 대포 한 문: delay 뒤 쏘고 dur 동안 날아가 적에 닿아요
   function fireGun(x, y, delay, dur, big) {
-    if (fx.guns.length >= CAP.gun) fx.guns.shift();
+    if (fx.guns.length >= CAP.gun) { const o = fx.guns.shift(); if (o.small && !o.hit && o.onHit) o.onHit(o.tx, o.ty); }
     const box = curFoeBox();
     fx.guns.push({ x, y, t: -(delay || 0), dur: dur || 320, big: !!big, tx: box.cx + rnd(-0.18, 0.18) * box.w, ty: box.cy + rnd(-0.12, 0.2) * box.h, fired: false, hit: false });
   }
@@ -794,6 +807,23 @@
     duck(0.5, true);
     vib([50, 30, 50, 30, 50, 30, 120]);
     boriReact();
+  }
+  function patOf(e) { const a = G.W && G.W.atks.find((q) => q.id === e.a); return a ? a.pat : ''; }
+  // 적마다 패링·맞음 순간 덧효과 (집게: 껍데기 조각·할퀸 자국 · 갈매기: 깃털 · 캐럭선 들이받기: 나무 조각·물보라)
+  function foeFx(e, ok) {
+    if (!G.foe) return;
+    const d = curFoeD(); const c = COL[e.c] ? COL[e.c].hex : '#ffffff';
+    const x = L.cx; const y = L.jy; const sd = e.a % 2 ? -1 : 1;
+    if (d.art === 'e_crab') {
+      if (ok) burst(x, y, 14, ['#d4492f', '#ffb199', c], 760);
+      else addMarks(x, y, 3, c, L.rj * 2.6, -0.75 * sd);
+    } else if (d.art === 'e_gulls') {
+      addFeathers(x, y, ok ? 9 : 6, c, ok ? 340 : 220);
+      if (!ok) addMarks(x, y, 2, c, L.rj * 2, 1.25 * sd);
+    } else if (d.mid && patOf(e) === 'ram') {
+      if (ok) { burst(x, y, 30, ['#fff', '#86532b', '#e8c070', c], 950); wave(x, y, L.rj, L.rj * 4.2, 400, c, 8); addPop('막았다!', '#ffe27a', 1.1, -L.rj - 20); }
+      else { fx.trauma = Math.min(1, fx.trauma + 0.3); sprayBurst(x, L.playH - 30, 18); wave(x, y, L.rj, L.rj * 5, 420, '#ffffff', 10); }
+    }
   }
   // 적 배의 색 포탄을 공중에서 격추 ("펑!")
   function shootDown() {
@@ -820,6 +850,33 @@
       addNum(x, y, e.dmg, '#ff6a3d', 66, '일제 사격');
       return;
     }
+    if (k === 'counter') { fireShot(true, (sx, sy) => hitFx(e, sx, sy)); return; }
+    if (k !== 'strong' && k !== 'spec' && k !== 'specEnd') { fireShot(false, (sx, sy) => hitFx(e, sx, sy)); return; }
+    hitFx(e, x, y);
+  }
+  // 평타(반격 · 자동 공격)는 우리 배 난간의 대포에서 작은 포탄이 날아가 닿을 때 효과가 나요 (피해 숫자는 sim 그대로)
+  const SHOT_X = [0.24, 0.76, 0.36, 0.64, 0.17, 0.83];
+  let shotN = 0;
+  function hitSpot() {
+    if (G.sink || isShip()) { const b = curFoeBox(); return { x: b.cx + rnd(-0.16, 0.16) * b.w, y: b.cy + rnd(-0.12, 0.08) * b.h }; }
+    return { x: L.cx + rnd(-0.14, 0.14) * L.S, y: L.ey - L.S * rnd(-0.05, 0.12) };
+  }
+  function fireShot(mid, onHit) {
+    const sp = hitSpot();
+    if (fx.guns.length >= CAP.gun) {
+      // 넘치면 가장 오래된 포탄을 바로 닿게 해요 (효과·숫자는 빠지지 않아요)
+      const i = fx.guns.findIndex((g) => g.small && !g.hit);
+      const o = i >= 0 ? fx.guns.splice(i, 1)[0] : fx.guns.shift();
+      if (o && o.small && !o.hit && o.onHit) o.onHit(o.tx, o.ty);
+    }
+    const x = L.w * SHOT_X[shotN++ % SHOT_X.length] + rnd(-8, 8);
+    const y = L.playH - 26;
+    fx.guns.push({ x, y, t: 0, dur: mid ? 230 : 190, small: true, mid, tx: sp.x, ty: sp.y, hit: false, onHit });
+    sndThump(mid);
+    for (let i = 0; i < (mid ? 3 : 2); i++) addPuff(x + rnd(-6, 6), y - rnd(4, 14), rnd(-30, 30), rnd(-90, -40), rnd(7, 11), 'rgba(215,210,200,');
+  }
+  function hitFx(e, x, y) {
+    const k = e.kind;
     if (k === 'counter' || k === 'strong') {
       const big = k === 'strong';
       sndKung(big);
@@ -898,6 +955,7 @@
     fx.freeze = 0; fx.gold = 0; fx.flashF = 0; fx.zoom = 0; fx.tilt = 0; fx.trauma = 0; fx.hurtV = 0; fx.redF = 0;
     fx.knock = 0; fx.knockV = 0; fx.eFlash = 0; fx.squash = 0; fx.cut = null; fx.cutPending = null; fx.rush = 0;
     fx.sparks.length = 0; fx.waves.length = 0; fx.slashes.length = 0; fx.nums.length = 0; fx.pops.length = 0;
+    fx.flashes.length = 0; fx.feathers.length = 0; fx.marks.length = 0;
   }
 
   /* ---------------- 카드 고르기 ---------------- */
@@ -1278,6 +1336,17 @@
       const g = fx.guns[i];
       const was = g.t;
       g.t += fdt;
+      if (g.small) {
+        // 평타 포탄: 닿으면 작은 폭발 · 연기 → 반격/자동 공격 효과
+        if (!g.hit && g.t >= g.dur) {
+          g.hit = true;
+          addBoom(g.tx, g.ty, L.S * (g.mid ? 0.075 : 0.055), 260);
+          for (let k = 0; k < 2; k++) addPuff(g.tx + rnd(-8, 8), g.ty + rnd(-8, 8), rnd(-30, 30), rnd(-50, -10), rnd(7, 12), 'rgba(70,64,60,');
+          if (g.onHit) g.onHit(g.tx, g.ty);
+        }
+        if (g.t > g.dur + 60) fx.guns.splice(i, 1);
+        continue;
+      }
       if (was < 0 && g.t >= 0) {
         // 쾅! 포구 불꽃 · 연기
         sndCannon(g.big ? 0.85 : 0.7, false);
@@ -1298,6 +1367,24 @@
       if (q.life >= q.max) fx.puffs.splice(i, 1);
     }
     for (let i = fx.booms.length - 1; i >= 0; i--) { const q = fx.booms[i]; q.t += fdt; if (q.t >= q.max) fx.booms.splice(i, 1); }
+    // 적 포구 불꽃 (캐럭선은 선체를 따라 차례로 터져요)
+    for (let i = fx.flashes.length - 1; i >= 0; i--) {
+      const q = fx.flashes[i]; const was = q.t; q.t += fdt;
+      if (was < 0 && q.t >= 0) {
+        addBoom(q.x, q.y, q.r * 1.1, 240);
+        for (let k = 0; k < q.puffs; k++) addPuff(q.x + rnd(-8, 8), q.y + rnd(-6, 6), rnd(-45, 45), rnd(-70, -10), rnd(8, 15) * (q.heavy ? 1.3 : 1), 'rgba(215,210,200,');
+        if (q.snd) sndCannon(q.snd, true);
+      }
+      if (q.t >= q.max) fx.flashes.splice(i, 1);
+    }
+    // 갈매기 깃털: 하늘하늘 흔들리며 떨어져요
+    for (let i = fx.feathers.length - 1; i >= 0; i--) {
+      const q = fx.feathers[i];
+      q.life += fdt; q.vx *= Math.exp(-2.2 * sec); q.vy = q.vy * Math.exp(-2.4 * sec) + 90 * sec;
+      q.x += (q.vx + Math.sin(q.life * 0.008 + q.ph) * 40) * sec; q.y += q.vy * sec; q.rot += q.vr * sec;
+      if (q.life >= q.max) fx.feathers.splice(i, 1);
+    }
+    for (let i = fx.marks.length - 1; i >= 0; i--) { const q = fx.marks[i]; q.t += fdt; if (q.t >= q.max) fx.marks.splice(i, 1); }
     // 격침 조개: 솟구쳤다가 🐚 칩으로 날아가요
     if (fx.coins.length) {
       const chip = $('shellChip').getBoundingClientRect();
@@ -1316,6 +1403,23 @@
     }
   }
   function addPuff(x, y, vx, vy, r, c) { if (fx.puffs.length >= CAP.puff) fx.puffs.shift(); fx.puffs.push({ x, y, vx, vy, r, grow: rnd(14, 28), life: 0, max: rnd(700, 1300), c }); }
+  // c: 공격 색 (아직 안 보이면 주황) · ang: 불꽃 방향 · delay: 차례로 터질 때
+  function addFlash(x, y, r, c, ang, delay, snd, heavy) {
+    if (fx.flashes.length >= CAP.flash) fx.flashes.shift();
+    fx.flashes.push({ x, y, r, c, ang, t: -(delay || 0), max: heavy ? 300 : 230, snd: snd || 0, heavy: !!heavy, puffs: heavy ? 5 : 3 });
+  }
+  function addFeathers(x, y, n, c, sp) {
+    for (let i = 0; i < n; i++) {
+      if (fx.feathers.length >= CAP.feather) fx.feathers.shift();
+      const a = Math.random() * Math.PI * 2; const v = rnd(0.3, 1) * (sp || 260);
+      fx.feathers.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 60, rot: rnd(0, 6.28), vr: rnd(-7, 7), life: 0, max: rnd(700, 1200), c: i % 3 === 0 ? c : '#f6f7fb', s: rnd(5, 9), ph: rnd(0, 6.28) });
+    }
+  }
+  // 할퀸 자국 (집게 · 부리에 맞았을 때 판정 원 위에 잠깐)
+  function addMarks(x, y, n, c, len, ang) {
+    if (fx.marks.length >= CAP.mark) fx.marks.shift();
+    fx.marks.push({ x, y, n, c, len, ang, t: 0, max: 420 });
+  }
   function addBoom(x, y, r, max) { if (fx.booms.length >= CAP.boom) fx.booms.shift(); fx.booms.push({ x, y, r, t: 0, max: max || 380 }); }
   function addCoin(x, y, delay) {
     if (fx.coins.length >= CAP.coin) return;
@@ -1352,10 +1456,20 @@
       const prog = (v.t - h.show) / (h.ti - h.show);
       if (prog < 0.4) continue;
       G.fired[key] = clock;
+      if (h.pat === 'ram') continue;                      // 들이받기는 포탄이 없어요 (drawRam)
       const lp = launchPos(h, d);
-      addBoom(lp.x, lp.y, L.S * 0.07, 260);
-      for (let k = 0; k < 5; k++) addPuff(lp.x + rnd(-8, 8), lp.y + rnd(-6, 6), rnd(-40, 40), rnd(-60, -10), rnd(8, 14), 'rgba(215,210,200,');
-      sndCannon(0.32, true);
+      const c = v.t >= h.reveal ? COL[h.c].hex : '#ffb347';
+      const ang = Math.atan2(L.jy - lp.y, L.cx - lp.x);
+      if (d.mid) {
+        // 캐럭선 일제 포격: 선체를 따라 포구 세 개가 차례로 · 가운데(진짜 포탄 나오는 곳)가 가장 커요
+        for (let k = -1; k <= 1; k++) {
+          let x = lp.x + k * L.w * 0.15;
+          if (x < L.w * 0.05 || x > L.w * 0.95) x = lp.x - k * L.w * 0.3;     // 화면 밖이면 반대쪽에
+          addFlash(x, lp.y + Math.abs(k) * L.S * 0.02, L.S * (k ? 0.05 : 0.075), c, ang, k === 0 ? 0 : k < 0 ? 60 : 120, k === 0 ? 0.42 : 0.18, true);
+        }
+      } else {
+        addFlash(lp.x, lp.y, L.S * 0.06, c, ang, 0, 0.32, false);
+      }
     }
   }
   // 적 그림이 놓이는 곳 (drawFoe · 격침 · 대포 과녁이 같이 써요)
@@ -1680,15 +1794,16 @@
   /* 적의 지금 모습 */
   function foeState(v) {
     const t = v.t;
-    let u = 0; let lunge = 0; let glow = ''; let nearT = 1e9;
+    let u = 0; let lunge = 0; let glow = ''; let nearT = 1e9; let ram = 0;
     for (const h of v.hits) {
       if (t < h.ti) {
         const prog = clamp((t - h.show) / (h.ti - h.show), 0, 1);
         u = Math.max(u, prog);
+        if (h.pat === 'ram') ram = Math.max(ram, prog);
         if (t >= h.reveal && !h.jr && h.ti - t < nearT) { nearT = h.ti - t; glow = h.c; }
       } else if (t - h.ti < 170) lunge = Math.max(lunge, 1 - (t - h.ti) / 170);
     }
-    return { u, lunge, glow };
+    return { u, lunge, glow, ram };
   }
   function drawFoe(v) {
     const f = G.foe;
@@ -1702,7 +1817,9 @@
     const knock = clamp(fx.knock, -0.5, 1.2);
     const bob = Math.sin(T * 0.0021) * S2 * 0.012;
     const wob = (v.stun ? Math.sin(T * 0.011) * 0.07 : 0) + knock * 0.13 * fx.knockDir + deadK * 0.35 * f.dir;
-    const sc = (1 + st.u * 0.045 + st.lunge * 0.08 - knock * 0.17) * (0.82 + 0.18 * easeOutBack(born));
+    // 들이받기: 캐럭선이 점점 다가와요(커지고 살짝 아래로)
+    const ramK = st.ram * st.ram;
+    const sc = (1 + st.u * 0.045 + st.lunge * 0.08 - knock * 0.17 + ramK * 0.14) * (0.82 + 0.18 * easeOutBack(born));
     const sp = Art.sprite(d.art);
     const box = foeBox(d, sp, f);
     const w = box.w; const h = box.h;
@@ -1711,7 +1828,7 @@
     const slide = sloop ? (1 - easeOutCubic(clamp((clock - f.born) / 1000, 0, 1))) * (f.side || 1) * L.w * 0.9 : 0;
     const roll = d.ship ? Math.sin(T * 0.0016) * 0.025 : 0;
     ctx.save();
-    ctx.translate(box.cx + slide, box.cy + bob - knock * S2 * 0.13 + deadK * S2 * 0.35 + (1 - born) * S2 * 0.08);
+    ctx.translate(box.cx + slide, box.cy + bob + ramK * S2 * 0.05 - knock * S2 * 0.13 + deadK * S2 * 0.35 + (1 - born) * S2 * 0.08);
     ctx.rotate(wob + roll);
     ctx.scale(sc * (1 + fx.squash * 0.05), sc * (1 - fx.squash * 0.07));
     // e_sloop 그림이 아직 없어 캐럭선을 대신 쓸 때: 작게 · 비스듬히 옆으로 (들어온 쪽을 보게 뒤집어요)
@@ -1760,6 +1877,8 @@
       const side = n === 1 ? (h.a % 2 ? -1 : 1) : [-1, 1, 0][h.i % 3];
       const d = t - h.ti;
       const revealed = t >= h.reveal && !(h.jr && h.jr !== 'parry');
+      if (fd.art === 'e_crab') { drawClaw(h, side, t, d, revealed); continue; }
+      if (fd.art === 'e_gulls') { drawGull(h, side, t, d, revealed); continue; }
       if (!boss) {
         // 색 포탄
         const prog = clamp((t - h.show) / (h.ti - h.show), 0, 1);
@@ -1847,34 +1966,262 @@
     }
   }
 
+  /* ---------- 적마다 다른 공격 모습 (문어 촉수처럼 한눈에 읽히게 · 공격 색 빛·꼬리는 늘 같이) ---------- */
+  const quad = (p0, p1, p2, k) => { const m = 1 - k; return { x: m * m * p0.x + 2 * m * k * p1.x + k * k * p2.x, y: m * m * p0.y + 2 * m * k * p1.y + k * k * p2.y }; };
+  function glow(x, y, r, c, a) {
+    const g = ctx.createRadialGradient(x, y, r * 0.15, x, y, r);
+    g.addColorStop(0, hexA(c, a)); g.addColorStop(1, hexA(c, 0));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  }
+  // 곡선 꼬리 (k0→k1) : 굵은 색 빛 + 가는 흰 심
+  function trail(fn, k0, k1, w, c, a) {
+    if (k1 - k0 < 0.01) return;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    for (let j = 0; j <= 8; j++) { const q = fn(lerp(k0, k1, j / 8)); if (j) ctx.lineTo(q.x, q.y); else ctx.moveTo(q.x, q.y); }
+    ctx.strokeStyle = hexA(c, 0.4 * a); ctx.lineWidth = w; ctx.stroke();
+    ctx.strokeStyle = `rgba(255,255,255,${0.55 * a})`; ctx.lineWidth = Math.max(1.5, w * 0.18); ctx.stroke();
+  }
+  function glyphAt(hc, x, y, r) { ctx.fillStyle = COL[hc].hex; shapePath(hc, x, y, r); ctx.fill(); ctx.strokeStyle = 'rgba(10,10,20,.6)'; ctx.lineWidth = 2; ctx.stroke(); }
+
+  // 집게 게: 옆에서 집게를 들어 딸깍딸깍 → 크게 벌리고 휘둘러 판정 원을 "콱" 집어요
+  function drawClaw(h, side, t, d, revealed) {
+    const s = L.S;
+    const sd = side || (h.a % 2 ? -1 : 1);
+    const c = revealed || h.jr === 'parry' ? COL[h.c].hex : '#9aa3b6';
+    const home = { x: L.cx + sd * s * 0.27, y: L.ey + s * 0.03 };
+    const ctrl = { x: L.cx + sd * s * 0.52, y: lerp(L.ey, L.jy, 0.62) };
+    const to = { x: L.cx, y: L.jy };
+    const path = (k) => quad(home, ctrl, to, k);
+    const ang0 = Math.atan2(to.y - home.y, to.x - home.x);
+    let x; let y; let r; let open; let ang = ang0; let alpha = 1;
+    if (d < 0) {
+      const prog = clamp((t - h.show) / (h.ti - h.show), 0, 1);
+      alpha = smooth(0, 0.18, prog);
+      const lunge = prog < 0.6 ? 0 : Math.pow((prog - 0.6) / 0.4, 1.8);
+      const p = path(lunge);
+      const lift = (1 - lunge) * smooth(0.1, 0.55, prog) * s * 0.06;
+      x = p.x + Math.sin(t * 0.009 + h.i) * s * 0.008 * (1 - lunge); y = p.y - lift;
+      r = lerp(s * 0.09, L.rj * 1.1, lunge);
+      open = lunge > 0 ? lerp(1, 0, smooth(0.7, 1, lunge)) : 0.25 + 0.5 * Math.abs(Math.sin(t * 0.011 + h.i * 1.7));
+      ang += -sd * 0.25 * (1 - lunge);
+      if (lunge > 0) trail(path, Math.max(0, lunge - 0.45), lunge, r * 1.3, c, alpha);
+      else glow(x, y, r * 2.4, c, revealed ? 0.35 + 0.25 * prog : 0.15);
+    } else if (h.jr === 'parry') {
+      const kk = clamp(d / 400, 0, 1); const e = easeOutCubic(kk);
+      x = lerp(to.x, L.cx + sd * L.w * 0.75, e); y = lerp(to.y, L.ey - s * 0.15, e);
+      r = L.rj * 1.1 * (1 - kk * 0.4); open = 1; ang = ang0 + sd * kk * 7; alpha = 1 - kk;
+    } else {
+      if (d > 220) return;
+      const kk = d / 220; x = to.x; y = to.y + kk * 30; r = L.rj * (1.1 + kk * 0.5); open = 0; alpha = 1 - kk;
+    }
+    if (alpha <= 0.01) return;
+    ctx.globalAlpha = alpha;
+    glow(x, y, r * 2.1, c, 0.5);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+    ctx.lineJoin = 'round';
+    const lw = Math.max(2, r * 0.09);
+    ctx.fillStyle = '#7e2616'; ctx.beginPath(); ctx.ellipse(-r * 1.0, 0, r * 0.48, r * 0.28, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.stroke();
+    for (const sg of [-1, 1]) {
+      const sz = sg < 0 ? 1 : 0.8;
+      ctx.save(); ctx.rotate(sg * open * (sg < 0 ? 0.62 : 0.48)); ctx.scale(1, sz);
+      // 바깥 곡선 → 안으로 굽은 끝 → 톱니 안쪽 날
+      ctx.beginPath(); ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(r * 0.45, sg * r * 0.95, r * 1.3, sg * r * 0.36);
+      ctx.quadraticCurveTo(r * 1.58, sg * r * 0.14, r * 1.42, -sg * r * 0.06);
+      ctx.lineTo(r * 1.12, sg * r * 0.12); ctx.lineTo(r * 0.98, sg * r * 0.03); ctx.lineTo(r * 0.82, sg * r * 0.17);
+      ctx.lineTo(r * 0.64, sg * r * 0.07); ctx.lineTo(r * 0.44, sg * r * 0.21);
+      ctx.quadraticCurveTo(r * 0.2, sg * r * 0.22, 0, sg * r * 0.18);
+      ctx.closePath();
+      ctx.fillStyle = sg < 0 ? '#d9502f' : '#b33a22'; ctx.fill();
+      ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.stroke();
+      ctx.fillStyle = 'rgba(255,225,200,.28)'; ctx.beginPath(); ctx.ellipse(r * 0.6, sg * r * 0.42, r * 0.28, r * 0.08, sg * 0.45, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    ctx.fillStyle = '#c8432b'; ctx.beginPath(); ctx.ellipse(-r * 0.3, 0, r * 0.5, r * 0.44, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.stroke();
+    ctx.restore();
+    if (revealed && r > 12) glyphAt(h.c, x + Math.cos(ang) * -r * 0.3, y + Math.sin(ang) * -r * 0.3, r * 0.24);
+    ctx.globalAlpha = 1;
+  }
+
+  // 갈매기 떼: 하늘에서 맴돌다 → 날개를 접고 급강하 (색 빛줄기) → 패링하면 깃털이 흩날리며 튕겨 나가요
+  function gullShape(x, y, r, flap, rot, c) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+    ctx.lineJoin = 'round';
+    for (const sg of [-1, 1]) {
+      const tipY = -flap * r * 0.6;
+      ctx.beginPath(); ctx.moveTo(0, -r * 0.14);
+      ctx.quadraticCurveTo(sg * r * 0.55, -r * 0.42 + tipY * 0.6, sg * r * 1.6, tipY);
+      ctx.quadraticCurveTo(sg * r * 0.7, r * 0.06 + tipY * 0.3, 0, r * 0.2);
+      ctx.closePath();
+      ctx.fillStyle = '#eef1f6'; ctx.fill();
+      ctx.strokeStyle = c; ctx.lineWidth = Math.max(1.5, r * 0.09); ctx.stroke();
+      ctx.fillStyle = '#2b2f3a'; ctx.beginPath(); ctx.arc(sg * r * 1.42, tipY * 0.94, r * 0.13, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.ellipse(0, 0, r * 0.24, r * 0.42, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = c; ctx.lineWidth = Math.max(1.5, r * 0.08); ctx.stroke();
+    ctx.fillStyle = '#ffb347'; ctx.beginPath(); ctx.moveTo(-r * 0.08, r * 0.38); ctx.lineTo(r * 0.08, r * 0.38); ctx.lineTo(0, r * 0.62); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  function drawGull(h, side, t, d, revealed) {
+    const s = L.S;
+    const sd = side || (h.i % 2 ? 1 : -1);
+    const big = h.pat === 'swoop';
+    const c = revealed || h.jr === 'parry' ? COL[h.c].hex : '#9aa3b6';
+    const to = { x: L.cx, y: L.jy };
+    const ph = h.a * 1.3 + h.i * 2.1;
+    const circ = (tt) => ({ x: L.cx + sd * L.w * 0.27 + Math.cos(tt * 0.004 * sd + ph) * s * 0.09, y: L.ey - s * 0.2 + Math.sin(tt * 0.004 * sd + ph) * s * 0.035 });
+    const tDive = h.show + 0.62 * (h.ti - h.show);
+    const p0 = circ(tDive);
+    const ctrl = { x: L.cx + sd * L.w * 0.4, y: L.jy - s * 0.12 };
+    const path = (k) => quad(p0, ctrl, to, k);
+    const rFull = L.rj * (big ? 1.5 : 1.25);
+    let x; let y; let r; let flap; let rot = 0; let alpha = 1;
+    if (d < 0) {
+      const prog = clamp((t - h.show) / (h.ti - h.show), 0, 1);
+      alpha = smooth(0, 0.15, prog);
+      if (prog < 0.62) {
+        const p = circ(t); const enter = 1 - easeOutCubic(clamp(prog / 0.3, 0, 1));
+        x = p.x + sd * enter * L.w * 0.3; y = p.y - enter * s * 0.35;
+        r = s * 0.075 * (big ? 1.25 : 1); flap = Math.sin(t * 0.022 + ph);
+        rot = Math.sin(t * 0.004 * sd + ph) * 0.25;
+        if (revealed) glow(x, y, r * 3, c, 0.3 + 0.3 * prog);
+      } else {
+        const k = Math.pow((prog - 0.62) / 0.38, 1.6);
+        const p = path(k); x = p.x; y = p.y;
+        r = lerp(s * 0.075 * (big ? 1.25 : 1), rFull, k); flap = lerp(0.2, -0.7, Math.min(1, k * 2));
+        const q = path(Math.max(0, k - 0.05)); rot = clamp(Math.atan2(y - q.y, x - q.x) - Math.PI / 2, -0.7, 0.7);
+        // 급강하 빛줄기 + 양옆 바람 선
+        trail(path, Math.max(0, k - (big ? 0.5 : 0.38)), k, r * (big ? 0.9 : 0.7), c, alpha);
+        if (big) {
+          ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2;
+          for (const sg of [-1, 1]) { const a = path(Math.max(0, k - 0.3)); ctx.beginPath(); ctx.moveTo(a.x + sg * r * 0.9, a.y); ctx.lineTo(x + sg * r * 1.2, y - r * 0.2); ctx.stroke(); }
+        }
+        if (k > 0.15 && Math.random() < 0.1) addFeathers(x, y, 1, c, 60);
+      }
+    } else if (h.jr === 'parry') {
+      const kk = clamp(d / 420, 0, 1); const e = easeOutCubic(kk);
+      x = lerp(to.x, L.cx + sd * L.w * 0.7, e); y = lerp(to.y, L.ey - s * 0.3, e);
+      r = rFull * (1 - kk * 0.5); flap = Math.sin(t * 0.05); rot = sd * kk * 9; alpha = 1 - kk;
+    } else {
+      if (d > 200) return;
+      const kk = d / 200; x = to.x; y = to.y + kk * s * 0.2; r = rFull * (1 + kk * 1.4); flap = -0.7; alpha = 1 - kk;
+    }
+    if (alpha <= 0.01) return;
+    ctx.globalAlpha = alpha;
+    glow(x, y, r * 1.9, c, 0.45);
+    gullShape(x, y, r, flap, rot, c);
+    if (revealed && r > 14) glyphAt(h.c, x, y - r * 0.02, r * 0.17);
+    ctx.globalAlpha = 1;
+  }
+
+  // 캐럭선 뱃머리 들이받기: ▼ 경고 화살이 뱃머리에서 판정 원으로 흘러오고(점점 빨리) 물살이 커지다 → 뱃머리가 화면으로 돌진
+  function prowShape(x, y, r, rot, c) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+    ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(-r * 0.78, -r * 0.7);
+    ctx.quadraticCurveTo(-r * 0.55, r * 0.3, 0, r); ctx.quadraticCurveTo(r * 0.55, r * 0.3, r * 0.78, -r * 0.7); ctx.closePath();
+    const g = ctx.createLinearGradient(-r, 0, r, 0);
+    g.addColorStop(0, '#3a2010'); g.addColorStop(0.5, '#86532b'); g.addColorStop(1, '#3a2010');
+    ctx.fillStyle = g; ctx.fill();
+    ctx.strokeStyle = c; ctx.lineWidth = Math.max(3, r * 0.1); ctx.stroke();
+    ctx.strokeStyle = '#e8c070'; ctx.lineWidth = Math.max(2, r * 0.06);
+    ctx.beginPath(); ctx.moveTo(0, -r * 0.62); ctx.lineTo(0, r * 0.86); ctx.stroke();
+    ctx.strokeStyle = 'rgba(235,245,255,.8)'; ctx.lineWidth = Math.max(2, r * 0.07);
+    ctx.beginPath(); ctx.moveTo(-r * 0.62, -r * 0.1); ctx.quadraticCurveTo(0, r * 0.25, r * 0.62, -r * 0.1); ctx.stroke();
+    ctx.restore();
+  }
+  function drawRam(h, t, dd, revealed) {
+    const s = L.S;
+    const c = revealed || h.jr === 'parry' ? COL[h.c].hex : '#ff9f5a';
+    const bow = { x: L.cx, y: L.ey + s * 0.04 };
+    const wake = { x: L.cx, y: L.jy - s * 0.16 };
+    const to = { x: L.cx, y: L.jy };
+    const sd = h.a % 2 ? -1 : 1;
+    const rFull = L.rj * 1.7;
+    let x; let y; let r; let rot = 0; let alpha = 1;
+    if (dd < 0) {
+      const prog = clamp((t - h.show) / (h.ti - h.show), 0, 1);
+      const sp = 0.6 + prog * 1.8;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      for (let j = 0; j < 4; j++) {
+        const k = (t * 0.001 * sp + j / 4) % 1;
+        const px = lerp(bow.x, to.x, k); const py = lerp(bow.y, to.y, k);
+        const w = lerp(s * 0.06, L.rj * 0.95, k);
+        const al = (0.35 + 0.65 * prog) * Math.sin(k * Math.PI);
+        const lw = Math.max(4, w * 0.26);
+        ctx.beginPath(); ctx.moveTo(px - w, py - w * 0.55); ctx.lineTo(px, py); ctx.lineTo(px + w, py - w * 0.55);
+        ctx.strokeStyle = `rgba(10,6,4,${0.5 * al})`; ctx.lineWidth = lw + 5; ctx.stroke();
+        ctx.strokeStyle = hexA(c, al); ctx.lineWidth = lw; ctx.stroke();
+      }
+      const sw = s * (0.1 + 0.3 * prog);
+      ctx.strokeStyle = `rgba(235,245,255,${0.3 + 0.5 * prog})`; ctx.lineWidth = 3.5;
+      for (const sg of [-1, 1]) {
+        ctx.beginPath(); ctx.moveTo(wake.x, wake.y);
+        ctx.quadraticCurveTo(wake.x + sg * sw * 0.6, wake.y + sw * 0.15, wake.x + sg * sw, wake.y + sw * 0.35 + Math.sin(t * 0.02 + sg) * 3); ctx.stroke();
+      }
+      if (prog < 0.68) { if (revealed) glow(bow.x, bow.y, s * 0.16, c, 0.25 + 0.35 * prog); return; }
+      const k = Math.pow((prog - 0.68) / 0.32, 1.7);
+      x = lerp(bow.x, to.x, k); y = lerp(bow.y, to.y, k); r = lerp(s * 0.08, rFull, k);
+      ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 2;
+      for (let j = -2; j <= 2; j++) { ctx.beginPath(); ctx.moveTo(lerp(bow.x, x, 0.3) + j * r * 0.35, lerp(bow.y, y, 0.3)); ctx.lineTo(x + j * r * 0.45, y - r * 0.6); ctx.stroke(); }
+    } else if (h.jr === 'parry') {
+      const kk = clamp(dd / 450, 0, 1); const e = easeOutCubic(kk);
+      x = lerp(to.x, L.cx + sd * L.w * 0.8, e); y = lerp(to.y, L.ey + s * 0.05, e);
+      r = rFull * (1 - 0.3 * kk); rot = sd * kk * 1.3; alpha = 1 - kk;
+    } else {
+      if (dd > 220) return;
+      const kk = dd / 220; x = to.x; y = to.y; r = rFull * (1 + kk * 0.8); alpha = 1 - kk;
+    }
+    if (alpha <= 0.01) return;
+    ctx.globalAlpha = alpha;
+    glow(x, y, r * 1.8, c, 0.5);
+    prowShape(x, y, r, rot, c);
+    if (revealed && r > 16) glyphAt(h.c, x, y - r * 0.15, r * 0.24);
+    ctx.globalAlpha = 1;
+  }
+
   // 적 배의 색 포탄: 쏜 곳(포구 불꽃)에서 나와 판정 원으로 날아오며 커져요 · 맞는 색이면 "펑!" 격추
   function drawBalls(v, d) {
     const t = v.t;
     const list = v.hits.slice().sort((a, b) => b.ti - a.ti);
+    const heavy = !!d.mid;
     for (const h of list) {
       const dd = t - h.ti;
+      const revealed = t >= h.reveal && !(h.jr && h.jr !== 'parry');
+      if (h.pat === 'ram') { drawRam(h, t, dd, revealed); continue; }
       if (h.jr === 'parry' && dd >= 0) continue;            // 격추됐어요 (폭발은 shootDown)
       const prog = clamp((t - h.show) / (h.ti - h.show), 0, 1);
       if (dd < 0 && prog < 0.4) continue;
       const lp = launchPos(h, d);
       const to = { x: L.cx, y: L.jy };
+      const c = revealed ? COL[h.c].hex : '#9aa3b6';
+      const rMax = L.rj * (heavy ? 0.74 : 0.6);
       let x; let y; let r; let a = 1;
-      const pos = (k) => ({ x: lerp(lp.x, to.x, k), y: lerp(lp.y, to.y, k) - Math.sin(k * Math.PI) * L.S * 0.14 });
+      const pos = (k) => ({ x: lerp(lp.x, to.x, k), y: lerp(lp.y, to.y, k) - Math.sin(k * Math.PI) * L.S * (heavy ? 0.1 : 0.14) });
       if (dd < 0) {
         const k = Math.pow((prog - 0.4) / 0.6, 1.5);
-        const p = pos(k); x = p.x; y = p.y; r = lerp(4, L.rj * 0.6, k);
+        const p = pos(k); x = p.x; y = p.y; r = lerp(heavy ? 6 : 4, rMax, k);
+        // 공격 색 빛꼬리 (어느 색이 날아오는지 멀리서도 보여요)
+        const k0 = Math.max(0, k - 0.24);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        for (let j = 0; j <= 6; j++) { const q = pos(lerp(k0, k, j / 6)); if (j) ctx.lineTo(q.x, q.y); else ctx.moveTo(q.x, q.y); }
+        ctx.strokeStyle = hexA(c, 0.55); ctx.lineWidth = Math.max(5, r * 1.15); ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,245,220,.5)'; ctx.lineWidth = Math.max(1.5, r * 0.25); ctx.stroke();
         // 꼬리 연기
-        for (let j = 1; j <= 4; j++) {
+        const nS = heavy ? 6 : 4;
+        for (let j = 1; j <= nS; j++) {
           const kk = Math.max(0, k - j * 0.045); const q = pos(kk);
-          ctx.fillStyle = `rgba(200,195,185,${0.28 * (1 - j / 5)})`;
+          ctx.fillStyle = `rgba(200,195,185,${(heavy ? 0.32 : 0.28) * (1 - j / (nS + 1))})`;
           ctx.beginPath(); ctx.arc(q.x, q.y, r * (0.6 + j * 0.18), 0, Math.PI * 2); ctx.fill();
         }
       } else {
         if (dd > 160) continue;
-        const k = dd / 160; x = to.x; y = to.y + k * 40; r = L.rj * (0.6 + k * 1.2); a = 1 - k;
+        const k = dd / 160; x = to.x; y = to.y + k * 40; r = rMax * (1 + k * 2); a = 1 - k;
       }
-      const revealed = t >= h.reveal && !(h.jr && h.jr !== 'parry');
-      const c = revealed ? COL[h.c].hex : '#9aa3b6';
       ctx.globalAlpha = a;
       const g = ctx.createRadialGradient(x, y, r * 0.4, x, y, r * 2.4);
       g.addColorStop(0, hexA(c, 0.6)); g.addColorStop(1, hexA(c, 0));
@@ -1901,8 +2248,71 @@
       g.addColorStop(0, `rgba(255,255,230,${0.95 * (1 - k)})`); g.addColorStop(0.35, `rgba(255,190,80,${0.85 * (1 - k)})`); g.addColorStop(1, 'rgba(255,90,30,0)');
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, Math.PI * 2); ctx.fill();
     }
+    // 적 포구 불꽃: 우리 쪽을 향한 불꽃 + 공격 색 고리
+    for (const q of fx.flashes) {
+      if (q.t < 0) continue;
+      const k = q.t / q.max; const e = easeOutCubic(k);
+      ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(q.ang);
+      const len = q.r * (q.heavy ? 3.8 : 3.3) * (1 - k * 0.35); const wd = q.r * 0.7;
+      const g = ctx.createLinearGradient(0, 0, len, 0);
+      g.addColorStop(0, `rgba(255,255,225,${1 - k})`); g.addColorStop(0.35, `rgba(255,185,70,${0.9 * (1 - k)})`); g.addColorStop(1, 'rgba(255,80,20,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, -wd); ctx.quadraticCurveTo(len * 0.5, -wd * 1.5, len, 0); ctx.quadraticCurveTo(len * 0.5, wd * 1.5, 0, wd); ctx.closePath(); ctx.fill();
+      ctx.restore();
+      glow(q.x, q.y, q.r * 2.4, q.c, 0.6 * (1 - k));
+      ctx.strokeStyle = hexA(q.c, 0.95 * (1 - k)); ctx.lineWidth = 2 + 4 * (1 - k);
+      ctx.beginPath(); ctx.arc(q.x, q.y, q.r * (0.5 + 1.3 * e), 0, Math.PI * 2); ctx.stroke();
+    }
+    // 깃털
+    for (const q of fx.feathers) {
+      const k = q.life / q.max;
+      ctx.globalAlpha = 1 - k * k;
+      ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(q.rot);
+      ctx.fillStyle = q.c; ctx.beginPath(); ctx.ellipse(0, 0, q.s, q.s * 0.32, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(60,64,80,.55)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-q.s, 0); ctx.lineTo(q.s, 0); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    // 할퀸 자국
+    ctx.lineCap = 'round';
+    for (const q of fx.marks) {
+      const k = q.t / q.max; const grow = easeOutCubic(Math.min(1, k * 4));
+      const ca = Math.cos(q.ang); const sa = Math.sin(q.ang);
+      for (let j = 0; j < q.n; j++) {
+        const off = (j - (q.n - 1) / 2) * q.len * 0.22;
+        const cx = q.x - sa * off; const cy = q.y + ca * off;
+        const hl = q.len * 0.5 * grow;
+        ctx.strokeStyle = hexA(q.c, 0.75 * (1 - k)); ctx.lineWidth = 9 * (1 - k * 0.5);
+        ctx.beginPath(); ctx.moveTo(cx - ca * hl, cy - sa * hl); ctx.lineTo(cx + ca * hl, cy + sa * hl); ctx.stroke();
+        ctx.strokeStyle = `rgba(255,255,255,${0.85 * (1 - k)})`; ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+    }
     for (const gn of fx.guns) {
       if (gn.t < 0) continue;
+      if (gn.small) {
+        // 평타 포탄: 작은 포구 불꽃 → 빛꼬리를 끌며 적에게
+        const ang = Math.atan2(gn.ty - gn.y, gn.tx - gn.x);
+        if (gn.t < 110) {
+          const k = gn.t / 110;
+          ctx.save(); ctx.translate(gn.x, gn.y); ctx.rotate(ang);
+          const len = (gn.mid ? 50 : 40) * (1 - k * 0.4);
+          const g = ctx.createLinearGradient(0, 0, len, 0);
+          g.addColorStop(0, `rgba(255,255,220,${1 - k})`); g.addColorStop(0.4, `rgba(255,180,60,${0.9 * (1 - k)})`); g.addColorStop(1, 'rgba(255,80,20,0)');
+          ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, -8); ctx.quadraticCurveTo(len * 0.5, -12, len, 0); ctx.quadraticCurveTo(len * 0.5, 12, 0, 8); ctx.closePath(); ctx.fill();
+          ctx.restore();
+          ctx.fillStyle = `rgba(255,230,160,${0.55 * (1 - k)})`; ctx.beginPath(); ctx.arc(gn.x, gn.y, 15 * (1 - k * 0.5), 0, Math.PI * 2); ctx.fill();
+        }
+        if (gn.t <= gn.dur) {
+          const k = easeOutCubic(gn.t / gn.dur);
+          const pos = (kk) => ({ x: lerp(gn.x, gn.tx, kk), y: lerp(gn.y, gn.ty, kk) - Math.sin(kk * Math.PI) * L.S * 0.07 });
+          const p = pos(k); const r = lerp(gn.mid ? 11 : 9, gn.mid ? 5.5 : 4.5, k);
+          trail(pos, Math.max(0, k - 0.3), k, Math.max(7, r * 2.2), '#ff9a3c', 1.6);
+          glow(p.x, p.y, r * 3, '#ffc070', 0.55);
+          ctx.fillStyle = '#16171b'; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = 'rgba(255,215,140,.95)'; ctx.lineWidth = 2; ctx.stroke();
+        }
+        continue;
+      }
       // 포구 불꽃 (위로 · 적 쪽으로)
       if (gn.t < 160) {
         const k = gn.t / 160;
