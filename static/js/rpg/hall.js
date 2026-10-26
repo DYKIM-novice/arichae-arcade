@@ -31,7 +31,7 @@
     const art = window.RpgArt ? `<img class="rg-ch-bg" src="${esc(window.RpgArt.src('bg_harbor'))}" alt="" draggable="false">` : '';
     box.innerHTML = `
       <div class="rg-lb-hero rg-ch">${art}
-        <div class="rg-logo">${LOGO}<div><b class="disp">되감기 선장</b><span>1장 · 꽃비 항구와 울음곶</span></div></div>
+        <div class="rg-logo">${LOGO}<div><b class="disp">별나침반</b><span>1장 · 꽃비 항구와 울음곶</span></div></div>
         <div class="rg-lb-rec">
           <div><em>지금</em><b class="disp">${m.loop}회차</b></div>
           <div><em>경험치</em><b class="disp">×${Sim.xpMult(m.loop).toFixed(2)}</b></div>
