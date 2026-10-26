@@ -12,6 +12,8 @@
        · 3단계(사용자 결정): 구르는 대포(golem)·짐 상자(crates)는 빼고, 그 두 자리(체력·경험치·조개·간격은 그대로)를 '작은 적 범선'(그림 e_sloop, 옆에서 나타나 색 포탄을 왼·가운데·오른쪽에서 연달아 쏨)이 써요
          · 열쇠 golem = 튼튼한 범선 · crates = 가벼운 범선 · 여러 발 포격은 패링 반격이 여러 번 나가 쉬워지므로 한 발 피해를 조금 올려 예전 밸런스(아이 6 · 중학생 2 · 어른 1회차, harness 중앙값)에 맞췄어요
          · ship = 배(포탄 격추 연출 · 일제 사격으로 끝내면 격침) · e_sloop 그림이 아직 없으면 e_caravel 을 작게 옆으로 그려요 (art.js)
+   - hero.parryCombo = 패링 콤보(맞기 전까지 이어진 패링) 반격 보너스: 반격 피해 × (1 + step × (콤보 − 1)) · cap 0 = 상한 없음 (사용자 결정)
+       · step 0.3 → 0.24 (사용자 결정: 콤보가 높으면 보스가 세 대 만에 쓰러져서 한 단계 보너스를 20% 줄임 · 상한 없음은 그대로)
    - 2단계 돈·장비·스탯 (rpg_story.md 6절)
        · 적의 shell = 쓰러뜨리면 받는 조개껍데기 · pts = 쓰러뜨리면 받는 스탯 점수 (캐럭선·문어)
        · econ: 패링 한 번 조개 = parry + ⌊comboStep × (콤보 − 1)⌋ (최대 comboMax) · 상점은 shopAfter 방들(0 = 부두, 2 = 캐럭선 중간 보스)을 지난 뒤 다음 방 전
@@ -40,7 +42,7 @@
       "parrySplit": 0.6, "tryEarly": 250, "lateShow": 220, "parryLock": 380,
       "counterMult": 3.0, "counterDelay": 150,
       "strong": {"need": 3, "mult": 5.0, "kb": 28, "stop": 110},
-      "parryCombo": {"step": 0.3, "cap": 0},
+      "parryCombo": {"step": 0.24, "cap": 0},
       "slowmo": 300, "slowScale": 0.22, "parryStop": 120,
       "hurtMs": 300, "wallCut": 0.15,
       "gaugeMax": 250, "gaugeHit": 2, "gaugeParry": 30, "gaugeHurt": 4,

@@ -22,6 +22,9 @@
   // 1장 「꽃비 항구와 울음곶」 은 혼자 하는 1인칭 모험 페이지(rpg.html)예요 (rpg_fp.md 5절: 같이 모험은 나중에 · 대기실에는 혼자 하기만)
   function chapterUrl() { return (window.RpgArt ? window.RpgArt.root : 'static/') + 'rpg.html'; }
   function openChapter() { location.href = chapterUrl(); }
+  // 별나침반 최대 콤보 명예의 전당 (rpg.html 위에 열려요 · combo.js) · 내 최고 콤보는 이 기기 저장(arichae_rpg_combo)
+  function openFame() { location.href = chapterUrl() + '?hall=1'; }
+  function myCombo() { try { const v = JSON.parse(localStorage.getItem('arichae_rpg_combo') || 'null'); return (v && v.top && v.top.s1c1) | 0; } catch (e) { return 0; } }
 
   function renderLobby(isHost) {
     const box = $('#rpg-panel');
@@ -42,6 +45,7 @@
       </div>
       <div class="rg-solo">
         <button type="button" class="btn btn-yellow rg-solo-go" data-rgch="1">1장 모험 시작!</button>
+        <button type="button" class="btn btn-ghost" data-rgfame="1">🏆 명예의 전당 · 최대 콤보${myCombo() ? ' (내 최고 x' + myCombo() + ')' : ''}</button>
       </div>
       <div class="rg-how">
         <div><b>배가 가라앉으면</b> 별나침반이 그날 아침으로 되감아요. 기억을 안고 더 강하게!</div>
@@ -63,6 +67,7 @@
       if (!b || b.disabled) return;
       SND.unlock();
       if (b.dataset.rgch) { SND.SFX.go(); openChapter(); return; }
+      if (b.dataset.rgfame) { SND.SFX.click(); openFame(); return; }
       if (b.dataset.rgath) {
         SND.SFX.pop(); SND.vibrate(10);
         const m = App.me(); if (m) m.athlete = b.dataset.rgath;

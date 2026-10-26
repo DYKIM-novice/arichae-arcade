@@ -13,7 +13,7 @@ Render(클라우드)에 올려서 쓰고, 노트북에서도 똑같이 실행해
   ARICHAE_PUBLIC_URL  외부 접속용 터널 주소 (예: https://xxxx.trycloudflare.com)
   ARICHAE_ONLY        특정 게임만 나오게 (테스트용, 예: race,stop)
   ARICHAE_TIME_SCALE  시간 배율 (테스트용, 기본 1)
-  ARICHAE_DATA_DIR    기록실·방 저장 폴더 (Render 에서는 디스크 /var/data)
+  ARICHAE_DATA_DIR    기록실·방·별나침반 콤보 명예의 전당 저장 폴더 (Render 에서는 디스크 /var/data)
 """
 
 import asyncio
@@ -39,7 +39,7 @@ from urllib.parse import unquote, urlsplit
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))   # 같은 폴더의 records.py
-from records import RecordStore  # noqa: E402
+from records import RecordStore, ComboHall  # noqa: E402
 import boards as BG  # noqa: E402
 import cards as CG  # noqa: E402
 import olympic as OL  # noqa: E402
@@ -98,6 +98,7 @@ RANK_POINTS = [100, 80, 65, 50, 40, 30, 20, 10]
 
 log = logging.getLogger("arichae")
 STORE = RecordStore(DATA_DIR)
+COMBO = ComboHall(DATA_DIR)   # 별나침반 콤보 명예의 전당 (rpg_combo.json + rpg_combo/*.jpg)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
 
 mimetypes.add_type("text/javascript", ".js")
@@ -1641,7 +1642,9 @@ async def ws_session(ws: WebSocketConn) -> None:
 #  HTTP 처리
 # =====================================================================
 REASONS = {200: "OK", 101: "Switching Protocols", 304: "Not Modified", 400: "Bad Request",
-           404: "Not Found", 405: "Method Not Allowed", 500: "Internal Server Error"}
+           404: "Not Found", 405: "Method Not Allowed", 413: "Payload Too Large", 429: "Too Many Requests",
+           500: "Internal Server Error"}
+COMBO_BODY_MAX = 300 * 1024   # 콤보 올리기 요청 최대 크기 (큰 그림 150KB → base64 + 작은 그림)
 
 
 async def send_response(writer: asyncio.StreamWriter, status: int, body: bytes,
@@ -1802,6 +1805,28 @@ async def handle_http(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             await ws_session(WebSocketConn(reader, writer))
             return
 
+        # --- 별나침반 콤보 명예의 전당 올리기 (POST JSON) ---
+        if method == "POST" and path == "/api/rpg/combo":
+            try:
+                n = int(headers.get("content-length") or "0")
+            except ValueError:
+                n = -1
+            if n <= 0 or n > COMBO_BODY_MAX:
+                await send_response(writer, 413, b'{"ok":false,"err":"size"}', "application/json; charset=utf-8")
+                return
+            try:
+                body = json.loads((await asyncio.wait_for(reader.readexactly(n), timeout=20)).decode("utf-8"))
+            except (asyncio.IncompleteReadError, asyncio.TimeoutError, ValueError, UnicodeDecodeError):
+                await send_response(writer, 400, b'{"ok":false,"err":"bad"}', "application/json; charset=utf-8")
+                return
+            fwd = headers.get("x-forwarded-for", "").split(",")[0].strip()
+            peer = writer.get_extra_info("peername")
+            ip = fwd or (peer[0] if peer else "?")
+            status, out = await asyncio.get_running_loop().run_in_executor(None, COMBO.submit, body, ip)
+            await send_response(writer, status, json.dumps(out, ensure_ascii=False).encode("utf-8"),
+                                "application/json; charset=utf-8", extra={"Cache-Control": "no-store"})
+            return
+
         if method not in ("GET", "HEAD"):
             await send_response(writer, 405, b"method not allowed")
             return
@@ -1811,6 +1836,16 @@ async def handle_http(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             await send_response(writer, 200, render_index(), "text/html; charset=utf-8", head_only, {"Cache-Control": "no-cache"})
         elif path == "/api/records":
             await send_json(writer, STORE.snapshot(), head_only)
+        elif path == "/api/rpg/combo":
+            qs = dict(x.split("=", 1) for x in (urlsplit(target).query or "").split("&") if "=" in x)
+            await send_json(writer, COMBO.top(unquote(qs.get("ch", ""))), head_only)
+        elif path.startswith("/api/rpg/combo/img/") and path.endswith(".jpg"):
+            ip_ = COMBO.img_path(path[len("/api/rpg/combo/img/"):-4])
+            if ip_ and ip_.is_file():
+                await send_response(writer, 200, ip_.read_bytes(), "image/jpeg", head_only,
+                                    {"Cache-Control": "public, max-age=31536000, immutable"})
+            else:
+                await send_response(writer, 404, b"not found", head_only=head_only)
         elif path == "/api/info":
             await send_json(writer, {"lanUrl": f"http://{lan_ip()}:{PORT}", "publicUrl": PUBLIC_URL}, head_only)
         elif path.startswith("/api/room/"):

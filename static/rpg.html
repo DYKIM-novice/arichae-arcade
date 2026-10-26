@@ -242,6 +242,56 @@
   .theme small { display: block; font-size: 11px; color: var(--dim); font-weight: 700; margin-top: 5px; }
   .tnote { margin: 0; font-size: 12px; color: #cbd5e6; line-height: 1.55; word-break: keep-all; }
   #settings .big { align-self: center; }
+  /* 5단계: 최대 콤보 카드 (여관) · 명예의 전당 · 크게 보기 */
+  #comboCard { width: 100%; max-width: 420px; background: linear-gradient(180deg, rgba(40, 26, 4, .9), rgba(8, 10, 22, .92)); border: 2px solid rgba(255, 210, 90, .7);
+    border-radius: 18px; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 0 24px rgba(255, 200, 80, .25); }
+  .cc-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .cc-head b { font-size: 14px; color: #ffe9b0; }
+  .cc-head em { font-style: normal; font-size: 30px; font-weight: 900; color: var(--gold); text-shadow: 0 2px 0 #6b3d00; line-height: 1; }
+  .cc-head span { margin-left: auto; font-size: 12px; font-weight: 800; color: var(--dim); }
+  .cc-head span.new { color: #9ff0c4; }
+  #ccImg { width: 100%; max-height: 42vh; object-fit: contain; border-radius: 12px; background: #000; display: block; }
+  #ccNameRow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 800; color: #dfe6f3; }
+  #ccNameRow input { flex: 1; min-width: 0; height: 36px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .25); background: rgba(0, 0, 0, .4);
+    color: #fff; padding: 0 10px; font: 800 15px/1 var(--font); user-select: text; -webkit-user-select: text; touch-action: manipulation; }
+  .cc-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .cc-btns button { flex: 1 1 0; min-width: 0; height: 42px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .28); background: rgba(14, 20, 36, .92);
+    color: var(--ink); font: 900 14px/1 var(--font); white-space: nowrap; }
+  .cc-btns button.up { flex: 1 1 100%; background: var(--gold); color: #1b1203; border: 0; box-shadow: 0 4px 0 #8a5a00; }
+  .cc-btns button:disabled { opacity: .45; }
+  .cc-note { margin: 0; font-size: 12px; color: #cbd5e6; line-height: 1.45; text-align: center; word-break: keep-all; }
+  #ccMsg:empty { display: none; }
+  #ccMsg { color: #9ff0c4; font-weight: 800; }
+  #fame { z-index: 11; display: flex; flex-direction: column; align-items: center; gap: 10px; background: radial-gradient(ellipse at 50% 0, #2a1d05, #05080f 60%) #05080f; }
+  #fame h2 { margin: 6px 0 0; font-size: 30px; font-weight: 900; color: var(--gold); text-shadow: 0 3px 0 #6b3d00, 0 0 24px rgba(255, 200, 80, .5); text-align: center; }
+  #fame .sub { font-size: 12.5px; color: #dfe6f3; text-align: center; line-height: 1.5; word-break: keep-all; }
+  #fameTabs { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  .fm-tab { border-radius: 999px; border: 1px solid rgba(255, 255, 255, .25); background: rgba(14, 20, 36, .9); color: var(--dim); font: 900 13px/1 var(--font); padding: 8px 14px; }
+  .fm-tab.on { background: var(--gold); color: #1b1203; border-color: var(--gold); }
+  #fameCh { font-size: 12px; font-weight: 800; color: #ffe9b0; }
+  #fameMine, #fameList { width: 100%; max-width: 420px; }
+  #fameList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .fm-row, .fm-mine { width: 100%; display: flex; align-items: center; gap: 10px; padding: 7px 10px 7px 8px; border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, .14); background: rgba(10, 14, 28, .9); color: var(--ink); font-family: var(--font); text-align: left; }
+  .fm-row.me { border-color: #7dffb0; }
+  .fm-row.focus { box-shadow: 0 0 0 3px rgba(255, 210, 90, .6); }
+  .fm-mine { border-color: rgba(255, 210, 90, .6); background: rgba(40, 26, 4, .85); }
+  .fm-mine.none { display: block; font-size: 12.5px; font-weight: 700; color: #dfe6f3; line-height: 1.5; text-align: center; word-break: keep-all; }
+  .fm-rank { flex: none; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font: 900 14px/1 var(--font); background: rgba(255, 255, 255, .1); }
+  .fm-rank.r1 { background: #ffd23f; color: #3a2600; } .fm-rank.r2 { background: #c9c3e6; color: #22203a; } .fm-rank.r3 { background: #ff8a3d; color: #3a1600; }
+  .fm-th { flex: none; width: 54px; height: 54px; object-fit: cover; border-radius: 10px; background: #000; }
+  .fm-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .fm-who b { font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fm-who small { font-size: 11px; color: var(--dim); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fm-n { flex: none; font-size: 22px; font-weight: 900; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .fm-empty { text-align: center; color: #dfe6f3; font-size: 13.5px; font-weight: 700; padding: 26px 8px; line-height: 1.6; word-break: keep-all; }
+  .fm-empty small { color: var(--dim); font-size: 12px; }
+  #fameBig { position: absolute; inset: 0; z-index: 13; background: rgba(2, 4, 10, .88); display: flex; align-items: center; justify-content: center; padding: 14px; }
+  #fameBig .sheet { width: 100%; max-width: 440px; max-height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; touch-action: pan-y; }
+  #fbImg { width: 100%; max-height: 64vh; object-fit: contain; border-radius: 14px; background: #000; }
+  #fbCap { margin: 0; text-align: center; font-size: 13.5px; font-weight: 800; color: #ffe9b0; word-break: keep-all; }
+  #fbMsg { margin: 0; text-align: center; font-size: 12.5px; font-weight: 800; color: #9ff0c4; }
+  #fbMsg:empty { display: none; }
 </style>
 </head>
 <body>
@@ -296,17 +346,26 @@
     </div>
     <div class="how">공격이 닿는 순간, <b>고리와 같은 색</b> 버튼을 누르면 <b>패링!</b><br>세 번 이어서 패링하면 우리 대포 강반격 · 대포 게이지가 차면 세 버튼 같이 = 일제 사격!</div>
     <div class="keys">키보드: A 빨강 · S 초록 · D 파랑</div>
-    <button class="ghost" id="titleExit">오락실로 돌아가기</button>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center"><button class="ghost" id="titleFame">🏆 명예의 전당</button><button class="ghost" id="titleExit">오락실로 돌아가기</button></div>
   </div>
 
   <div id="inn" class="over hide">
     <h2 id="innTitle"></h2>
     <div class="sub" id="innSub"></div>
     <div id="innPals"><canvas id="innPic" width="440" height="220"></canvas><p id="innPal"></p></div>
+    <div id="comboCard" class="hide">
+      <div class="cc-head"><b>최대 콤보</b><em id="ccN">x0</em><span id="ccBest"></span></div>
+      <img id="ccImg" alt="최대 콤보 순간">
+      <div id="ccNameRow"><label for="ccName">명예의 전당 이름</label><input id="ccName" maxlength="10" placeholder="이름 (10자)" autocomplete="off" enterkeyhint="done"></div>
+      <div class="cc-btns"><button type="button" id="ccSave">저장</button><button type="button" id="ccShare">공유</button><button type="button" class="up" id="ccUp">명예의 전당에 올리기</button></div>
+      <p class="cc-note hide" id="ccRule">명예의 전당에는 한 번도 안 쓰러지고 <b>클리어한 판</b>의 최대 콤보만 올라가요 · 이 그림은 저장·공유할 수 있어요</p>
+      <p class="cc-note" id="ccMsg"></p>
+    </div>
     <div id="lines"></div>
     <div id="innTalk" class="hide"><canvas width="128" height="128"></canvas><div><b></b><p></p></div></div>
     <div id="nodes"><h3><span>기억의 나무 · 영원히 남아요</span><em id="shards"></em></h3><div id="nodeRow"></div></div>
     <div id="innBtns"><button class="ghost" id="innExit">나가기</button><button class="ghost" id="innSet">⚙ 설정</button><button class="big" id="innGo">출항!</button></div>
+    <button class="ghost" id="innFame">🏆 명예의 전당</button>
   </div>
 
   <div id="shop" class="over hide">
@@ -329,6 +388,24 @@
     <div id="innBtns2" style="display:flex;gap:10px"><button class="ghost" id="statUndo">되돌리기</button><button class="big" id="statGo">다 골랐어요</button></div>
   </div>
 
+  <div id="fame" class="over hide">
+    <h2>명예의 전당</h2>
+    <div class="sub">한 번도 안 쓰러지고 클리어한 판의 <b>최대 콤보</b><br>(안 맞고 이어 간 패링) · 장마다 따로 겨뤄요</div>
+    <div id="fameTabs"></div>
+    <div id="fameCh"></div>
+    <div id="fameMine"></div>
+    <ol id="fameList"></ol>
+    <button class="big" id="fameClose">닫기</button>
+  </div>
+  <div id="fameBig" class="hide">
+    <div class="sheet">
+      <img id="fbImg" alt="최대 콤보 순간">
+      <p id="fbCap"></p>
+      <div class="cc-btns"><button type="button" id="fbSave">저장</button><button type="button" id="fbShare">공유</button><button type="button" id="fbClose">닫기</button><button type="button" class="up hide" id="fbUp">명예의 전당에 올리기</button></div>
+      <p id="fbMsg"></p>
+    </div>
+  </div>
+
   <div id="settings" class="hide">
     <div class="sheet">
       <h2>설정</h2>
@@ -345,6 +422,7 @@
 <script src="js/rpg/meta.js"></script>
 <script src="js/rpg/art.js"></script>
 <script src="js/rpg/story.js"></script>
+<script src="js/rpg/combo.js"></script>
 <script src="js/rpg/ch1.js"></script>
 </body>
 </html>

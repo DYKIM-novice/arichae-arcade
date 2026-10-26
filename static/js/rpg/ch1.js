@@ -22,7 +22,10 @@
        · 폭풍 문어는 화면을 거의 채울 만큼 크게
    - 4단계 (rpg_story.md 7절 '전체 시나리오'): 방 사이 장면 (story.js BRIDGE · roomBridge) — 방에 들어가기 직전 sim 을 멈추고
        짧은 대화 (1회차 길게, 회차가 쌓이면 선장이 앞일을 말하고 동료가 반응 · 건너뛰기 가능 · 자동 플레이에선 생략)
+   - 5단계 '최대 콤보' (combo.js): 콤보 = 한 번도 안 맞고 이어 간 패링(chain) · 이번 판 최고를 새로 쓸 때마다 번쩍임 바로 뒤 장면을 찍어 둬요
+       → 여관에서 '최대 콤보' 카드 (저장 · 공유 · 안 쓰러지고 클리어한 판만 명예의 전당에 올리기) · 명예의 전당 = 처음 화면·여관 단추 · ?hall=1
    - 시험용 주소: ?auto=kid|teen|adult (자동 플레이어가 하고 장면도 저절로 넘겨요 · 방 사이 장면은 &story=1 일 때만) · &speed=1~8 · &g=m|f
+       · &hold=1 이면 자동 플레이어도 여관에서 멈춰요 (최대 콤보 카드 확인용)
    - 시험 손잡이: window.__ch1 */
 (function () {
   'use strict';
@@ -32,6 +35,7 @@
   const Meta = window.RpgMeta;
   const Art = window.RpgArt;
   const ST = window.RpgStory;
+  const CB = window.RpgCombo;
   const HD = D.hero;
   const DT = S.DT;
 
@@ -47,6 +51,7 @@
   const AUTO = S.SKILLS[Q.get('auto')] ? Q.get('auto') : '';
   const STORY_AUTO = Q.get('story') === '1';   // 시험용: 자동 플레이에서도 방 사이 장면을 보여 줘요
   const SPEED = clamp(Number(Q.get('speed')) || 1, 1, 8);
+  const HOLD = Q.get('hold') === '1';          // 시험용: 자동 플레이도 여관에서 멈춰요
 
   /* 손맛 숫자 (데모에서 사용자가 괜찮다고 한 기본값) */
   const TUNE = { freeze: 300, gold: 0.6, zoom: 0.12, shake: 14, vol: 0.8, flash: true };
@@ -92,6 +97,8 @@
   let clock = 0;
   let simAcc = 0;
   let chain = 0;
+  let crun = null;          // 최대 콤보 (combo.js newRun) — 이번 판
+  let snapSeq = 0;
   let tut = null;
   let view = null;
   const L = {};
@@ -528,6 +535,7 @@
     G.W = W; G.hero = hero; G.ending = null; G.foe = null; G.rw = null; G.white = 0;
     G.sink = null; G.fired = {}; G.kong = { spot: ST.kongSpot(G.meta.loop), found: 0 }; G.bori.react = -1e9; G.bori.hintAt = clock + 2500;
     chain = 0; tut = null; simAcc = 0;
+    crun = CB.newRun(G.meta.loop, G.g, CB.CH); CB.resetSnap(); snapSeq++;
     resetFx(); updateStreak();
     talkQ.length = 0; talkUntil = 0;
     setMode('play');
@@ -711,7 +719,7 @@
       case 'shop': after(AUTO ? 300 : 700, showShop); break;
       case 'pick': sndCard(); break;
       case 'room': $('foe').classList.add('off'); G.foe = null; roomBridge(e.room); break;
-      case 'down': sndHurt(); vib([100, 50, 200]); break;
+      case 'down': sndHurt(); vib([100, 50, 200]); if (crun) CB.down(crun); break;
       case 'wipe': endRun(false); break;
       case 'clear': endRun(true); break;
       default: break;
@@ -724,12 +732,14 @@
     if (e.r === 'late') fx.pops = fx.pops.filter((p) => p.txt !== FAIL_TXT.miss[0]);
     addPop(f[0], f[1], 1.25, 0, true);
     chain = 0; updateStreak();
+    if (crun) CB.brk(crun);
     if (e.r === 'early' || e.r === 'color') sndFail();
   }
   function fxParry(e) {
     const strong = !!e.strong;
     const cut = strong || (e.final && (e.n || 1) > 1) || e.tut;
     chain++; updateStreak();
+    comboParry();
     const fz = TUNE.freeze * (strong ? 1.4 : 1);
     // 1 세상 멈춤 · 황금빛
     fx.freeze = fz; fx.gold = 1; fx.goldK = strong ? 1.25 : 1;
@@ -845,7 +855,19 @@
     sndHurt();
     vib([60, 30, 90]);
     chain = 0; updateStreak();
+    if (crun) CB.brk(crun);
     addPop('-' + e.dmg, '#ff5a6a', 0.9, 0, false, 0, L.playH - 40);
+  }
+  // 최대 콤보: 이번 판 최고를 새로 쓰면 번쩍임(흰 화면 2프레임) 바로 뒤, 황금빛 멈춤이 남은 장면을 찍어 둬요 (가장 최근 최고 한 장)
+  function comboParry() {
+    if (!crun) return;
+    CB.parry(crun);
+    if (!CB.wantSnap(crun)) return;
+    const n = crun.chain; const k = ++snapSeq; const run = crun;
+    after(CB.SNAP_DELAY, () => {
+      if (k !== snapSeq || run !== crun) return;
+      if (CB.snap(cv, L.playH, dpr, { combo: n, loop: run.loop, g: run.g })) run.snapN = n;
+    });
   }
   function burst(x, y, n, cols, sp) {
     for (let i = 0; i < n; i++) {
@@ -925,6 +947,7 @@
     if (G.ending) return;
     const W = G.W;
     G.ending = { clear, at: clock };
+    if (crun) CB.finish(crun, clear);
     setTutBtn(null);
     if (clear) {
       // 문어 스탯 점수는 클리어 장면 뒤에 나누고 → 그다음 정산 (나눈 점수도 50% 이월돼요)
@@ -997,7 +1020,9 @@
     $('innPal').textContent = clear ? '보리가 선장 곁에서 골골송을 불러요' : '보리가 선장 곁에 웅크려 꼬리로 토닥여요';
     renderNodes();
     $('innGo').textContent = '출항!';
-    if (AUTO) after(1500, depart);
+    // 최대 콤보 카드 (MIN 이상일 때 · 판마다 한 번)
+    if (crun && !crun.shown) { crun.shown = true; CB.endRun(crun); } else if (!crun) CB.endRun(null);
+    if (AUTO && !HOLD) after(1500, depart);
   }
   function renderNodes() {
     const m = Meta.get();
@@ -2443,7 +2468,9 @@
     b.addEventListener('contextmenu', (e) => e.preventDefault());
   });
   const KEY = { a: 'r', s: 'g', d: 'b', 1: 'r', 2: 'g', 3: 'b' };
+  const typing = (e) => e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName);
   window.addEventListener('keydown', (e) => {
+    if (typing(e)) return;   // 이름 칸에 글씨를 쓸 때는 a/s/d 가 버튼이 아니에요
     const k = (e.key || '').toLowerCase();
     if ((k === ' ' || k === 'enter') && G.mode === 'scene') { e.preventDefault(); audioInit(); tapScene(); return; }
     const c = KEY[k];
@@ -2452,6 +2479,7 @@
     onPress(c);
   });
   window.addEventListener('keyup', (e) => {
+    if (typing(e)) return;
     const c = KEY[(e.key || '').toLowerCase()];
     if (!c) return;
     if (btnEls[c]) btnEls[c].classList.remove('down');
@@ -2483,6 +2511,9 @@
     location.href = Art.root + '../';
   }
   $('innExit').addEventListener('click', leave);
+  $('titleFame').addEventListener('click', () => { audioInit(); sndCard(); CB.openHall('', CB.CH); });
+  $('innFame').addEventListener('click', () => { audioInit(); sndCard(); CB.openHall('', CB.CH); });
+  CB.init({ portrait: (g) => Art.sprite('c_hero_' + g), sfx: () => { audioInit(); sndCard(); } });
   $('titleExit').addEventListener('click', leave);
   $('exit').addEventListener('click', () => {
     if (G.mode === 'play' && !G.ending && !confirm('모험을 그만할까요?\n(지금까지의 회귀 기록은 남아요)')) return;
@@ -2525,11 +2556,12 @@
   window.addEventListener('resize', layout);
   layout();
   showTitle();
+  if (Q.get('hall') === '1') CB.openHall('', Q.get('ch') || CB.CH);   // 대기실 '명예의 전당' 단추로 들어왔어요
   requestAnimationFrame(frame);
 
   // 시험 손잡이
   window.__ch1 = {
-    get G() { return G; }, get fx() { return fx; }, get mode() { return G.mode; }, get tut() { return tut; }, get view() { return view; }, get chain() { return chain; },
+    get G() { return G; }, get fx() { return fx; }, get mode() { return G.mode; }, get tut() { return tut; }, get view() { return view; }, get chain() { return chain; }, get combo() { return crun; },
     // 시험용: 화면이 가려져 프레임이 느릴 때 ms 만큼 16ms 씩 직접 돌려요
     run(ms) { for (let k = 0; k < ms; k += 16) tickFrame(16); return G.mode; },
     input: onPress, pickHero, tapScene, skip: endScene, depart, showTitle, showInn,
