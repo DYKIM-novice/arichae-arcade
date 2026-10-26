@@ -14,7 +14,7 @@
          · ship = 배(포탄 격추 연출 · 일제 사격으로 끝내면 격침) · e_sloop 그림이 아직 없으면 e_caravel 을 작게 옆으로 그려요 (art.js)
    - 2단계 돈·장비·스탯 (rpg_story.md 6절)
        · 적의 shell = 쓰러뜨리면 받는 조개껍데기 · pts = 쓰러뜨리면 받는 스탯 점수 (캐럭선·문어)
-       · econ: 패링 한 번 조개 = parry + ⌊comboStep × (콤보 − 1)⌋ (최대 comboMax) · 상점은 shopAfter 번 방(0 = 부두)을 지나 출항 전
+       · econ: 패링 한 번 조개 = parry + ⌊comboStep × (콤보 − 1)⌋ (최대 comboMax) · 상점은 shopAfter 방들(0 = 부두, 2 = 캐럭선 중간 보스)을 지난 뒤 다음 방 전
                weapons atk = 반격·강반격 피해 +비율 · armors def = 받는 피해 −비율 · price = 조개 값 (회귀하면 돈·장비 0)
        · stats: 처음 base · 힘 str = 반격 +비율/점 · 민첩 agi = 판정 +ms/점 (agiCap 까지) · 체력 vit = 최대 HP +/점 · keep = 회귀 때 남는 비율(50%)
        · 2단계 밸런스(자동 플레이어 중앙값 아이 5 · 중학생 2 · 어른 1회차)에 맞춰 적 피해를 약 20% 올렸어요 (스콜 빗줄기 합 36은 그대로)
@@ -120,7 +120,7 @@
       {"id": "potion", "c": "x", "name": "회복 물약", "desc": "체력 40% 회복", "max": 99}
     ],
     "econ": {
-      "shopAfter": 0, "parry": 1, "comboStep": 0.5, "comboMax": 6, "kong": 5,
+      "shopAfter": [0, 2], "parry": 1, "comboStep": 0.5, "comboMax": 6, "kong": 5,
       "weapons": [
         {"id": "w1", "name": "녹슨 커틀러스", "desc": "반격 피해 +20%", "atk": 0.2, "price": 20},
         {"id": "w2", "name": "선원의 세이버", "desc": "반격 피해 +40%", "atk": 0.4, "price": 45},

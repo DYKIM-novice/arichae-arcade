@@ -750,7 +750,8 @@
     wave(L.cx, L.jy, L.rj * 0.7, L.rj * 2.6, 300, col, 4);
     fx.slashes.push({ x: L.cx, y: L.jy, a: rnd(-0.9, -0.5), len: L.w * (strong ? 1.25 : 0.95), w: strong ? 16 : 11, life: 0, max: 300, c: '#ffffff' });
     const cmTxt = e.cm > 1 ? ' · 피해 ×' + e.cm.toFixed(2).replace(/0$/, '') : '';
-    if (chain >= 2) addPop('x' + chain + cmTxt, '#ffd25a', 0.8 + Math.min(chain, 8) * 0.12, 0, false, L.rj + 46);
+    // 모바일에서 잘리지 않게 30% 작게 (사용자 요청)
+    if (chain >= 2) addPop('x' + chain + cmTxt, '#ffd25a', (0.8 + Math.min(chain, 8) * 0.12) * 0.7, 0, false, L.rj + 46);
     if (isShip()) shootDown(e);
     fx.cutPending = cut ? {
       text: strong ? '강반격!' : '패링!',
@@ -1336,8 +1337,8 @@
   function foeBox(d, sp, f) {
     let h; let w; let cx = L.cx; let cy = L.ey;
     const ratio = sp ? sp.width / sp.height : 1;
-    // 사용자 요청 배율: 일반 몬스터 ×1.5, 보스(중간 보스 캐럭선 포함) ×2
-    const K = (d.boss || d.mid) ? 2 : 1.5;
+    // 사용자 요청 배율: 일반 몬스터 ×1.5, 중간 보스 캐럭선 ×2, 폭풍 문어 ×1.4 (×2에서 30% 줄임)
+    const K = d.boss ? 1.4 : d.mid ? 2 : 1.5;
     if (d.boss) {
       // 폭풍 문어: 화면을 넘칠 만큼 크게 (위아래·옆으로 넘쳐도 돼요)
       h = L.playH * 0.98 * K; w = h * ratio;

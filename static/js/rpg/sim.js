@@ -665,10 +665,10 @@
         if (E && !E.dead && !W.atks.some((a) => !a.over) && t >= E.nextAt && t >= E.stun) startAttack(W, E);
         W.atks = W.atks.filter((a) => !(a.over && t > a.hits[a.hits.length - 1] + 700));
       }
-      // 카드(와 스탯 점수)를 다 고르면 → 부두 방(1번 방)을 지난 뒤엔 상점 → 출항(다음 방)
+      // 카드(와 스탯 점수)를 다 고르면 → 부두 방·캐럭선 방을 지난 뒤엔 상점 → 다음 방
       if (W.phase === 'cards' && W.heroes.every((h) => !h.cards && !(local(h) && h.pts > 0))) {
-        if (W.room === EC.shopAfter && !W.shopDone) {
-          W.shopDone = true; W.phase = 'shop';
+        if (EC.shopAfter.includes(W.room) && W.shopDone !== W.room) {
+          W.shopDone = W.room; W.phase = 'shop';
           W.heroes.forEach((h) => { h.shopped = !local(h); });
           emit(W, 'shop', { room: W.room });
         } else nextRoom(W);
