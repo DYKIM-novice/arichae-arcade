@@ -60,7 +60,85 @@ ART = [
     # 인물 · 배경 (picks.json: 하윤 = 글자 지운 원본, 1지역 '전' = v2b)
     ("chars", "hayun", "char_hayun_base_clean.jpg", "portrait"),
     ("bg", "r1_before", "bg_r1_before_v2b.jpg", "bg"),
+    # ---- 2묶음 (p2/) · 원본이 아직 없으면 건너뛰어요 (화면은 색 동그라미로 대신) ----
+    ("chars", "hayun_joy", "p2/char/char_hayun_joy.jpg", "portrait"),
+    ("chars", "hayun_wow", "p2/char/char_hayun_wow.jpg", "portrait"),
+    ("chars", "mongdol", "p2/char/char_mongdol.jpg", "portrait"),
+    ("chars", "mongdol_joy", "p2/char/char_mongdol_joy.jpg", "portrait"),
+    ("chars", "juni", "p2/char/char_juni.jpg", "portrait"),
+    ("chars", "mina", "p2/char/char_mina.jpg", "portrait"),
+    ("chars", "kkotnim", "p2/char/char_kkotnim.jpg", "portrait"),
+    ("chars", "dochi", "p2/char/char_dochi.jpg", "portrait"),
+    ("bg", "r1_after", "p2/bg/bg_r1_after.jpg", "bg"),
+    ("bg", "r2_before", "p2/bg/bg_r2_before.jpg", "bg"),
+    ("bg", "r2_after", "p2/bg/bg_r2_after.jpg", "bg"),
+    ("bg", "r3_before", "p2/bg/bg_r3_before.jpg", "bg"),
+    ("bg", "r3_after", "p2/bg/bg_r3_after.jpg", "bg"),
+    # 체인 C 찻집 · E 바다 식탁 · F 도자기 · G 바느질·부채 · H 불빛
+    ("gens", "gen_c", "p2/chain_c/gen_c_tea_shelf.jpg", "cut"),
+    ("items", "c1", "p2/chain_c/item_c1_tea_leaf.jpg", "cut"),
+    ("items", "c2", "p2/chain_c/item_c2_teacup.jpg", "cut"),
+    ("items", "c3", "p2/chain_c/item_c3_yuja_tea.jpg", "cut"),
+    ("items", "c4", "p2/chain_c/item_c4_green_tea.jpg", "cut"),
+    ("items", "c5", "p2/chain_c/item_c5_tea_set.jpg", "cut"),
+    ("items", "c6", "p2/chain_c/item_c6_tea_tray.jpg", "cut"),
+    ("items", "c7", "p2/chain_c/item_c7_dagwasang.jpg", "cut"),
+    ("gens", "gen_e", "p2/chain_e/gen_e_fish_trap.jpg", "cut"),
+    ("items", "e1", "p2/chain_e/item_e1_shrimp.jpg", "cut"),
+    ("items", "e2", "p2/chain_e/item_e2_anchovies.jpg", "cut"),
+    ("items", "e3", "p2/chain_e/item_e3_mackerel.jpg", "cut"),
+    ("items", "e4", "p2/chain_e/item_e4_croaker.jpg", "cut"),
+    ("items", "e5", "p2/chain_e/item_e5_octopus.jpg", "cut"),
+    ("items", "e6", "p2/chain_e/item_e6_gulbi.jpg", "cut"),
+    ("items", "e7", "p2/chain_e/item_e7_haemul_ttukbaegi.jpg", "cut"),
+    ("items", "e8", "p2/chain_e/item_e8_seaside_feast.jpg", "cut"),
+    ("gens", "gen_f", "p2/chain_f/gen_f_potter_wheel.jpg", "cut"),
+    ("items", "f1", "p2/chain_f/item_f1_clay.jpg", "cut"),
+    ("items", "f2", "p2/chain_f/item_f2_jongji.jpg", "cut"),
+    ("items", "f3", "p2/chain_f/item_f3_tea_bowl.jpg", "cut"),
+    ("items", "f4", "p2/chain_f/item_f4_celadon_vase.jpg", "cut"),
+    ("items", "f5", "p2/chain_f/item_f5_moon_jar.jpg", "cut"),
+    ("items", "f6", "p2/chain_f/item_f6_jangdok.jpg", "cut"),
+    ("items", "f7", "p2/chain_f/item_f7_jangdokdae.jpg", "cut"),
+    ("gens", "gen_g", "p2/chain_g/gen_g_sewing_box.jpg", "cut"),
+    ("items", "g1", "p2/chain_g/item_g1_thread_spool.jpg", "cut"),
+    ("items", "g2", "p2/chain_g/item_g2_thread_bundle.jpg", "cut"),
+    ("items", "g3", "p2/chain_g/item_g3_bokjumeoni.jpg", "cut"),
+    ("items", "g4", "p2/chain_g/item_g4_round_fan.jpg", "cut"),
+    ("items", "g5", "p2/chain_g/item_g5_saekdong_cushion.jpg", "cut"),
+    ("items", "g6", "p2/chain_g/item_g6_jogakbo.jpg", "cut"),
+    ("items", "g7", "p2/chain_g/item_g7_sail.jpg", "cut"),
+    ("gens", "gen_h", "p2/chain_h/gen_h_lantern_box.jpg", "cut"),
+    ("items", "h1", "p2/chain_h/item_h1_match.jpg", "cut"),
+    ("items", "h2", "p2/chain_h/item_h2_candle.jpg", "cut"),
+    ("items", "h3", "p2/chain_h/item_h3_candlestick.jpg", "cut"),
+    ("items", "h4", "item_h4_cheongsachorong_v2b.jpg", "cut"),
+    ("items", "h5", "p2/chain_h/item_h5_lotus_lantern.jpg", "cut"),
+    ("items", "h6", "p2/chain_h/item_h6_lantern_string.jpg", "cut"),
+    ("items", "h7", "p2/chain_h/item_h7_lighthouse_lens.jpg", "cut"),
+    # 보조 물건 (식혜·엽전·소라별·보자기 · 무지개 소라 · 모래더미)
+    ("items", "en1", "p2/aux/aux_sikhye_cup.jpg", "cut"),
+    ("items", "en2", "p2/aux/aux_sikhye_bowl.jpg", "cut"),
+    ("items", "en3", "p2/aux/aux_sikhye_jar.jpg", "cut"),
+    ("items", "cn1", "p2/aux/aux_coin_few.jpg", "cut"),
+    ("items", "cn2", "p2/aux/aux_coin_string.jpg", "cut"),
+    ("items", "cn3", "p2/aux/aux_coin_chest.jpg", "cut"),
+    ("items", "ss1", "p2/aux/aux_sorastar_1.jpg", "cut"),
+    ("items", "ss2", "p2/aux/aux_sorastar_pouch.jpg", "cut"),
+    ("items", "ss3", "p2/aux/aux_sorastar_box.jpg", "cut"),
+    ("items", "bj1", "p2/aux/aux_bojagi_small.jpg", "cut"),
+    ("items", "bj2", "p2/aux/aux_bojagi_medium.jpg", "cut"),
+    ("items", "bj3", "p2/aux/aux_bojagi_large.jpg", "cut"),
+    ("items", "wild", "p2/aux/aux_rainbow_conch.jpg", "cut"),
+    ("items", "sand", "p2/aux/aux_sand_pile.jpg", "cut"),
+    # 숨은 비밀 (편지 조각은 대사창 '할머니의 편지' 얼굴로도 써요)
+    ("ui", "secret_letter", "p2/secret/secret_letter_piece.jpg", "cut"),
+    ("ui", "secret_bottle", "p2/secret/secret_bottle_letter.jpg", "cut"),
+    ("ui", "secret_seagull", "p2/secret/secret_seagull.jpg", "cut"),
 ]
+
+# 화면이 '그림이 있는지' 알 수 있게 실제로 있는 파일 목록을 js 로 써 둬요 (없는 그림은 요청조차 안 함)
+LIST_JS = ROOT / "static" / "js" / "merge" / "art_list.js"
 
 ICON = 256      # 물건 아이콘 한 변
 PAD = 0.06      # 아이콘 안쪽 여백 비율
@@ -136,6 +214,15 @@ def main():
         total += dst.stat().st_size
         print(f"{group}/{gid:10s} {out.width}x{out.height} {dst.stat().st_size // 1024}KB")
     print(f"합계 {total // 1024}KB → {OUT}")
+    write_list()
+
+
+def write_list():
+    have = sorted(f"{g}/{gid}" for g, gid, _s, _m in ART if (OUT / g / f"{gid}.webp").is_file())
+    body = ",".join(f'"{x}":1' for x in have)
+    head = "/* tools/merge_art.py 가 만들어요 (손으로 고치지 않기) · 지금 static/img/merge 에 실제로 있는 그림 */"
+    LIST_JS.write_text(head + "\n" + "window.MergeArtList = {" + body + "};\n", "utf-8")
+    print(f"그림 목록 {len(have)}개 → {LIST_JS.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":

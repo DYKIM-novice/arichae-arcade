@@ -8,7 +8,8 @@
 <!-- 아리채 오락실 · 머지관 · 「소라섬 등불 이야기」 (기획: docs/handoff/specs/merge_seaside.md)
      - 데이터: js/merge/data.js · 규칙: js/merge/core.js (node tools/merge_test.js) · 저장: js/merge/save.js
      - 그림 경로: js/merge/art.js 한 곳 (static/img/merge/... · tools/merge_art.py)
-     - 손맛(소리·진동·반짝이): js/merge/fx.js · 화면·조작: js/merge/ui.js -->
+     - 손맛(소리·진동·반짝이): js/merge/fx.js · 화면·조작: js/merge/ui.js
+     - 마을 복원(전/후 배경·작업)·이야기 장면: js/merge/town.js · 서버 저장: save.js + server.py /api/merge/* -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap">
 <link rel="stylesheet" href="css/merge.css">
 </head>
@@ -24,19 +25,29 @@
     <button class="chip round" id="btn-set" type="button" aria-label="설정">⚙</button>
   </header>
   <section id="orders" aria-label="마을 사람 부탁"></section>
-  <main id="board-wrap"><div id="board" role="grid" aria-label="합치기 판"></div></main>
-  <footer id="info"></footer>
+  <main id="board-wrap"><div id="board" role="grid" aria-label="합치기 판"></div>
+    <button class="chip round hide" id="btn-undo" type="button" aria-label="되돌리기">↶</button></main>
+  <footer id="foot">
+    <div id="info"></div>
+    <nav id="nav">
+      <button type="button" class="nav-b" id="btn-town" aria-label="마을 고치기"><span class="nav-ic">🏡</span><b>마을</b><i class="badge hide" id="town-badge">!</i></button>
+      <button type="button" class="nav-b" id="btn-bag" aria-label="가방"><span class="nav-ic">👜</span><b id="bag-n">가방</b><i class="badge hide" id="bag-badge"></i></button>
+    </nav>
+  </footer>
 </div>
 <div id="ghost" class="hide"></div>
 <canvas id="fx"></canvas>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="sheet" class="hide"></div>
+<div id="town" class="hide" role="dialog" aria-label="마을"></div>
 <div id="talk" class="hide"></div>
 <script src="js/merge/data.js"></script>
 <script src="js/merge/core.js"></script>
 <script src="js/merge/save.js"></script>
+<script src="js/merge/art_list.js"></script>
 <script src="js/merge/art.js"></script>
 <script src="js/merge/fx.js"></script>
 <script src="js/merge/ui.js"></script>
+<script src="js/merge/town.js"></script>
 </body>
 </html>

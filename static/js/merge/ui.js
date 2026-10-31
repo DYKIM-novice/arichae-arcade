@@ -2,7 +2,9 @@
    - 판(7×9): 끌어서 놓기(가까운 칸에 착 붙음) + 톡-톡 합치기 · 발생기 톡 → 옆 빈칸에 물건이 튀어나와요
    - 주문 카드: 얼굴 · 원하는 물건(있으면 초록 체크) · 보상 · [건네기] · ↻ 다른 부탁
    - 규칙은 전부 MergeCore(core.js) 에 맡기고, 여기는 그리기·움직임·소리만 해요
-   - 2단계 자리: 아래 '마을' 화면(town) · 이야기(story) 모듈이 renderAll / changed 를 같이 쓰면 돼요 */
+   - 2단계: 모래더미 칸 · 아래 [마을]/[가방] 버튼 · 이야기 대사창(talk) · 서버 저장 동기화
+   - 3단계(일부): 가방(끌어 넣기)·선물함·소라별 가게 · 팔기(5초 되돌리기) · 되돌리기 ↶ · 보조 물건 쓰기 · 충전식 발생기
+   - 마을 화면(전/후 배경·복원 작업)은 town.js 가 window.MergeUI 손잡이로 이 화면을 같이 써요 */
 (function () {
   'use strict';
 
@@ -18,6 +20,7 @@
   let ls = null;
   try { ls = window.localStorage; } catch (e) { ls = null; }
   const store = S.localAdapter(ls);
+  const freshLocal = !S.hasSave(store);
   let st = S.load(store, now(), rng);
   const saver = S.Saver(store, () => st, 1000);
   function changed() { st.updatedAt = now(); saver.schedule(); }
@@ -29,6 +32,7 @@
   let tipIdx = Math.floor(Math.random() * D.TIPS.length);
   const shown = { coins: st.coins, stars: st.stars, hold: 0 };   // 동전·별이 날아가는 동안 숫자는 도착할 때 올라요
   let infoMsg = null;    // 정보 칸에 잠깐 띄우는 말
+  let undoSnap = null, undoT = 0;   // 되돌리기 (마지막 행동 1번)
 
   /* ---------- 그림 조각 ---------- */
   function artImg(id, label, cls) {
@@ -46,15 +50,23 @@
     const s = A.src(v.art);
     return `<span class="face" style="--fc:${esc(v.color)}">${s ? `<img src="${esc(s)}" alt="" draggable="false" data-ph="${esc(v.name[0])}">` : esc(v.name[0])}</span>`;
   }
-  function cellKey(cell) { return cell ? (cell.k === 'item' ? cell.c + cell.t : cell.k === 'gen' ? cell.g : cell.k) : ''; }
+  function cellKey(cell) {
+    if (!cell) return '';
+    if (cell.k === 'item') return cell.c + cell.t;
+    if (cell.k === 'gen') { const ch = C.chargeInfo(st, cell.g, now()); return cell.g + (ch ? (ch.restMs ? 'r' + Math.ceil(ch.restMs / 1000) : 'n' + ch.left) : ''); }
+    return cell.k;
+  }
+  function sandHTML(n) { return `<div class="sand s${n}">${artImg('sand', '모래')}</div>`; }
   function cellHTML(cell) {
     if (!cell) return '';
     if (cell.k === 'gen') {
       const g = D.GENS[cell.g];
-      const cost = st.settings.easy ? '' : `<span class="gcost">${artImg('energy', '')}1</span>`;
-      return `<div class="it gen c-${g.chain}">${artImg(cell.g, g.name)}${cost}</div>`;
+      const ch = C.chargeInfo(st, cell.g, now());
+      let cost = st.settings.easy ? '' : `<span class="gcost">${artImg('energy', '')}1</span>`;
+      if (ch) cost += ch.restMs ? `<span class="gcharge rest">${mmss(ch.restMs)}</span>` : `<span class="gcharge">${ch.left}</span>`;
+      return `<div class="it gen c-${g.chain}${ch && ch.restMs ? ' resting' : ''}">${artImg(cell.g, g.name)}${cost}</div>`;
     }
-    if (cell.k === 'wild') return `<div class="it">${artImg('wild', '무지개 소라')}</div>`;
+    if (cell.k === 'wild') return `<div class="it wild">${artImg('wild', '무지개 소라')}</div>`;
     const max = cell.t >= C.maxTier(cell.c);
     return `<div class="it c-${cell.c}${max ? ' max' : ''}">${artImg(C.itemId(cell), C.itemName(cell))}<i class="tier">${cell.t}</i></div>`;
   }
@@ -76,8 +88,9 @@
     const b = $('board');
     for (let i = 0; i < C.N; i++) {
       const el = b.children[i];
-      const k = cellKey(st.board[i]) + (st.board[i] && st.board[i].k === 'gen' && st.settings.easy ? '~' : '');
-      if (el.dataset.k !== k) { el.innerHTML = cellHTML(st.board[i]); el.dataset.k = k; }
+      const cv = st.cover[i] | 0;
+      const k = cv ? 'sand' + cv : cellKey(st.board[i]) + (st.board[i] && st.board[i].k === 'gen' && st.settings.easy ? '~' : '');
+      if (el.dataset.k !== k) { el.innerHTML = cv ? sandHTML(cv) : cellHTML(st.board[i]); el.dataset.k = k; el.classList.toggle('covered', !!cv); }
       const it = el.firstElementChild;
       if (it) it.classList.toggle('sel', i === sel);
     }
@@ -88,7 +101,7 @@
     const vw = Math.min(innerWidth, 560);
     const gap = 3;
     const W = vw - 16 - 20;
-    const used = $('hud').offsetHeight + $('orders').offsetHeight + $('info').offsetHeight;
+    const used = $('hud').offsetHeight + $('orders').offsetHeight + $('foot').offsetHeight;
     const H = innerHeight - used - 20 - 8;
     const cell = Math.floor(Math.max(34, Math.min(76, (W - 6 * gap) / 7, (H - 8 * gap) / 9)));
     document.documentElement.style.setProperty('--cell', cell + 'px');
@@ -105,6 +118,17 @@
     if (!shown.hold) { shown.coins = st.coins; shown.stars = st.stars; }
     $('coins').textContent = shown.coins;
     $('stars').textContent = shown.stars;
+    renderNav();
+  }
+  function renderNav() {
+    const a = C.areaInfo(st);
+    $('town-badge').classList.toggle('hide', !a.canAfford);
+    $('btn-town').classList.toggle('ready', a.canAfford);
+    const used = st.bag.filter(Boolean).length;
+    $('bag-n').textContent = `가방 ${used}/${st.bag.length}`;
+    const gb = $('bag-badge');
+    gb.classList.toggle('hide', !st.gifts.length);
+    gb.textContent = st.gifts.length ? String(st.gifts.length) : '';
   }
   function bump(id) { const el = $(id); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
 
@@ -120,7 +144,7 @@
     return `<button type="button" class="oc-face" data-face="${o.id}">${faceHTML(v)}<span class="oc-name">${esc(v.name)}</span></button>
       <button type="button" class="oc-skip" data-skip="${o.id}" aria-label="다른 부탁으로 바꾸기">↻</button>
       <div class="oc-need${o.need.length > 1 ? ' many' : ''}">${need}</div>
-      <div class="oc-rew"><span>${artImg('coin', '동전')}${o.coins}</span><span>${STAR}${o.stars}</span></div>
+      <div class="oc-rew"><span>${artImg('coin', '동전')}${o.coins}</span><span>${STAR}${o.stars}</span>${o.bonus ? `<span class="oc-bonus" title="덤: ${esc(C.itemName(o.bonus))}">+${artImg(o.bonus.k === 'wild' ? 'wild' : C.itemId(o.bonus), C.itemName(o.bonus))}</span>` : ''}</div>
       <button type="button" class="oc-go" data-go="${o.id}">건네기</button>`;
   }
   function renderOrders() {
@@ -163,8 +187,13 @@
     sel = -1;
     // 판의 물건이 카드로 날아가요
     s.cells.forEach((ci, k) => {
-      const it = itEl(ci);
       const slot = card.querySelectorAll('.oc-item')[k] || card;
+      if (ci < 0) {   // 가방에서 꺼내 건네요
+        const n = o.need[k];
+        F.fly(artImg(n.c + n.t, ''), center($('btn-bag')), center(slot), { ms: 420, s1: 0.7, size: 40 });
+        return;
+      }
+      const it = itEl(ci);
       if (it) { F.fly(it.innerHTML.replace(/<i class="tier">.*?<\/i>/, ''), center(it), center(slot), { ms: 380, s1: 0.7, size: center(it).w }); it.classList.add('lifted'); }
     });
     setTimeout(() => {
@@ -183,8 +212,20 @@
       F.fly(STAR, from, center($('hud-star')), { count: Math.min(5, r.stars), ms: 700, spread: 30, size: 28, s1: 0.7,
         onEach: (i) => { if (i === Math.min(5, r.stars) - 1) { shown.stars = st.stars; renderHudCounts(); bump('hud-star'); shown.hold = Math.max(0, shown.hold - 1); } } });
       const v = D.VILLAGERS[r.order.who] || D.VILLAGERS.hayun;
-      say(v, `${v.lines[2] || '고마워!'}  (동전 ${r.coins} · 별 ${r.stars})`);
-      renderBoard(); renderOrders(); renderInfo();
+      say(v, `${v.lines[2] || '고마워!'}  (동전 ${r.coins} · 별 ${r.stars}${r.bonus ? ' · 덤 ' + C.itemName(r.bonus.cell) : ''})`);
+      clearUndo();
+      renderBoard(); renderOrders(); renderInfo(); renderNav();
+      if (r.bonus) {
+        if (r.bonus.at >= 0) {
+          const el = itEl(r.bonus.at), b = center(cellEl(r.bonus.at));
+          if (el) { el.style.setProperty('--fx', (from.x - b.x) + 'px'); el.style.setProperty('--fy', (from.y - b.y) + 'px'); restartAnim(el, 'born'); }
+          setTimeout(() => floatTag('덤! ' + C.itemName(r.bonus.cell), b.x, b.y - b.h * 0.6, true), 300);
+        } else toast('덤은 자리가 없어서 가방의 선물함에 넣었어요');
+      }
+      if (C.areaInfo(st).canAfford && !st.seen.townTip) {
+        st.seen.townTip = true;
+        setTimeout(() => say(D.VILLAGERS.hayun, '별이 모였어요! 아래 [마을]을 눌러 바다별채를 고쳐 봐요.'), 900);
+      }
       changed();
     }, 400);
   }
@@ -198,6 +239,7 @@
     const hits = [];
     st.board.forEach((c, i) => { if (c && c.k === 'item' && c.c === n.c && c.t === n.t) hits.push(i); });
     if (hits.length) { flash(hits); say(D.VILLAGERS.hayun, `${josa(nm, '은', '는')} 여기 있어요! 끌어서 놓을 필요 없이 [건네기]만 누르면 돼요.`); return; }
+    if (st.bag.some((c) => c && c.k === 'item' && c.c === n.c && c.t === n.t)) { restartAnim($('btn-bag'), 'wig1'); say(D.VILLAGERS.hayun, `${josa(nm, '은', '는')} 가방에 있어요! [건네기]를 누르면 가방에서 꺼내 줘요.`); return; }
     if (n.t > 1) {
       const prev = { k: 'item', c: n.c, t: n.t - 1 };
       const pn = C.itemName(prev);
@@ -233,10 +275,17 @@
       infoMsg = null;
       const mx = C.maxTier(cell.c);
       const nm = C.itemName(cell);
+      const aux = D.CHAINS[cell.c].aux;
       const next = cell.t < mx ? C.itemName({ k: 'item', c: cell.c, t: cell.t + 1 }) : '';
-      const nextTxt = next ? (st.found[cell.c + (cell.t + 1)] ? `2개 → ${next}` : '2개를 합치면 → ???') : '최고 단계예요! 반짝반짝';
+      let nextTxt = next ? (st.found[cell.c + (cell.t + 1)] ? `2개 → ${next}` : '2개를 합치면 → ???') : '최고 단계예요! 반짝반짝';
+      if (aux) nextTxt = auxText(aux, cell.t) + (next ? ` · 2개 → ${next}` : '');
       h = `<div class="info-box c-${cell.c}"><div class="info-ic">${artImg(C.itemId(cell), nm)}</div>
-        <div class="info-txt"><b>${esc(nm)}<em>${cell.t} / ${mx}단계</em></b><p>${esc(D.CHAINS[cell.c].name)} · ${esc(nextTxt)}</p>${ladderHTML(cell.c, cell.t)}</div></div>`;
+        <div class="info-txt"><b>${esc(nm)}<em>${cell.t} / ${mx}단계</em></b><p>${esc(D.CHAINS[cell.c].name)} · ${esc(nextTxt)}</p>${ladderHTML(cell.c, cell.t)}</div>
+        ${actsHTML(cell)}</div>`;
+    } else if (cell && cell.k === 'wild') {
+      infoMsg = null;
+      h = `<div class="info-box"><div class="info-ic">${artImg('wild', '무지개 소라')}</div>
+        <div class="info-txt"><b>무지개 소라<em>만능</em></b><p>아무 물건에 겹치면 그 물건이 한 단계 올라가요!</p></div>${actsHTML(cell)}</div>`;
     } else if (cell && cell.k === 'gen') {
       infoMsg = null;
       const g = D.GENS[cell.g];
@@ -250,6 +299,17 @@
         <div class="info-txt"><b>${esc(m.v.name)}</b><p>${esc(m.text)}</p></div></div>`;
     }
     box.innerHTML = h;
+  }
+  function auxText(aux, t) {
+    const a = aux.amount[t - 1];
+    return aux.kind === 'energy' ? `마시면 기운 +${a}` : aux.kind === 'coins' ? `쓰면 동전 +${a}` : aux.kind === 'gems' ? `모으면 소라별 +${a}` : `열면 물건 ${a}개`;
+  }
+  function actsHTML(cell) {
+    const aux = cell.k === 'item' && D.CHAINS[cell.c].aux;
+    return `<div class="info-acts">
+      ${aux ? `<button type="button" class="act use" data-act="use">${esc(aux.verb)}</button>` : ''}
+      <button type="button" class="act" data-act="bag">가방에</button>
+      <button type="button" class="act sell" data-act="sell">팔기 ${artImg('coin', '')}${C.sellValue(cell)}</button></div>`;
   }
 
   /* ---------- 움직임 효과 ---------- */
@@ -275,12 +335,21 @@
       setTimeout(() => { floatTag('새 발견! ' + C.itemName(r.cell), p.x, p.y - p.h * 0.6); F.sfx('discover'); F.burst(p.x, p.y, ['#ffd25a', '#ffffff', col], 18, 1.5); }, 120);
     }
     if (r.max) setTimeout(() => { floatTag('최고 단계!', p.x, p.y - p.h * 1.3, true); F.sfx('maxed'); F.vibrate([10, 30, 10, 30, 30]); }, 380);
+    (r.peeled || []).forEach((pe, k) => setTimeout(() => {
+      const q = center(cellEl(pe.i));
+      restartAnim(cellEl(pe.i).firstElementChild, 'pop');
+      F.burst(q.x, q.y, ['#e8cfa0', '#f6e3bd', '#ffffff'], 10, 0.8);
+      F.sfx(pe.left ? 'drop' : 'open');
+      if (!pe.left) floatTag('칸이 열렸어요!', q.x, q.y - q.h * 0.5);
+    }, 160 + k * 90));
   }
 
   // from → to 적용 (끌기·톡톡 공통)
   function apply(from, to) {
+    const snap = C.snapshot(st);
     const r = C.move(st, from, to, now());
-    if (r.kind === 'none') return r;
+    if (r.kind === 'none') { if (r.reason === 'covered') { F.sfx('bad'); toast('모래더미예요 · 옆에서 합치면 벗겨져요'); renderBoard(); } return r; }
+    setUndo(snap);
     sel = r.kind === 'swap' ? to : r.at;
     renderBoard();
     if (r.kind === 'merge') afterMerge(r);
@@ -297,7 +366,8 @@
     const r = C.tapGen(st, i, now(), rng);
     if (!r.ok) {
       F.sfx('bad'); F.vibrate(30);
-      if (r.reason === 'full') toast('자리가 없어요 · 같은 것끼리 합쳐 보세요');
+      if (r.reason === 'full') toast('자리가 없어요 · 합치거나 가방에 넣어 보세요');
+      else if (r.reason === 'rest') toast(`${josa(D.GENS[st.board[i].g].name, '은', '는')} 쉬는 중 · ${mmss(r.waitMs)} 뒤에 다시`);
       else if (r.reason === 'energy') openEnergy();
       return;
     }
@@ -308,11 +378,17 @@
     F.sfx('spawn'); F.vibrate(8);
     setTimeout(() => F.burst(b.x, b.y, [D.CHAINS[r.cell.c].color, '#ffffff'], 6, 0.55), 300);
     if (r.first) setTimeout(() => { floatTag('새 발견! ' + C.itemName(r.cell), b.x, b.y - b.h * 0.6); F.sfx('discover'); }, 320);
+    clearUndo();
     renderHud(); renderOrders(); renderInfo();
     changed();
   }
 
   function tap(i) {
+    if (st.cover[i] > 0) {
+      restartAnim(cellEl(i).firstElementChild, 'wig1'); F.sfx('bad');
+      say(D.VILLAGERS.hayun, `모래더미예요 (${st.cover[i]}겹). 바로 옆 칸에서 합치기를 하면 한 겹씩 벗겨져요.`);
+      return;
+    }
     const cell = st.board[i];
     if (!cell) { if (sel >= 0) { sel = -1; tipIdx++; renderBoard(); renderInfo(); } return; }
     if (cell.k === 'gen') { sel = i; renderBoard(); renderInfo(); spawn(i); return; }
@@ -397,6 +473,14 @@
     if (!d.on) { if (!cancel) tap(d.i); return; }
     if (d.over >= 0) cellEl(d.over).classList.remove('over', 'can');
     const lift = ghost.offsetHeight * 0.35;
+    const overBag = !cancel && (() => { const el = document.elementFromPoint(e.clientX, e.clientY - lift * 0.5); return !!(el && el.closest && el.closest('#btn-bag')); })();
+    if (overBag && st.board[d.i] && st.board[d.i].k !== 'gen') {
+      const b = center($('btn-bag'));
+      ghost.className = 'snap'; ghostAt(b.x, b.y, 0.5);
+      busy = true;
+      setTimeout(() => { ghostHide(); busy = false; putInBag(d.i); }, 130);
+      return;
+    }
     const to = cancel ? -1 : indexAt(e.clientX, e.clientY - lift * 0.5);
     const target = to >= 0 && to !== d.i ? to : d.i;
     const p = center(cellEl(target));
@@ -444,12 +528,105 @@
     }
   });
 
+  /* ---------- 정보 칸 버튼: 쓰기 · 가방에 · 팔기 ---------- */
+  $('info').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-act]');
+    if (!b || sel < 0 || busy) return;
+    F.unlock(); lastAct = now();
+    const i = sel;
+    if (b.dataset.act === 'use') useAt(i);
+    else if (b.dataset.act === 'bag') putInBag(i);
+    else if (b.dataset.act === 'sell') sellAt(i, false);
+  });
+  function useAt(i) {
+    const cell = st.board[i];
+    const p = center(cellEl(i));
+    const r = C.useItem(st, i, now(), rng);
+    if (!r.ok) { F.sfx('bad'); return; }
+    clearUndo(); sel = -1;
+    F.vibrate(16);
+    if (r.kind === 'gift') {
+      F.sfx('discover');
+      renderBoard();
+      r.placed.forEach((pl, k) => {
+        if (pl.at < 0) return;
+        const el = itEl(pl.at), b = center(cellEl(pl.at));
+        if (el) { el.style.setProperty('--fx', (p.x - b.x) + 'px'); el.style.setProperty('--fy', (p.y - b.y) + 'px'); el.style.animationDelay = (k * 60) + 'ms'; restartAnim(el, 'born'); }
+      });
+      F.burst(p.x, p.y, ['#e46f8c', '#ffd25a', '#ffffff'], 24, 1.3);
+      if (r.placed.some((x) => x.at < 0)) toast('자리가 모자라서 일부는 가방의 선물함에 넣었어요');
+    } else {
+      F.sfx('deliver');
+      F.burst(p.x, p.y, ['#ffd25a', '#ffffff', D.CHAINS[cell.c].color], 18, 1.1);
+      const target = r.kind === 'energy' ? 'hud-energy' : r.kind === 'coins' ? 'hud-coin' : null;
+      if (target) { F.fly(artImg(r.kind === 'energy' ? 'energy' : 'coin', ''), p, center($(target)), { count: 3, ms: 560, size: 26, onEach: (k) => { if (k === 2) bump(target); } }); }
+      floatTag(r.kind === 'energy' ? `기운 +${r.amount}` : r.kind === 'coins' ? `동전 +${r.amount}` : `소라별 +${r.amount}`, p.x, p.y - p.h * 0.6, true);
+    }
+    renderAll(); changed();
+  }
+  function putInBag(i) {
+    const snap = C.snapshot(st);
+    const cell = st.board[i];
+    if (cell && cell.k === 'gen') { F.sfx('bad'); toast('발생기는 판에 두어요'); return; }
+    const p = center(cellEl(i));
+    const r = C.toBag(st, i, now());
+    if (!r.ok) { F.sfx('bad'); toast(r.reason === 'full' ? '가방이 가득 찼어요 · 가방에서 칸을 늘릴 수 있어요' : ''); return; }
+    setUndo(snap);
+    sel = -1;
+    F.fly(artImg(cell.k === 'wild' ? 'wild' : C.itemId(cell), ''), p, center($('btn-bag')), { ms: 420, size: p.w, s1: 0.4, onEach: () => restartAnim($('btn-bag'), 'bump') });
+    F.sfx('drop');
+    renderAll(); changed();
+  }
+  function sellAt(i, sure) {
+    const cell = st.board[i];
+    if (!cell || cell.k === 'gen') return;
+    if (!sure && C.sellAsk(cell)) {
+      openSheet(`<h2>정말 팔까요?</h2><div class="big-num">${artImg(cell.k === 'wild' ? 'wild' : C.itemId(cell), '')}</div>
+        <p class="center">${esc(C.itemName(cell))} → 동전 ${C.sellValue(cell)}개<br><small class="muted">${cell.k === 'wild' ? '무지개 소라는 아무 물건이나 올려 줘요' : '최고 단계 물건이에요'}</small></p>
+        <button type="button" class="btn warn" data-sure="1">팔기</button><button type="button" class="btn" data-close="1">그만두기</button>`,
+      (b) => { if (b.dataset.sure) { closeSheet(); sellAt(i, true); } });
+      return;
+    }
+    const snap = C.snapshot(st);
+    const p = center(cellEl(i));
+    const r = C.sell(st, i, now());
+    if (!r.ok) return;
+    setUndo(snap, `${C.itemName(r.cell)} 팔았어요 (+${r.coins})`);
+    sel = -1;
+    F.sfx('coin');
+    F.fly(artImg('coin', ''), p, center($('hud-coin')), { count: Math.min(4, Math.max(1, Math.ceil(r.coins / 8))), ms: 520, size: 26, onEach: () => bump('hud-coin') });
+    renderAll(); changed();
+  }
+  // 되돌리기: 옮기기·합치기·팔기·가방 넣기 뒤 (뽑기·건네기·고치기를 하면 사라져요)
+  function setUndo(snap, msg) {
+    undoSnap = snap;
+    $('btn-undo').classList.remove('hide');
+    clearTimeout(undoT);
+    undoT = setTimeout(clearUndo, 15000);
+    if (msg) toast(msg, '되돌리기', doUndo);
+  }
+  function clearUndo() { undoSnap = null; clearTimeout(undoT); $('btn-undo').classList.add('hide'); }
+  function doUndo() {
+    if (!undoSnap || busy) return;
+    C.restore(st, undoSnap);
+    clearUndo();
+    sel = -1;
+    F.sfx('swap');
+    toast('되돌렸어요');
+    renderAll(); changed();
+  }
+  $('btn-undo').addEventListener('click', () => { F.unlock(); doUndo(); });
+
   /* ---------- 알림 · 시트 ---------- */
   let toastT = 0;
-  function toast(msg) {
+  function toast(msg, btn, onBtn) {
+    if (!msg) return;
     const t = $('toast');
-    t.textContent = msg; t.classList.add('on');
-    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2200);
+    t.innerHTML = esc(msg) + (btn ? ` <button type="button" class="toast-b">${esc(btn)}</button>` : '');
+    t.classList.toggle('has-b', !!btn);
+    t.onclick = btn ? (e) => { if (e.target.closest('.toast-b')) { t.classList.remove('on'); onBtn(); } } : null;
+    t.classList.add('on');
+    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), btn ? 5000 : 2200);
   }
   function openSheet(html, onClick) {
     const sh = $('sheet');
@@ -487,8 +664,67 @@
     });
   }
   $('hud-energy').addEventListener('click', () => { F.unlock(); openEnergy(); });
-  $('hud-star').addEventListener('click', () => { F.unlock(); F.sfx('pick'); say(D.VILLAGERS.hayun, `별 ${st.stars}개! 별은 바다별채를 고치는 데 써요. (마을 고치기는 곧 열려요)`); });
-  $('hud-coin').addEventListener('click', () => { F.unlock(); F.sfx('pick'); say(D.VILLAGERS.hayun, `동전 ${st.coins}개. 기운을 채울 때 쓸 수 있어요.`); });
+  $('hud-star').addEventListener('click', () => { F.unlock(); openTown(); });
+  $('btn-town').addEventListener('click', () => { F.unlock(); openTown(); });
+  function openTown() { if (window.MergeTown) window.MergeTown.open(); }
+  $('hud-coin').addEventListener('click', () => { F.unlock(); F.sfx('pick'); say(D.VILLAGERS.hayun, `동전 ${st.coins}개 · 소라별 ${st.gems}개. 동전은 기운 채우기·가방 늘리기, 소라별은 가방 속 가게에서 써요.`); });
+
+  /* ---------- 가방 · 선물함 · 소라별 가게 ---------- */
+  function bagHTML() {
+    const slot = (c, k, kind) => {
+      if (!c) return `<button type="button" class="bslot empty" disabled aria-label="빈 칸"></button>`;
+      const id = c.k === 'gen' ? c.g : c.k === 'wild' ? 'wild' : C.itemId(c);
+      const nm = C.itemName(c);
+      return `<button type="button" class="bslot c-${c.c || 'w'}" data-${kind}="${k}" aria-label="${esc(nm)} 꺼내기">${artImg(id, nm)}${c.k === 'item' ? `<i class="tier">${c.t}</i>` : ''}</button>`;
+    };
+    const price = C.bagPrice(st);
+    const gifts = st.gifts.length ? `<h3>선물함 <small>자리가 없을 때 받은 것 · 톡 하면 판으로</small></h3><div class="bgrid">${st.gifts.map((c, k) => slot(c, k, 'gift')).join('')}</div>` : '';
+    const shop = D.BAL.shop.map((it) => {
+      const nm = C.itemName(it.cell);
+      return `<button type="button" class="shop-b" data-shop="${it.id}" ${st.gems >= it.gems ? '' : 'disabled'}>${artImg(it.cell.k === 'wild' ? 'wild' : C.itemId(it.cell), nm)}<span>${esc(nm)}</span><b>${artImg('ss1', '소라별')}${it.gems}</b></button>`;
+    }).join('');
+    return `<h2>가방</h2>
+      <p class="center muted">톡 하면 판으로 꺼내요 · 판의 물건을 [가방] 버튼에 끌어다 놓으면 들어가요<br>가방 속 물건도 부탁에 바로 건넬 수 있어요</p>
+      <div class="bgrid">${st.bag.map((c, k) => slot(c, k, 'bag')).join('')}</div>
+      <button type="button" class="btn" data-grow="1" ${price && st.coins >= price ? '' : 'disabled'}>${price ? `가방 한 칸 늘리기 · 동전 ${price}` : '가방이 가장 커요 (20칸)'}</button>
+      ${gifts}
+      <h3>소라별 가게 <small>가진 소라별 ${st.gems}개 · 처음 보는 물건을 만들면 1개씩</small></h3>
+      <div class="shop">${shop}</div>
+      <button type="button" class="btn" data-close="1">닫기</button>`;
+  }
+  function openBag() {
+    const re = () => { const b = $('sheet').querySelector('.sheet-box'); if (b) b.innerHTML = bagHTML(); };
+    openSheet(bagHTML(), (b) => {
+      if (b.dataset.bag != null) {
+        const r = C.fromBag(st, Number(b.dataset.bag), now(), rng);
+        if (!r.ok) { F.sfx('bad'); toast('판에 빈칸이 없어요'); return; }
+        afterTakeOut(r.at);
+      } else if (b.dataset.gift != null) {
+        const r = C.takeGift(st, Number(b.dataset.gift), now(), rng);
+        if (!r.ok) { F.sfx('bad'); toast('판에 빈칸이 없어요'); return; }
+        afterTakeOut(r.at);
+      } else if (b.dataset.grow) {
+        const r = C.growBag(st, now());
+        if (!r.ok) { F.sfx('bad'); toast(r.reason === 'coins' ? '동전이 모자라요' : '더는 못 늘려요'); return; }
+        F.sfx('deliver'); toast(`가방이 ${r.size}칸이 됐어요!`);
+      } else if (b.dataset.shop) {
+        const r = C.buyShop(st, b.dataset.shop, now(), rng);
+        if (!r.ok) { F.sfx('bad'); toast('소라별이 모자라요'); return; }
+        F.sfx('discover');
+        toast(r.at >= 0 ? `${C.itemName(r.cell)}! 판에 놓았어요` : '판이 꽉 차서 선물함에 넣었어요');
+        if (r.at >= 0) { renderBoard(); restartAnim(itEl(r.at), 'pop'); }
+      }
+      clearUndo();
+      re(); renderAll(); changed();
+    });
+  }
+  function afterTakeOut(at) {
+    F.sfx('spawn');
+    renderBoard();
+    const el = itEl(at), b = center(cellEl(at)), from = center($('btn-bag'));
+    if (el) { el.style.setProperty('--fx', (from.x - b.x) + 'px'); el.style.setProperty('--fy', (from.y - b.y) + 'px'); restartAnim(el, 'born'); }
+  }
+  $('btn-bag').addEventListener('click', () => { F.unlock(); openBag(); });
 
   function settingsHTML(confirmReset) {
     const tg = (k, label, sub) => `<div class="row"><span>${label}${sub ? `<small>${sub}</small>` : ''}</span><button type="button" class="tg${st.settings[k] ? ' on' : ''}" data-tg="${k}" aria-pressed="${!!st.settings[k]}" aria-label="${label}"></button></div>`;
@@ -498,7 +734,13 @@
       ${tg('easy', '편하게 모드', '기운 없이 계속 뽑기')}
       ${tg('nums', '단계 숫자 보기')}
       ${tg('hint', '힌트', '가만히 있으면 합칠 짝이 살랑')}
-      <p class="muted center">기록은 이 폰에 저장돼요 · 부탁 ${st.stats.delivered}번 · 합치기 ${st.stats.merges}번</p>
+      <p class="muted center">부탁 ${st.stats.delivered}번 · 합치기 ${st.stats.merges}번 · 복원 ${Object.keys(st.tasks).length}곳</p>
+      <h3>저장</h3>
+      <p class="muted">이 폰에 바로바로 저장되고, 서버에도 30초마다 올려요.<br>${syncLine()}</p>
+      <div class="code-row"><span>이어하기 코드</span><b class="code">${esc(S.prettyId(sync.id))}</b></div>
+      <button type="button" class="btn" data-sync="now">서버에 지금 저장</button>
+      <button type="button" class="btn" data-sync="code">다른 폰의 코드로 불러오기</button>
+      <div class="two"><button type="button" class="btn" data-sync="export">내보내기(복사)</button><button type="button" class="btn" data-sync="import">불러오기(붙여넣기)</button></div>
       <button type="button" class="btn warn" data-reset="1">${confirmReset ? '정말 처음부터 할까요? 한 번 더 누르면 지워져요' : '처음부터 하기'}</button>
       <button type="button" class="btn" data-close="1">닫기</button>`;
   }
@@ -512,6 +754,8 @@
         syncFx();
         F.sfx('pick'); if (k === 'vib') F.vibrate(20);
         re(); renderAll(); changed();
+      } else if (b.dataset.sync) {
+        syncAction(b.dataset.sync, re);
       } else if (b.dataset.reset) {
         if (!armed) { armed = true; F.sfx('bad'); re(); return; }
         st = C.newState(now(), rng);
@@ -534,9 +778,13 @@
     const show = () => {
       const l = lines[k];
       const v = D.VILLAGERS[l.who] || D.VILLAGERS.hayun;
-      const s = A.src(v.art);
-      box.innerHTML = `<div class="talk-box"><div class="talk-face">${s ? `<img src="${esc(s)}" alt="" draggable="false">` : ''}</div>
-        <div class="talk-name">${esc(v.name)}</div><div class="talk-txt">${esc(l.text)}</div><div class="talk-next">톡 ▶</div></div>`;
+      const faceId = l.face && v.faces && A.has(v.faces[l.face]) ? v.faces[l.face] : v.art;
+      const s = A.src(faceId) || (v.faces && A.src(v.faces.joy)) || '';
+      const right = l.who !== 'hayun' && !v.letter;
+      box.innerHTML = `<div class="talk-box${v.letter ? ' letter' : ''}${right ? ' right' : ''}" style="--fc:${esc(v.color)}">
+        <div class="talk-face${s ? '' : ' none'}">${s ? `<img src="${esc(s)}" alt="" draggable="false">` : esc(v.letter ? '✉' : v.name[0])}</div>
+        <div class="talk-name">${esc(v.name)}</div><div class="talk-txt">${esc(l.text)}</div><div class="talk-next">${k + 1} / ${lines.length} · 톡 ▶</div></div>`;
+      if (l.who === 'mongdol') F.sfx('spawn');
     };
     show();
     box.classList.remove('hide');
@@ -563,7 +811,9 @@
   }
   function tick() {
     renderHud();
-    if (st.settings.hint && !hintOn && !drag && !busy && now() - lastAct > 10000 && $('sheet').classList.contains('hide') && $('talk').classList.contains('hide')) {
+    if (st.board.some((c) => c && c.k === 'gen' && D.GENS[c.g].charge)) renderBoard();
+    syncTick();
+    if (st.settings.hint && !hintOn && !drag && !busy && now() - lastAct > 10000 && $('sheet').classList.contains('hide') && $('talk').classList.contains('hide') && $('town').classList.contains('hide')) {
       const p = C.findPair(st);
       if (p) { hintOn = true; p.forEach((i) => restartAnim(itEl(i), 'hint')); setTimeout(() => { hintOn = false; lastAct = now(); }, 1600); }
     }
@@ -577,29 +827,144 @@
     } catch (e) { /* 무시 */ }
     location.href = A.root + '../';
   });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) saver.flush(); else { renderHud(); } });
-  addEventListener('pagehide', () => saver.flush());
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { saver.flush(); syncBeacon(); } else { renderHud(); } });
+  addEventListener('pagehide', () => { saver.flush(); syncBeacon(); });
   addEventListener('resize', () => layout());
 
-  function renderAll() { renderHud(); renderOrders(); renderBoard(); renderInfo(); }
+  function renderAll() { renderHud(); renderOrders(); renderBoard(); renderInfo(); renderNav(); }
+
+  /* ---------- 서버 저장 (기기 저장이 1차 · 서버는 백업·폰 옮기기) ---------- */
+  const server = S.Server();
+  const sync = S.syncInfo(store);
+  const syncSt = { busy: false, lastTry: 0, state: '', conflict: false };
+  function syncLine() {
+    if (syncSt.state === 'offline') return '지금은 서버에 닿지 않아요 (이 폰에는 잘 저장돼요)';
+    if (!sync.okAt) return '아직 서버에 올린 적이 없어요';
+    const m = Math.round((now() - sync.okAt) / 60000);
+    return `서버 저장: ${m < 1 ? '방금' : m + '분 전'}`;
+  }
+  async function syncPush(force) {
+    if (syncSt.busy || syncSt.conflict) return null;
+    syncSt.busy = true; syncSt.lastTry = now();
+    saver.flush();
+    const r = await server.save(sync.id, st, force);
+    syncSt.busy = false;
+    if (r.ok) { sync.sentAt = st.updatedAt; sync.okAt = now(); S.setSyncInfo(store, sync); syncSt.state = 'ok'; }
+    else if (r.err === 'newer') { syncSt.conflict = true; await syncPull(true); }
+    else syncSt.state = r.err === 'offline' || /^http/.test(r.err || '') || r.err === 'nofetch' ? 'offline' : 'err';
+    return r;
+  }
+  function syncTick() {
+    if (st.updatedAt > (sync.sentAt || 0) && now() - syncSt.lastTry > 30000) syncPush(false);
+  }
+  function syncBeacon() { if (st.updatedAt > (sync.sentAt || 0) && !syncSt.conflict && server.beacon(sync.id, st)) { sync.sentAt = st.updatedAt; S.setSyncInfo(store, sync); } }
+  // 서버 저장을 받아서 고르기 (처음 열 때 · 다른 폰 코드 · 서버가 더 새것일 때)
+  async function syncPull(conflict, fresh) {
+    const r = await server.load(sync.id);
+    if (!r.ok) { if (r.err === 'none') syncSt.conflict = false; else syncSt.state = 'offline'; return r; }
+    const remote = C.deserialize(r.data, now(), rng);
+    if (!remote) return { ok: false };
+    const how = conflict ? 'ask' : S.pickSave(st, remote, fresh);
+    if (how === 'remote') adopt(remote, '서버에 있던 기록을 불러왔어요');
+    else if (how === 'ask') askWhich(remote);
+    else syncSt.conflict = false;
+    return r;
+  }
+  function sumLine(x) { const m = C.summary(x); const t = new Date(m.updatedAt); return `별 ${m.stars} · 동전 ${m.coins} · 복원 ${m.tasks}곳 · 부탁 ${m.delivered}번<br><small>${t.getMonth() + 1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}</small>`; }
+  function askWhich(remote) {
+    openSheet(`<h2>어느 기록으로 할까요?</h2>
+      <p class="center muted">이 폰과 서버의 기록이 달라요</p>
+      <button type="button" class="btn pick" data-which="local"><b>이 폰 기록</b><br>${sumLine(st)}</button>
+      <button type="button" class="btn pick" data-which="remote"><b>서버 기록</b><br>${sumLine(remote)}</button>`,
+    (b) => {
+      if (!b.dataset.which) return;
+      closeSheet();
+      syncSt.conflict = false;
+      if (b.dataset.which === 'remote') adopt(remote, '서버 기록으로 바꿨어요');
+      else { st.updatedAt = Math.max(now(), (remote.updatedAt || 0) + 1); syncPush(true); toast('이 폰 기록을 서버에 올렸어요'); }
+    });
+  }
+  function adopt(next, msg) {
+    st = next;
+    sel = -1; wasReady = {}; shown.hold = 0; clearUndo();
+    $('orders').innerHTML = '';
+    sync.sentAt = st.updatedAt; S.setSyncInfo(store, sync);
+    syncSt.conflict = false;
+    saver.dirty = true; saver.flush();
+    syncFx(); renderAll(); setBg();
+    if (msg) toast(msg);
+  }
+  async function syncAction(kind, re) {
+    if (kind === 'now') {
+      const r = await syncPush(false);
+      toast(r && r.ok ? '서버에 저장했어요' : syncSt.conflict ? '서버 기록이 더 새것이에요' : '서버에 닿지 않아요 · 이 폰에는 저장돼 있어요');
+      re();
+    } else if (kind === 'code') {
+      formSheet('다른 폰의 이어하기 코드', '예: abcd-efgh-jkmn', async (val) => {
+        const id = S.cleanId(val);
+        if (!S.ID_RE.test(id)) { toast('코드를 다시 확인해 주세요'); return; }
+        const r = await server.load(id);
+        if (!r.ok) { toast(r.err === 'none' ? '그 코드의 기록이 없어요' : '서버에 닿지 않아요'); return; }
+        const remote = C.deserialize(r.data, now(), rng);
+        if (!remote) { toast('기록을 읽지 못했어요'); return; }
+        sync.id = id; S.setSyncInfo(store, sync);
+        adopt(remote, '그 폰의 기록을 불러왔어요 · 이제 같은 코드로 저장돼요');
+      });
+    } else if (kind === 'export') {
+      saver.flush();
+      const txt = C.serialize(st);
+      let ok = false;
+      try { await navigator.clipboard.writeText(txt); ok = true; } catch (e) { ok = false; }
+      if (ok) toast('저장 글을 복사했어요 · 메모장 등에 붙여 두세요');
+      else formSheet('저장 글 (길게 눌러 복사)', '', null, txt);
+    } else if (kind === 'import') {
+      formSheet('저장 글 붙여넣기', '내보내기로 복사한 글', (val) => {
+        const next = C.deserialize(String(val || '').trim(), now(), rng);
+        if (!next) { toast('저장 글을 읽지 못했어요'); return; }
+        next.updatedAt = now();
+        adopt(next, '불러왔어요!');
+      });
+    }
+  }
+  function formSheet(title, ph, onOk, value) {
+    openSheet(`<h2>${esc(title)}</h2><textarea class="field" rows="${value ? 6 : 2}" placeholder="${esc(ph)}" ${value ? 'readonly' : ''}>${esc(value || '')}</textarea>
+      ${onOk ? '<button type="button" class="btn main" data-ok="1">확인</button>' : ''}<button type="button" class="btn" data-close="1">닫기</button>`,
+    (b) => { if (b.dataset.ok && onOk) { const v = $('sheet').querySelector('textarea').value; closeSheet(); onOk(v); } });
+    const ta = $('sheet').querySelector('textarea');
+    if (ta) { ta.addEventListener('pointerdown', (e) => e.stopPropagation()); if (value) ta.select(); }
+  }
+  function setBg() {
+    const info = C.areaInfo(st);
+    const id = info.finished || info.doneN === info.total ? info.show.bg.after : info.show.bg.before;
+    const s = A.src(id) || A.src(info.show.bg.before) || A.src('r1_before');
+    const bg = $('bg');
+    if (bg) { if (s) { bg.src = s; bg.style.display = ''; } else bg.style.display = 'none'; }
+  }
 
   /* ---------- 시작 ---------- */
   function start() {
     syncFx();
-    const bg = A.src(D.AREAS[Math.min(st.area || 0, D.AREAS.length - 1)].bg);
-    if (bg) $('bg').src = bg; else $('bg').remove();
+    setBg();
     document.querySelectorAll('img[data-art]').forEach((im) => { im.src = A.src(im.dataset.art); });
     buildBoard();
     renderAll();
     layout();
     F.attach($('fx'));
-    A.preload();
+    setTimeout(layout, 400);   // 글꼴을 다 읽은 뒤 한 번 더 (높이가 달라질 수 있어요)
+    try { document.fonts.ready.then(layout); } catch (e) { /* 무시 */ }
+    A.preload(Object.keys(A.FILES).filter((id) => !/^r\d_/.test(id)));
     setInterval(tick, 1000);
     if (!st.seen.intro) setTimeout(playIntro, 300);
+    else setTimeout(() => { if (window.MergeTown) window.MergeTown.resume(); }, 300);
     saver.schedule();
+    syncPull(false, freshLocal);
   }
   start();
 
   // 시험용 손잡이 (브라우저 콘솔 · 자동 시험)
-  window.MergeUI = { get state() { return st; }, renderAll, apply, tap, deliver, layout };
+  window.MergeUI = {
+    get state() { return st; }, renderAll, renderNav, apply, tap, deliver, layout, changed, toast, say, talk, flash, floatTag, center, cellEl, itEl,
+    artImg, esc, josa, setBg, clearUndo, restartAnim, openBag, syncPush, sync, STAR,
+    get busy() { return busy; }
+  };
 })();

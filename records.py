@@ -356,3 +356,100 @@ class ComboHall:
             self.save()
             rank = rows.index(entry) + 1
             return 200, {"ok": True, "rank": rank, "entry": dict(self.public(entry), rank=rank)}
+
+
+# =====================================================================
+#  머지관 「소라섬 등불 이야기」 서버 저장 (기기 저장이 1차, 이건 백업·폰 옮기기용)
+#  - 이어하기 코드(무작위 12~32자) 하나당 파일 하나: DATA_DIR/merge/<id>.json
+#    {id, updatedAt, savedAt, data(저장 문자열), backups:[최근 5개 · 10분 넘게 차이 날 때만]}
+#  - 더 새것(updatedAt)이 이미 있으면 덮지 않고 409 newer (force 면 덮음 · 덮인 쪽은 백업에 남음)
+#  - 주소(IP)당 10분에 120번 · 저장 칸은 최대 MERGE_MAX_IDS 개 · 본문 MERGE_BODY_MAX
+# =====================================================================
+MERGE_BODY_MAX = 400 * 1024
+MERGE_MAX_IDS = 300
+MERGE_BACKUPS = 5
+MERGE_BACKUP_GAP_MS = 10 * 60 * 1000
+MERGE_IP_WINDOW_SEC = 600
+MERGE_IP_MAX = 120
+_MERGE_ID_RE = re.compile(r"^[a-z0-9]{12,32}$")
+
+
+class MergeSaves:
+    def __init__(self, data_dir: Path):
+        self.dir = Path(data_dir) / "merge"
+        self.lock = threading.Lock()
+        self.ip_hits: Dict[str, List[float]] = {}
+
+    def _path(self, sid: str) -> Optional[Path]:
+        return self.dir / (sid + ".json") if _MERGE_ID_RE.match(str(sid or "")) else None
+
+    def _read(self, p: Path) -> Optional[dict]:
+        try:
+            v = json.loads(p.read_text("utf-8"))
+            return v if isinstance(v, dict) else None
+        except (OSError, ValueError):
+            return None
+
+    def _rate_ok(self, ip: str, now: float) -> bool:
+        hits = [t for t in self.ip_hits.get(ip, []) if now - t < MERGE_IP_WINDOW_SEC]
+        if len(hits) >= MERGE_IP_MAX:
+            self.ip_hits[ip] = hits
+            return False
+        hits.append(now)
+        self.ip_hits[ip] = hits
+        if len(self.ip_hits) > 5000:
+            self.ip_hits = {k: v for k, v in self.ip_hits.items() if v and now - v[-1] < MERGE_IP_WINDOW_SEC}
+        return True
+
+    def load(self, sid: str) -> Tuple[int, dict]:
+        p = self._path(sid)
+        if not p:
+            return 400, {"ok": False, "err": "id"}
+        with self.lock:
+            rec = self._read(p) if p.is_file() else None
+        if not rec:
+            return 200, {"ok": False, "err": "none"}
+        return 200, {"ok": True, "updatedAt": rec.get("updatedAt", 0), "savedAt": rec.get("savedAt", 0), "data": rec.get("data", "")}
+
+    def save(self, body: dict, ip: str, now: Optional[float] = None) -> Tuple[int, dict]:
+        now = time.time() if now is None else now
+        if not isinstance(body, dict):
+            return 400, {"ok": False, "err": "bad"}
+        p = self._path(body.get("id"))
+        if not p:
+            return 400, {"ok": False, "err": "id"}
+        data = body.get("data")
+        try:
+            upd = int(body.get("updatedAt") or 0)
+            st = json.loads(data) if isinstance(data, str) else None
+        except (TypeError, ValueError):
+            return 400, {"ok": False, "err": "bad"}
+        if not isinstance(st, dict) or not isinstance(st.get("v"), int) or not isinstance(st.get("board"), list):
+            return 400, {"ok": False, "err": "data"}
+        with self.lock:
+            if not self._rate_ok(ip or "?", now):
+                return 429, {"ok": False, "err": "rate"}
+            old = self._read(p) if p.is_file() else None
+            if old is None:
+                try:
+                    count = len(list(self.dir.glob("*.json"))) if self.dir.is_dir() else 0
+                except OSError:
+                    count = 0
+                if count >= MERGE_MAX_IDS:
+                    return 429, {"ok": False, "err": "full"}
+            if old and int(old.get("updatedAt") or 0) > upd and body.get("force") is not True:
+                return 409, {"ok": False, "err": "newer", "updatedAt": old.get("updatedAt", 0)}
+            backups = list(old.get("backups") or []) if old else []
+            if old and old.get("data"):
+                last_b = int(backups[0].get("savedAt") or 0) if backups else 0
+                if int(now * 1000) - last_b >= MERGE_BACKUP_GAP_MS or body.get("force") is True:
+                    backups.insert(0, {"savedAt": old.get("savedAt", 0), "updatedAt": old.get("updatedAt", 0), "data": old["data"]})
+            rec = {"id": body["id"], "updatedAt": upd, "savedAt": int(now * 1000), "data": data, "backups": backups[:MERGE_BACKUPS]}
+            try:
+                self.dir.mkdir(parents=True, exist_ok=True)
+                tmp = p.with_suffix(".tmp")
+                tmp.write_text(json.dumps(rec, ensure_ascii=False), "utf-8")
+                os.replace(tmp, p)
+            except OSError:
+                return 500, {"ok": False, "err": "disk"}
+        return 200, {"ok": True, "savedAt": rec["savedAt"], "updatedAt": upd}
