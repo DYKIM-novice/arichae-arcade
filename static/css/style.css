@@ -3087,3 +3087,25 @@ g.opr-ghost { opacity: .45; }
   -webkit-mask-image: linear-gradient(180deg, #000 40%, transparent); mask-image: linear-gradient(180deg, #000 40%, transparent); }
 .rg-ch .rg-logo b, .rg-ch .rg-logo span { text-shadow: 0 2px 4px rgba(0, 0, 0, .7); }
 /* === rpg === */
+
+/* === merge === 대기실 '머지관' 판 (게임 카드 목록 · js/merge/hall.js) */
+.mode-seg button[data-mode="merge"].on { background: linear-gradient(135deg, #FF9E8A, #FFD08A 55%, #7FD6C8); color: #3B2A26; box-shadow: 0 4px 0 #B4644E; }
+.mg-lb-card { position: relative; overflow: hidden; isolation: isolate; display: flex; flex-direction: column; gap: 9px; width: 100%; margin-top: 10px; padding: 12px; border: 0; border-radius: 18px;
+  background: linear-gradient(160deg, #FFE6D8, #FFF4E2 55%, #D9F2EC); color: #4B3A35; text-align: left; font-family: var(--body); cursor: pointer; }
+.mg-lb-card:active { transform: scale(.985); }
+.mg-lb-bg { position: absolute; right: -10%; top: 0; width: 70%; height: 100%; object-fit: cover; opacity: .38; z-index: -1; pointer-events: none;
+  -webkit-mask-image: linear-gradient(270deg, #000 30%, transparent); mask-image: linear-gradient(270deg, #000 30%, transparent); }
+.mg-lb-top { display: flex; align-items: center; gap: 10px; }
+.mg-lb-face { width: 58px; height: 58px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 2px #FFB49E; flex: none; background: #FFF1E6; object-fit: cover; }
+.mg-lb-top b { display: block; font-size: 22px; color: #D9534A; text-shadow: 0 2px 0 #fff; }
+.mg-lb-top span { font-size: 13px; color: #7A645C; }
+.mg-lb-icons { display: flex; gap: 6px; }
+.mg-lb-icons img { width: 40px; height: 40px; object-fit: contain; background: rgba(255,255,255,.75); border-radius: 12px; padding: 3px; }
+.mg-lb-rec { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.mg-lb-rec div { background: rgba(255,255,255,.8); border-radius: 12px; padding: 5px 2px; text-align: center; }
+.mg-lb-rec em { display: block; font-style: normal; font-size: 11px; color: #8A7068; }
+.mg-lb-rec b { font-size: 17px; color: #4B3A35; }
+.mg-lb-new { font-size: 13px; color: #7A645C; }
+.mg-lb-go { display: flex; align-items: center; justify-content: center; width: 100%; }
+.mg-how { margin-top: 10px; font-size: 13px; color: var(--muted); text-align: center; line-height: 1.5; }
+/* === merge === */

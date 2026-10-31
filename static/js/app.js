@@ -660,7 +660,7 @@
     const total = others.length + 1;
     const mainBtn = $('#btn-main');
     const hall = room.mode === 'board' ? window.BoardHall : room.mode === 'card' || room.mode === 'party' ? window.CardHall
-      : room.mode === 'rpg' ? window.RpgHall : null;   /* === rpg === */
+      : room.mode === 'rpg' ? window.RpgHall : room.mode === 'merge' ? window.MergeHall : null;   /* === rpg === (+merge: 머지관) */
     if (isHost && hall) {
       const bm = hall.lobbyMain();
       mainBtn.className = 'btn btn-green' + (bm.wait ? ' wait' : '');
@@ -714,22 +714,27 @@
     const card = room.mode === 'card' || room.mode === 'party';   // 놀이마당도 카드게임관 틀로
     const oly = room.mode === 'olympic';
     const rpg = room.mode === 'rpg';   /* === rpg === */
+    const merge = room.mode === 'merge';   /* === merge === 머지관 */
     $('#settings').classList.toggle('edu', edu);
     $('#settings').classList.toggle('oly', oly);
     $('#settings').classList.toggle('music', music);
     $('#settings').classList.toggle('board', board);
     $('#settings-note').textContent = isHost ? '눌러서 바꿀 수 있어요' : '방장만 바꿀 수 있어요';
     $$('#mode-seg button').forEach((b) => {
-      const on = b.dataset.mode === (card || oly || rpg ? room.mode : board ? 'board' : music ? 'music' : edu ? 'edu' : 'arcade');   /* === rpg === (+rpg) */
+      const on = b.dataset.mode === (card || oly || rpg || merge ? room.mode : board ? 'board' : music ? 'music' : edu ? 'edu' : 'arcade');   /* === rpg === (+rpg) */
       b.classList.toggle('on', on);
       b.disabled = !isHost;
       b.setAttribute('aria-pressed', String(on));
     });
-    $('#arcade-panel').style.display = edu || music || board || card || oly || rpg ? 'none' : '';   /* === rpg === (+rpg) */
+    $('#arcade-panel').style.display = edu || music || board || card || oly || rpg || merge ? 'none' : '';   /* === rpg === (+rpg) */
+    if ($('#merge-panel')) $('#merge-panel').style.display = merge ? '' : 'none';   /* === merge === */
     /* === rpg === */
     if ($('#rpg-panel')) $('#rpg-panel').style.display = rpg ? '' : 'none';
     if (rpg) { $('#edu-panel').style.display = 'none'; $('#music-panel').style.display = 'none'; if (window.RpgHall) window.RpgHall.renderLobby(isHost); return; }
     /* === rpg === */
+    /* === merge === */
+    if (merge) { ['#edu-panel', '#music-panel', '#board-panel', '#card-panel', '#olympic-panel'].forEach((k) => { if ($(k)) $(k).style.display = 'none'; }); if (window.MergeHall) window.MergeHall.renderLobby(isHost); return; }
+    /* === merge === */
     $('#board-panel').style.display = board ? '' : 'none';
     $('#card-panel').style.display = card ? '' : 'none';
     $('#olympic-panel').style.display = oly ? '' : 'none';
@@ -958,7 +963,8 @@
       const room = S.room;
       if (!room) return;
       if (room.hostPid === S.pid) {
-        if (room.mode === 'rpg' && window.RpgHall && window.RpgHall.onMain) { window.RpgHall.onMain(); return; }   /* === rpg === (1장은 혼자 모험 페이지로) */
+        if (room.mode === 'rpg' && window.RpgHall && window.RpgHall.onMain) { window.RpgHall.onMain(); return; }
+        if (room.mode === 'merge' && window.MergeHall) { window.MergeHall.onMain(); return; }   /* === merge === 머지관은 혼자 하는 페이지로 */   /* === rpg === (1장은 혼자 모험 페이지로) */
         const needPick = (room.mode === 'edu' && !(room.picks || []).length) || (room.mode === 'music' && !(room.songs || []).length)
           || (room.mode === 'olympic' && !(room.events || []).length);
         if (needPick) {

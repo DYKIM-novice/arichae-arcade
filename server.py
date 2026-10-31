@@ -1394,7 +1394,7 @@ async def ws_session(ws: WebSocketConn) -> None:
                     if length in (3, 5, 10):
                         room.length = length
                         changed = True
-                if msg.get("mode") in ("arcade", "edu", "music", "board", "card", "party", "olympic", "rpg"):   # === rpg ===
+                if msg.get("mode") in ("arcade", "edu", "music", "board", "card", "party", "olympic", "rpg", "merge"):   # === rpg === (+merge: 머지관)
                     room.mode = msg["mode"]
                     changed = True
                 if msg.get("level") in LEVELS:
@@ -1485,6 +1485,8 @@ async def ws_session(ws: WebSocketConn) -> None:
                     continue
                 if room.mode == "olympic" and not room.events:
                     await reply({"t": "error", "code": "no_picks", "msg": "올림픽 종목을 하나 이상 골라주세요"})
+                    continue
+                if room.mode == "merge":   # === merge === 머지관은 폰마다 혼자 하는 페이지(static/merge.html)라 방 시작이 없어요
                     continue
                 if room.mode == "rpg":   # === rpg === 같이 모험 시작
                     room.rsess = RP.make_session(room, now_ms(), OL.ATHLETE_IDS)
