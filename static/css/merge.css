@@ -861,3 +861,6 @@ body.big-text #foot .info-box.idle .info-txt p { font-size: 14px; }
 }
 @media (max-width: 370px) { #foot { --nav-w: 44px; gap: 5px; } #orders { gap: 5px; } .oc { min-width: 100px; } }
 #toast { bottom: calc(var(--foot-h, 110px) + 8px); }
+/* 판은 늘 아래 칸·부탁 카드보다 위 겹침 순서 (아래 칸 배지·여백·넘친 판이 맨 아랫줄 톡을 가로채지 않게 · tools/merge_hitcheck.py) */
+#board-wrap { position: relative; z-index: 2; }
+#foot, #orders { position: relative; z-index: 1; }

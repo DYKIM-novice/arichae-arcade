@@ -141,6 +141,9 @@
     root.setProperty('--cell', cell + 'px');
     root.setProperty('--gap', gap + 'px');
     root.setProperty('--bpad', pad + 'px');
+    // 실제로 그려진 판이 남은 자리보다 크면(글꼴·테두리·기기 반올림 차이) 칸을 한 줄씩 줄여요 → 맨 아랫줄이 아래 칸 밑으로 들어가 톡이 막히지 않게
+    const room = wrap.getBoundingClientRect(), lim = room.bottom - parseFloat(cs.paddingBottom) + 0.5;
+    for (let k = 0; k < 12 && cell > 18 && $('board').getBoundingClientRect().bottom > lim; k++) root.setProperty('--cell', --cell + 'px');
     root.setProperty('--foot-h', $('foot').offsetHeight + 'px');
   }
   function queueLayout() { clearTimeout(layoutRaf); layoutRaf = setTimeout(layout, 16); }   // rAF 는 탭이 숨으면 멈춰서 타이머로
