@@ -165,11 +165,11 @@
       tasks: [
         { id: 'r5_clean', name: '모래사장 청소하기', cost: 6, x: 40, y: 90, r: 22 },
         { id: 'r5_hut', name: '초가 쉼터 고치기', cost: 7, x: 28, y: 72, r: 19, scene: 'r5_hut' },
-        { id: 'r5_stage', name: '놀이마당 무대 놓기', cost: 9, x: 70, y: 64, r: 18 },
-        { id: 'r5_cloth', name: '오색 천 줄 걸기', cost: 9, x: 77, y: 54, r: 17, scene: 'r5_cloth' },
+        { id: 'r5_stage', name: '놀이마당 무대 놓기', cost: 9, x: 70, y: 58, r: 18 },
+        { id: 'r5_cloth', name: '오색 천 줄 걸기', cost: 9, x: 74, y: 46, r: 17, scene: 'r5_cloth' },
         { id: 'r5_swing', name: '그네·널뛰기터 만들기', cost: 10, x: 26, y: 48, r: 18 },
-        { id: 'r5_cart', name: '장터 수레 꾸미기', cost: 10, x: 86, y: 84, r: 17 },
-        { id: 'r5_arch', name: '등불 아치 세우기', cost: 12, x: 69, y: 79, r: 18, req: 'so_r5' }
+        { id: 'r5_cart', name: '장터 수레 꾸미기', cost: 10, x: 80, y: 79, r: 17 },
+        { id: 'r5_arch', name: '등불 아치 세우기', cost: 12, x: 12, y: 52, r: 18, req: 'so_r5' }
       ],
       open: { scene: 'r5_open', gens: ['gen_h'], chains: ['h'] },
       done: { scene: 'r5_done', uncover: true },

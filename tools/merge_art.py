@@ -59,7 +59,7 @@ ART = [
     ("ui", "energy", "p1/ui_energy.jpg", "cut"),
     # 인물 · 배경 (picks.json: 하윤 = 글자 지운 원본, 1지역 '전' = v2b)
     ("chars", "hayun", "char_hayun_base_clean.jpg", "portrait"),
-    ("bg", "r1_before", "bg_r1_before_v2b.jpg", "bg"),
+    ("bg", "r1_before", "p2/bg/bg_r1_before.jpg", "bg"),  # 4차: '후'를 부서뜨린 그림 (이전 = bg_r1_before_v2b.jpg)
     # ---- 2묶음 (p2/) · 원본이 아직 없으면 건너뛰어요 (화면은 색 동그라미로 대신) ----
     ("chars", "hayun_joy", "p2/char/char_hayun_joy.jpg", "portrait"),
     ("chars", "hayun_wow", "p2/char/char_hayun_surprised.jpg", "portrait"),
