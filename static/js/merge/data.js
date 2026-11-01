@@ -180,11 +180,11 @@
       chains: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], orders: { items: [2, 3], tiers: [6, 9] },
       tasks: [
         { id: 'r6_path', name: '오솔길 다시 내기', cost: 8, x: 44, y: 88, r: 22 },
-        { id: 'r6_fence', name: '울타리 세우기', cost: 9, x: 28, y: 76, r: 18 },
-        { id: 'r6_hut', name: '등대지기 오두막 고치기', cost: 10, x: 66, y: 52, r: 16, scene: 'r6_hut' },
+        { id: 'r6_fence', name: '울타리 세우기', cost: 9, x: 20, y: 90, r: 18 },
+        { id: 'r6_hut', name: '등대지기 오두막 고치기', cost: 10, x: 74, y: 55, r: 16, scene: 'r6_hut' },
         { id: 'r6_stairs', name: '나선 계단 고치기', cost: 12, x: 55, y: 44, r: 14 },
         { id: 'r6_wall', name: '등대 외벽 칠하기', cost: 12, x: 63, y: 35, r: 15 },
-        { id: 'r6_bell', name: '종 다시 달기', cost: 14, x: 76, y: 48, r: 13, scene: 'r6_bell' },
+        { id: 'r6_bell', name: '종 다시 달기', cost: 14, x: 80, y: 40, r: 13, scene: 'r6_bell' },
         { id: 'r6_lens', name: '등대 렌즈 끼우기', cost: 15, x: 60, y: 28, r: 14, req: 'so_r6' },
         { id: 'r6_light', name: '첫 불 켜기', cost: 20, x: 60, y: 21, r: 30 }
       ],
