@@ -1,5 +1,6 @@
 // 머지관 「소라섬 등불 이야기」 규칙 시험:  node tools/merge_test.js
-// 합치기 규칙 · 발생기/에너지 회복 · 주문 완료 · 저장/불러오기 · 복원 작업·지역 · 모래더미 · 가방·팔기·되돌리기 · v1→v2 변환
+// 합치기 규칙 · 발생기/에너지 회복 · 주문 완료 · 저장/불러오기 · 복원 작업·지역 1~6·엔딩 · 모래더미 · 가방·팔기·되돌리기 · v1→v2 변환
+// · 얼굴 그림·고맙다는 말 · 이야기 부탁 · 발생기 강화 · 숨은 비밀 · 7일 출석·오늘의 부탁 · 주간 이벤트 · 도감
 'use strict';
 const assert = require('assert');
 const path = require('path');
@@ -17,6 +18,8 @@ function emptyState(rng) {
   st.cover = st.cover.map(() => 0);
   return st;
 }
+// 이야기 부탁을 다 건넨 것으로 (복원 작업만 시험할 때)
+function soAll(st) { Object.keys(D.STORY_ORDERS).forEach((k) => { st.sos[k] = T0; }); st.orders = st.orders.filter((o) => !o.story); return st; }
 let n = 0;
 function test(name, fn) { fn(); n++; console.log('  ok', name); }
 
@@ -293,9 +296,10 @@ test('발생기만으로 주문 하나를 끝까지 (뽑기 → 합치기 → �
 });
 
 console.log('2단계 · 데이터');
-test('지역 데이터: 작업 별 합계(15 · 28 · 40) · 장면·인물·발생기가 다 있음', () => {
+test('지역 데이터: 작업 별 합계(15·28·40·45·63·100 = 291) · 장면·인물·발생기가 다 있음', () => {
   const sums = D.AREAS.map((a) => a.tasks.reduce((s, t) => s + t.cost, 0));
-  assert.deepStrictEqual(sums.slice(0, 3), [15, 28, 40]);
+  assert.deepStrictEqual(sums, [15, 28, 40, 45, 63, 100]);
+  assert.strictEqual(sums.reduce((a, b) => a + b, 0), 291);
   const ids = {};
   D.AREAS.forEach((a) => {
     a.tasks.forEach((t) => { assert.ok(!ids[t.id], '작업 id 겹침 ' + t.id); ids[t.id] = 1; if (t.scene) assert.ok(D.STORY[t.scene], '장면 ' + t.scene); });
@@ -323,7 +327,7 @@ test('작업은 별을 써서 순서대로 · 별 모자라면 안 됨', () => {
   assert.strictEqual(info.doneN, 1); assert.strictEqual(info.next.id, a.tasks[1].id); assert.ok(info.canAfford);
 });
 test('1지역을 다 고치면: 모래더미 걷힘 · 2지역 열림 · 통발 발생기 · 체인 E · 새 주문에 E', () => {
-  const st = C.newState(T0, seeded(11));
+  const st = soAll(C.newState(T0, seeded(11)));
   assert.ok(st.cover.some((v) => v > 0), '처음엔 모래더미');
   st.stars = 15;
   let last;
@@ -338,8 +342,8 @@ test('1지역을 다 고치면: 모래더미 걷힘 · 2지역 열림 · 통발 
   for (let i = 0; i < 40; i++) { const o = C.makeOrder(st, T0, seeded(300 + i)); if (o.need.some((x) => x.c === 'e')) sawE = true; o.need.forEach((x) => assert.ok(x.t >= 3 && x.t <= 5)); }
   assert.ok(sawE);
 });
-test('판이 꽉 차 있으면 새 발생기는 선물함으로 · 3지역 끝나면 더 고칠 곳 없음', () => {
-  const st = emptyState(seeded(2));
+test('판이 꽉 차 있으면 새 발생기는 선물함으로 · 6지역(등대곶) 끝나면 엔딩 · 더 고칠 곳 없음', () => {
+  const st = soAll(emptyState(seeded(2)));
   st.board = st.board.map(() => ({ k: 'item', c: 'a', t: 1 }));
   st.stars = 999;
   D.AREAS[0].tasks.forEach((t) => C.doTask(st, t.id, T0, seeded(1)));
@@ -348,9 +352,17 @@ test('판이 꽉 차 있으면 새 발생기는 선물함으로 · 3지역 끝�
   assert.strictEqual(st.gifts.length, 3); assert.ok(st.unlocked.indexOf('c') >= 0 && st.unlocked.indexOf('f') >= 0);
   D.AREAS[2].tasks.forEach((t) => C.doTask(st, t.id, T0, seeded(1)));
   assert.strictEqual(st.area, 3); assert.strictEqual(st.stars, 999 - 83);
+  assert.ok(st.unlocked.indexOf('g') >= 0, '4지역: 체인 G'); assert.strictEqual(st.gifts[3].g, 'gen_g');
+  D.AREAS[3].tasks.forEach((t) => C.doTask(st, t.id, T0, seeded(1)));
+  assert.ok(st.unlocked.indexOf('h') >= 0, '5지역: 체인 H'); assert.strictEqual(st.gifts[4].g, 'gen_h');
+  D.AREAS[4].tasks.forEach((t) => C.doTask(st, t.id, T0, seeded(1)));
+  let last;
+  D.AREAS[5].tasks.forEach((t) => { last = C.doTask(st, t.id, T0, seeded(1)); assert.ok(last.ok, t.id); });
+  assert.ok(last.areaDone); assert.strictEqual(last.ending, 'ending'); assert.ok(D.STORY.ending);
+  assert.strictEqual(st.area, 6); assert.strictEqual(st.stars, 999 - 291);
   const info = C.areaInfo(st);
-  assert.ok(info.finished); assert.strictEqual(info.next, null); assert.strictEqual(info.show.id, 'r3');
-  assert.strictEqual(C.doTask(st, 'r3_bell', T0).reason, 'nomore');
+  assert.ok(info.finished); assert.strictEqual(info.next, null); assert.strictEqual(info.show.id, 'r6');
+  assert.strictEqual(C.doTask(st, 'r6_light', T0).reason, 'nomore');
   st.board[0] = null;
   assert.ok(C.takeGift(st, 0, T0, seeded(1)).ok); assert.strictEqual(st.board[0].k, 'gen');
 });
@@ -498,4 +510,285 @@ test('이어하기 코드: 처음 한 번 만들고 그대로 · 보기 좋게 �
   assert.strictEqual(S.cleanId(' ABCD-efgh jkmn '), 'abcdefghjkmn');
 });
 
+console.log('4단계 · 얼굴 그림 · 고맙다는 말');
+const fs = require('fs');
+const IMG = path.join(__dirname, '..', 'static', 'img', 'merge');
+test('마을 사람 얼굴(기본+기쁨) 그림 파일이 다 있고, 부탁하는 사람은 고맙다는 말이 여러 개', () => {
+  Object.keys(D.VILLAGERS).forEach((k) => {
+    const v = D.VILLAGERS[k];
+    if (!v.art || v.letter) return;
+    const file = (id) => path.join(IMG, 'chars', id.replace(/^char_/, '') + '.webp');
+    assert.ok(fs.existsSync(file(v.art)), '얼굴 ' + v.art);
+    assert.ok(v.faces && v.faces.joy && fs.existsSync(file(v.faces.joy)), '기쁨 얼굴 ' + k);
+    if (v.chains.length) assert.ok(v.thanks && v.thanks.length >= 3, '고맙다는 말 ' + k);
+  });
+  ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].forEach((c) => assert.ok(Object.keys(D.VILLAGERS).some((k) => D.VILLAGERS[k].chains.indexOf(c) >= 0), '체인 ' + c + ' 부탁하는 사람'));
+  assert.ok(D.VILLAGERS.kkotnim.thanks.indexOf('아이고, 고맙구나!') >= 0 && D.VILLAGERS.juni.thanks.indexOf('우와, 최고예요!') >= 0);
+});
+test('고맙다는 말은 사람마다 돌려 가며 (저장해도 이어짐)', () => {
+  const st = emptyState();
+  const L = D.VILLAGERS.mina.thanks;
+  const got = L.map(() => C.thanksLine(st, 'mina'));
+  assert.deepStrictEqual(got, L);
+  assert.strictEqual(C.thanksLine(st, 'mina'), L[0]);
+  assert.strictEqual(C.thanksLine(st, 'juni'), D.VILLAGERS.juni.thanks[0]);
+  const back = C.deserialize(C.serialize(st), T0, seeded(1));
+  assert.strictEqual(C.thanksLine(back, 'mina'), L[1]);
+});
+test('지역 1~6 전/후 배경 · 시작/엔딩 그림 · 이벤트 그림이 있어요', () => {
+  D.AREAS.forEach((a) => ['before', 'after'].forEach((k) => assert.ok(fs.existsSync(path.join(IMG, 'bg', a.bg[k] + '.webp')), a.bg[k])));
+  ['story_start', 'story_ending'].forEach((id) => assert.ok(fs.existsSync(path.join(IMG, 'bg', id + '.webp')), id));
+  D.EVENTS.forEach((e) => {
+    [1, 2, 3, 4, 5].forEach((t) => assert.ok(fs.existsSync(path.join(IMG, 'events', e.chain + t + '.webp')), e.chain + t));
+    [e.banner, e.deco, e.id + '_gen'].forEach((id) => assert.ok(fs.existsSync(path.join(IMG, 'events', id + '.webp')), id));
+  });
+});
+
+console.log('4단계 · 지역 4~6 · 작업 자리');
+test('작업·비밀 자리는 그림 안(0~100%), 마을 화면에 보이는 세로 구간 안 · 작업 자리끼리 겹치지 않음', () => {
+  D.AREAS.forEach((a) => {
+    const y0 = a.view[0] * 100, y1 = a.view[1] * 100;
+    const pts = a.tasks.map((t) => [t.x, t.y, t.id]);
+    a.tasks.forEach((t) => { assert.ok(t.x >= 3 && t.x <= 97 && t.y >= y0 + 2 && t.y <= y1 - 1, '작업 자리 ' + t.id); assert.ok(t.r >= 10 && t.r <= 30); });
+    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+      const d = Math.hypot(pts[i][0] - pts[j][0], (pts[i][1] - pts[j][1]) * 1.77);   // 세로 % → 가로 % 비율 (720×1274)
+      assert.ok(d >= 9, '너무 가까움 ' + pts[i][2] + ' ' + pts[j][2]);
+    }
+    const s = a.secrets;
+    s.letters.forEach((l) => { assert.ok(l.y >= y0 && l.y <= y1, '편지 자리 ' + l.id); if (l.after) assert.ok(a.tasks.some((t) => t.id === l.after)); });
+    s.gulls.concat(s.bottle).forEach((g) => assert.ok(g[0] >= 2 && g[0] <= 98 && g[1] >= y0 && g[1] <= y1, a.id + ' 비밀 자리 ' + g));
+  });
+  assert.strictEqual(C.LETTER_TOTAL, 12); assert.strictEqual(C.GULL_TOTAL, 18);
+  assert.strictEqual(D.AREAS.reduce((s, a) => s + a.secrets.letters.length, 0), 12);
+});
+test('지역 4~6: 주문 난이도(2개·4~7 → 2~3개·5~8 → 2~3개·6~9) · 체인 G·H', () => {
+  const st = soAll(emptyState(seeded(4)));
+  st.unlocked = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+  [[3, [2, 2], [4, 7]], [4, [2, 3], [5, 8]], [5, [2, 3], [6, 9]]].forEach(([area, items, tiers]) => {
+    st.area = area; st.orders = [];
+    for (let i = 0; i < 30; i++) {
+      const o = C.makeOrder(st, T0, seeded(700 + i));
+      assert.ok(o.need.length >= items[0] && o.need.length <= items[1]);
+      o.need.forEach((x) => assert.ok(x.t >= Math.min(tiers[0], C.maxTier(x.c)) && x.t <= tiers[1]));
+    }
+  });
+});
+
+console.log('4단계 · 이야기 부탁');
+test('이야기 부탁: 앞 작업 뒤에 금색 카드로 · 건네야 다음 작업 · [다른 부탁] 안 됨', () => {
+  const st = emptyState(seeded(6));
+  st.stars = 50;
+  ['r1_gate', 'r1_paper'].forEach((id) => assert.ok(C.doTask(st, id, T0).ok));
+  assert.ok(!st.orders.some((o) => o.story), '아직 없음');
+  assert.ok(C.doTask(st, 'r1_sign', T0).ok);
+  const so = st.orders[0];
+  assert.strictEqual(so.story, 'so_r1'); assert.strictEqual(so.who, 'mina'); assert.deepStrictEqual(so.need, [{ c: 'b', t: 4 }]);
+  assert.strictEqual(st.orders.filter((o) => !o.story).length, 3, '일반 부탁은 그대로 3장');
+  assert.strictEqual(C.skipOrder(st, so.id, T0 + 1e9, seeded(1)).reason, 'story');
+  const info = C.areaInfo(st);
+  assert.strictEqual(info.reqPending, 'so_r1'); assert.strictEqual(info.canAfford, false);
+  assert.strictEqual(C.doTask(st, 'r1_maru', T0).reason, 'req');
+  st.board[10] = item('b', 4);
+  const r = C.deliver(st, so.id, T0, seeded(1));
+  assert.ok(r.ok); assert.strictEqual(r.story, 'so_r1'); assert.strictEqual(r.stars, 2); assert.ok(st.sos.so_r1);
+  assert.ok(!st.orders.some((o) => o.story)); assert.ok(D.STORY.so_r1);
+  assert.ok(C.doTask(st, 'r1_maru', T0).ok);
+});
+test('이야기 부탁 데이터: 지역·앞 작업·막는 작업·인물·장면이 다 맞아요 · 저장해도 그대로', () => {
+  Object.keys(D.STORY_ORDERS).forEach((id) => {
+    const so = D.STORY_ORDERS[id];
+    const a = D.AREAS[so.area];
+    const ai = a.tasks.findIndex((t) => t.id === so.after), bi = a.tasks.findIndex((t) => t.req === id);
+    assert.ok(ai >= 0 && bi > ai, id + ' 순서');
+    assert.ok(D.VILLAGERS[so.who] && D.STORY[so.scene]);
+    so.need.forEach((n) => assert.ok(n.t <= C.maxTier(n.c)));
+  });
+  const st = emptyState(seeded(7)); st.stars = 9;
+  ['r1_gate', 'r1_paper', 'r1_sign'].forEach((id) => C.doTask(st, id, T0));
+  const back = C.deserialize(C.serialize(st), T0 + 5, seeded(2));
+  assert.strictEqual(back.orders.filter((o) => o.story === 'so_r1').length, 1);
+});
+
+console.log('3단계 · 발생기 강화');
+test('발생기 강화: 동전 80 → 240 → 600 · 2단계 확률 10→20→30% · 마지막은 가끔 3단계', () => {
+  const st = emptyState(); st.coins = 2000;
+  assert.deepStrictEqual([C.genUpInfo(st, 'gen_a').lv, C.genUpInfo(st, 'gen_a').price], [0, 80]);
+  [80, 240, 600].forEach((p, k) => { const r = C.upgradeGen(st, 'gen_a', T0); assert.ok(r.ok); assert.strictEqual(r.price, p); assert.strictEqual(r.lv, k + 1); });
+  assert.strictEqual(st.coins, 2000 - 920);
+  assert.strictEqual(C.upgradeGen(st, 'gen_a', T0).reason, 'max');
+  assert.strictEqual(C.upgradeGen(st, 'gen_kite', T0).reason, 'event');
+  st.coins = 10; assert.strictEqual(C.upgradeGen(st, 'gen_b', T0).reason, 'coins');
+  const count = (lv) => {
+    const s2 = emptyState(); s2.settings.easy = true; s2.genLv.gen_d = lv;
+    const rng = seeded(99); const c = { 1: 0, 2: 0, 3: 0 };
+    for (let i = 0; i < 2000; i++) { s2.board = s2.board.map(() => null); s2.board[30] = { k: 'gen', g: 'gen_d' }; c[C.tapGen(s2, 30, T0, rng).cell.t]++; }
+    return c;
+  };
+  const c0 = count(0), c2 = count(2), c3 = count(3);
+  assert.ok(c0[2] > 120 && c0[2] < 290 && c0[3] === 0);
+  assert.ok(c2[2] > 500 && c2[2] < 700 && c2[3] === 0);
+  assert.ok(c3[3] > 100 && c3[3] < 230 && c3[2] > 480);
+});
+
+console.log('4단계 · 숨은 비밀');
+test('편지 조각: 지역을 열면 보이고, 작업 뒤에 나오는 것도 있어요 · 찾으면 소라별 1', () => {
+  const st = emptyState(); st.sec.bottleDay = C.dayKey(T0);
+  let s = C.secretsIn(st, 0, T0);
+  assert.deepStrictEqual(s.filter((x) => x.kind === 'letter').map((x) => x.id), ['l1']);
+  assert.strictEqual(s.filter((x) => x.kind === 'gull').length, 3);
+  assert.deepStrictEqual(C.secretsIn(st, 1, T0), [], '아직 안 연 지역');
+  const g0 = st.gems;
+  const r = C.findSecret(st, 'letter', 'l1', T0);
+  assert.ok(r.ok); assert.strictEqual(r.text, D.LETTERS.l1); assert.strictEqual(st.gems, g0 + 1); assert.strictEqual(r.count, 1);
+  assert.strictEqual(C.findSecret(st, 'letter', 'l1', T0).reason, 'gone');
+  assert.strictEqual(C.findSecret(st, 'letter', 'l2', T0).reason, 'gone', '대청마루 뒤에');
+  st.tasks.r1_maru = T0;
+  assert.ok(C.findSecret(st, 'letter', 'l2', T0).ok);
+});
+test('갈매기 18마리: 하나에 동전 20 · 다 찾으면 「섬 탐정」 + 동전 200 · 앨범은 편지 12장 + 엔딩', () => {
+  const st = emptyState(); st.area = 6; st.sec.bottleDay = C.dayKey(T0);
+  st.coins = 0;
+  let last;
+  D.AREAS.forEach((a, i) => C.secretsIn(st, i, T0).filter((x) => x.kind === 'gull').forEach((x) => { last = C.findSecret(st, 'gull', x.id, T0); }));
+  assert.strictEqual(last.title, '섬 탐정'); assert.strictEqual(st.sec.title, '섬 탐정');
+  assert.strictEqual(st.coins, 18 * 20 + 200);
+  Object.keys(D.LETTERS).forEach((id) => { st.sec.letters[id] = T0; });
+  assert.strictEqual(C.secretCounts(st).album, false);
+  st.seen.ending = true;
+  assert.strictEqual(C.secretCounts(st).album, true);
+});
+test('병 속 편지: 하루 한 번 연 지역 바닷가에 · 소라별 2 + 작은 보자기', () => {
+  const st = emptyState();
+  const b = C.bottleToday(st, T0);
+  assert.ok(b && b.area === 0);
+  const s = C.secretsIn(st, 0, T0).find((x) => x.kind === 'bottle');
+  assert.ok(s);
+  const g0 = st.gems;
+  const r = C.findSecret(st, 'bottle', 'bottle', T0, seeded(1));
+  assert.ok(r.ok && r.note); assert.strictEqual(st.gems, g0 + 2); assert.deepStrictEqual(st.board[r.gift.at], item('bj', 1));
+  assert.strictEqual(C.bottleToday(st, T0 + 3600e3), null, '같은 날은 한 번');
+  assert.ok(C.bottleToday(st, T0 + 864e5), '다음 날 또');
+});
+
+console.log('5단계 · 매일');
+test('7일 출석: 하루 한 번 · 이어서 안 와도 쌓여요 · 7일째 큰 보자기 + 몽돌 모자 · 다시 1일', () => {
+  const st = emptyState(); st.coins = 0;
+  C.dailyTouch(st, T0);
+  assert.ok(C.attendInfo(st, T0).can);
+  let r = C.claimAttend(st, T0, seeded(1));
+  assert.ok(r.ok); assert.strictEqual(r.day, 1); assert.deepStrictEqual(st.board[r.placed[0].at], item('en', 2));
+  assert.strictEqual(C.claimAttend(st, T0 + 1000, seeded(1)).reason, 'done');
+  r = C.claimAttend(st, T0 + 5 * 864e5, seeded(1));   // 며칠 건너뛰어도 2일째
+  assert.strictEqual(r.day, 2); assert.strictEqual(st.coins, 50);
+  for (let d = 3; d <= 7; d++) { st.board = st.board.map(() => null); r = C.claimAttend(st, T0 + (5 + d) * 864e5, seeded(d)); assert.strictEqual(r.day, d); }
+  assert.ok(st.decos.indexOf('mongdol_hat') >= 0);
+  assert.strictEqual(C.attendInfo(st, T0 + 20 * 864e5).idx, 0); assert.strictEqual(C.attendInfo(st, T0 + 20 * 864e5).round, 1);
+});
+test('오늘의 부탁 3개: 날마다 새로 · 다 하면 중간 보자기 (한 번만)', () => {
+  const st = emptyState();
+  assert.ok(C.dailyTouch(st, T0)); assert.ok(!C.dailyTouch(st, T0 + 1000));
+  let qi = C.questInfo(st);
+  assert.strictEqual(qi.q.length, 3); assert.ok(!qi.all);
+  assert.strictEqual(C.claimQuests(st, T0).reason, 'notyet');
+  const q1 = qi.q[0]; st.stats[q1.stat] += q1.n;
+  st.daily.del[qi.q[1].c] = 2;
+  st.board[0] = item('a', qi.q[2].n - 1); st.board[1] = item('a', qi.q[2].n - 1);
+  C.move(st, 0, 1, T0);
+  qi = C.questInfo(st);
+  assert.ok(qi.q.every((x) => x.done), JSON.stringify(qi.q));
+  const r = C.claimQuests(st, T0, seeded(1));
+  assert.ok(r.ok); assert.deepStrictEqual(st.board[r.at], item('bj', 2));
+  assert.strictEqual(C.claimQuests(st, T0).reason, 'claimed');
+  assert.ok(C.dailyTouch(st, T0 + 864e5)); assert.ok(!C.questInfo(st).claimed);
+});
+test('부탁을 건네면 그 체인 칸이 오늘의 부탁에 세어져요', () => {
+  const st = emptyState(); C.dailyTouch(st, T0);
+  const o = st.orders[0];
+  o.need.forEach((n, k) => { st.board[k] = item(n.c, n.t); });
+  C.deliver(st, o.id, T0, seeded(1));
+  assert.strictEqual(st.daily.del[o.need[0].c], 1);
+});
+
+console.log('5단계 · 주간 이벤트');
+test('주간 이벤트: 월요일마다 차례로 (연날리기 ↔ 단오) · 1지역을 다 고친 뒤부터', () => {
+  const mon = new Date(2026, 10, 2, 0, 0, 1).getTime();   // 2026-11-02 월요일
+  const a = C.currentEvent(mon), b = C.currentEvent(mon + 7 * 864e5), sun = C.currentEvent(mon + 6.9 * 864e5);
+  assert.notStrictEqual(a.ev.id, b.ev.id); assert.strictEqual(a.week, sun.week); assert.strictEqual(a.week + 1, b.week);
+  assert.strictEqual(new Date(a.start).getDay(), 1);
+  const st = emptyState(seeded(3));
+  assert.strictEqual(C.eventTick(st, mon, seeded(1)).started, null, '1지역 끝나기 전엔 없음');
+  st.area = 1;
+  const r = C.eventTick(st, mon, seeded(1));
+  assert.ok(r.started); assert.strictEqual(st.ev.id, a.ev.id);
+  assert.deepStrictEqual(st.board[r.started.gen.at], { k: 'gen', g: a.ev.gen });
+  const eo = st.orders.filter((o) => o.ev);
+  assert.strictEqual(eo.length, 1); assert.ok(eo[0].need[0].c === a.ev.chain && eo[0].pts > 0 && eo[0].stars === 0);
+  assert.strictEqual(st.orders.filter((o) => !o.ev && !o.story).length, 3, '일반 부탁은 그대로');
+  assert.strictEqual(C.eventTick(st, mon + 1000, seeded(1)).started, null, '같은 주에 두 번 안 줘요');
+});
+test('이벤트 부탁 → 점수 → 보상 길 (마지막 칸 = 장식) · 끝나면 이벤트 물건은 동전으로 · 장식은 그대로', () => {
+  const mon = new Date(2026, 10, 2, 9).getTime();
+  const st = emptyState(seeded(5)); st.area = 2;
+  C.eventTick(st, mon, seeded(1));
+  const e = D.EVENTS.find((x) => x.id === st.ev.id);
+  let got = 0;
+  for (let i = 0; i < 300 && st.ev.got < e.track.length; i++) {
+    const o = st.orders.find((x) => x.ev);
+    st.board[0] = item(o.need[0].c, o.need[0].t);
+    const r = C.deliver(st, o.id, mon, seeded(1000 + i * 7919));
+    assert.ok(r.ok); got += (r.evRewards || []).length;
+    st.board = st.board.map((c, k) => (k === 0 || (c && c.k === 'gen') ? c : null));
+  }
+  assert.strictEqual(got, 10); assert.ok(st.decos.indexOf(e.deco) >= 0, '장식');
+  assert.ok(C.placeDeco(st, e.deco, 2, 40, 70, mon).ok); assert.deepStrictEqual(st.placed[e.deco], { a: 2, x: 40, y: 70 });
+  st.board[5] = item(e.chain, 3); st.bag[0] = item(e.chain, 2);
+  const coins = st.coins;
+  const r = C.eventTick(st, mon + 7 * 864e5, seeded(2));
+  assert.ok(r.ended && r.started); assert.strictEqual(r.ended.coins, 4 + 2); assert.strictEqual(st.coins, coins + 6);
+  assert.ok(!st.board.some((c) => c && ((c.k === 'gen' && c.g === e.gen) || (c.k === 'item' && c.c === e.chain))));
+  assert.strictEqual(st.bag[0], null);
+  assert.notStrictEqual(st.ev.id, e.id); assert.ok(st.decos.indexOf(e.deco) >= 0);
+  const back = C.deserialize(C.serialize(st), mon + 7 * 864e5, seeded(1));
+  assert.strictEqual(back.ev.id, st.ev.id); assert.deepStrictEqual(back.placed, st.placed);
+});
+test('이벤트 물건도 합쳐져요 (5단계 끝) · 이벤트 부탁은 [다른 부탁]으로 같은 이벤트 부탁', () => {
+  const st = emptyState(); st.area = 1;
+  C.eventTick(st, T0, seeded(1));
+  const ch = D.EVENTS.find((x) => x.id === st.ev.id).chain;
+  assert.strictEqual(C.maxTier(ch), 5);
+  st.board[0] = item(ch, 4); st.board[1] = item(ch, 4);
+  const m = C.move(st, 0, 1, T0); assert.strictEqual(m.kind, 'merge'); assert.ok(m.max);
+  const o = st.orders.find((x) => x.ev);
+  const r = C.skipOrder(st, o.id, T0 + 1e9, seeded(4));
+  assert.ok(r.ok && r.order.ev === st.ev.id);
+});
+
+console.log('4단계 · 도감 · 옛 저장');
+test('도감: 체인마다 찾은 단계 수', () => {
+  const st = emptyState(); st.found = { a1: true, a2: true, b1: true };
+  const col = C.collection(st);
+  assert.strictEqual(col.find((x) => x.c === 'a').n, 2); assert.strictEqual(col.find((x) => x.c === 'h').n, 0);
+  assert.ok(col.find((x) => x.c === 'kite').event && col.find((x) => x.c === 'en').aux);
+});
+test('새 칸이 없는 옛 저장(v2)도 그대로 열려요 (강화·비밀·매일·이벤트 기본값)', () => {
+  const st = C.newState(T0, seeded(1));
+  ['genLv', 'sos', 'sec', 'daily', 'ev', 'evLast', 'decos', 'placed', 'thx'].forEach((k) => delete st[k]);
+  const back = C.deserialize(JSON.stringify(st), T0, seeded(2));
+  assert.ok(back && back.sec.letters && back.daily.att && Array.isArray(back.decos) && back.ev === null);
+  C.dailyTouch(back, T0); assert.ok(C.claimAttend(back, T0, seeded(1)).ok);
+  assert.strictEqual(C.secretsIn(back, 0, T0).length > 0, true);
+});
+
+test('마을 그림 표시: 끝낸 작업 ✓ 은 그림에 남지 않고 다음 작업 망치 하나만 · 다 고치면 표시 없음', () => {
+  const st = soAll(emptyState(seeded(8)));
+  st.stars = 99;
+  assert.deepStrictEqual(C.mapPins(C.areaInfo(st)).map((x) => x.task.id), ['r1_gate']);
+  C.doTask(st, 'r1_gate', T0); C.doTask(st, 'r1_paper', T0);
+  const pins = C.mapPins(C.areaInfo(st));
+  assert.deepStrictEqual(pins.map((x) => x.task.id), ['r1_sign']);
+  assert.ok(pins.every((x) => !x.done));
+  D.AREAS[0].tasks.forEach((t) => C.doTask(st, t.id, T0, seeded(1)));
+  const past = { tasks: D.AREAS[0].tasks.map((t) => ({ task: t, done: true, next: false })) };
+  assert.deepStrictEqual(C.mapPins(past), []);
+});
 console.log(`\n모두 통과 (${n}개)`);

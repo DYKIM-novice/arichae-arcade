@@ -2,7 +2,9 @@
    - 체인·발생기·마을 사람·지역(복원 작업)·이야기·밸런스 숫자를 여기 한 곳에 모아요 (규칙 코드는 core.js)
    - 1단계: 체인 A·B·D · 발생기 3 · 기운 · 합치기 · 일반 주문 · 기기 저장
    - 2단계: 별로 복원 작업 · 지역 전/후 배경 · 이야기 장면 · 서버 저장 · 덮인 칸(모래더미)
-   - 3단계(일부): 체인 C·E·F(+G·H 자리) · 충전식 발생기 · 2~3지역 · 가방·선물함 · 팔기·되돌리기 · 보조 물건 · 주문 덤
+   - 3단계: 체인 C·E·F·G·H · 충전식 발생기 · 가방·선물함 · 팔기·되돌리기 · 보조 물건 · 주문 덤 · 발생기 강화(BAL.genUp) · 이야기 부탁(STORY_ORDERS)
+   - 4단계: 4~6지역 + 엔딩 · 마을 사람 얼굴(기본·기쁨) · 고맙다는 말(thanks) · 숨은 비밀(편지 조각 12·갈매기 18·병 속 편지) · 할머니의 앨범
+   - 5단계: 7일 출석 · 오늘의 부탁(DAILY) · 주간 이벤트(EVENTS: 연날리기 · 단오 · 주마다 차례로) · 장식
    - 새 지역은 AREAS 에 한 덩어리 + STORY 에 장면만 더하면 돼요 (코드 수정 없음)
    - 브라우저(window.MergeData)와 node 시험(require) 둘 다에서 읽어요 */
 (function (root) {
@@ -36,7 +38,12 @@
     ss: { name: '소라별', color: '#5fb0e6', soft: '#e1f2fd', aux: { kind: 'gems', amount: [1, 5, 20], verb: '모으기' },
       tiers: ['소라별', '소라별 주머니', '소라별 상자'] },
     bj: { name: '선물 보자기', color: '#e46f8c', soft: '#fde4ea', aux: { kind: 'gift', amount: [3, 5, 8], verb: '열기' },
-      tiers: ['작은 보자기', '중간 보자기', '큰 보자기'] }
+      tiers: ['작은 보자기', '중간 보자기', '큰 보자기'] },
+    // 주간 이벤트 체인 (EVENTS · 일반 부탁에는 안 나와요 · 이벤트가 끝나면 동전으로)
+    kite: { name: '연날리기', color: '#e0574b', soft: '#ffe1dc', event: 'kite', gen: 'gen_kite',
+      tiers: ['연 종이', '연 꼬리', '가오리연', '방패연', '용 연'] },
+    dano: { name: '단오', color: '#3fa37a', soft: '#dcf3e8', event: 'dano', gen: 'gen_dano',
+      tiers: ['창포 잎', '창포물', '수리취떡', '단오 부채', '꽃 그네'] }
   };
 
   // 발생기: 톡 하면 그 체인 1단계(가끔 2단계) · charge = 충전식 (taps 번 뽑으면 restMs 동안 쉼)
@@ -48,28 +55,47 @@
     gen_e: { chain: 'e', name: '통발', charge: null },
     gen_f: { chain: 'f', name: '물레', charge: null },
     gen_g: { chain: 'g', name: '반짇고리', charge: null },
-    gen_h: { chain: 'h', name: '등 공방 상자', charge: { taps: 12, restMs: 10 * 60000 } }
+    gen_h: { chain: 'h', name: '등 공방 상자', charge: { taps: 12, restMs: 10 * 60000 } },
+    gen_kite: { chain: 'kite', name: '연 바구니', charge: null, event: 'kite' },
+    gen_dano: { chain: 'dano', name: '단오 바구니', charge: null, event: 'dano' }
   };
 
   // 마을 사람 (주문 카드·대사 얼굴) · art: 그림 id (그림이 없으면 색 동그라미 + 첫 글자)
-  // faces: 표정 그림 id ({ who:'hayun', face:'joy' } → hayun_joy)
+  // faces: 표정 그림 id ({ who:'hayun', face:'joy' } → hayun_joy) · joy 는 건네기 반응에도 써요
+  // lines: 부탁할 때 말 (0·1) · thanks: 건네받을 때 고맙다는 말 (돌려 가며 하나씩 · 짧게)
   const VILLAGERS = {
-    juni: { name: '준이', art: 'char_juni', color: '#6aa9e9', chains: ['a'], lines: ['바닷가에서 이거 찾아 줄 수 있어?', '편지 배달 가는 길에 필요해!', '우와, 진짜 반짝반짝하다!'] },
-    mina: { name: '미나', art: 'char_mina', color: '#f39a7a', chains: ['b', 'c'], lines: ['떡집 다시 열려면 이게 있어야 해!', '하윤아, 이거 하나만 부탁해~', '역시 내 친구!'] },
-    kkotnim: { name: '꽃님 할머니', art: 'char_kkotnim', color: '#d77fb0', chains: ['d'], lines: ['아이고, 우리 하윤이 왔구나.', '정원에 이게 하나 있으면 좋겠구먼.', '윤해가 보면 참 좋아하겠다.'] },
-    dochi: { name: '도치 아저씨', art: 'char_dochi', color: '#5b7fa6', chains: ['e', 'f'], lines: ['…이거 있으면 좀 주시오.', '배 손질하는 데 필요하오.', '…그래. 고맙소.'] },
-    hayun: { name: '하윤', art: 'hayun', faces: { joy: 'hayun_joy', wow: 'hayun_wow' }, color: '#7cc29a', chains: [], lines: [] },
-    mongdol: { name: '몽돌', art: 'char_mongdol', faces: { joy: 'char_mongdol_joy' }, color: '#9fb4c8', chains: [], lines: [] },
+    juni: { name: '준이', art: 'char_juni', faces: { joy: 'char_juni_joy' }, color: '#6aa9e9', chains: ['a'],
+      lines: ['바닷가에서 이거 찾아 줄 수 있어요?', '편지 배달 가는 길에 필요해요!', '우와, 진짜 반짝반짝하다!'],
+      thanks: ['우와, 최고예요!', '누나 짱이에요!', '이거 진짜 반짝반짝해요!', '헤헤, 자랑하러 가야지!', '고마워요, 누나!'] },
+    mina: { name: '미나', art: 'char_mina', faces: { joy: 'char_mina_joy' }, color: '#f39a7a', chains: ['b', 'c'],
+      lines: ['떡집 다시 열려면 이게 있어야 해!', '하윤아, 이거 하나만 부탁해~', '역시 내 친구!'],
+      thanks: ['역시 내 친구!', '고마워, 하윤아~!', '와, 딱 이거였어!', '오늘 떡 맛있게 나오겠다!', '너 없었으면 어쩔 뻔했어!'] },
+    kkotnim: { name: '꽃님 할머니', art: 'char_kkotnim', faces: { joy: 'char_kkotnim_joy' }, color: '#d77fb0', chains: ['d'],
+      lines: ['아이고, 우리 하윤이 왔구나.', '정원에 이게 하나 있으면 좋겠구먼.', '윤해가 보면 참 좋아하겠다.'],
+      thanks: ['아이고, 고맙구나!', '참 곱기도 하제.', '우리 하윤이 손이 야무지구먼.', '윤해가 보면 웃겠다.', '복 받을 거여.'] },
+    dochi: { name: '도치 아저씨', art: 'char_dochi', faces: { joy: 'char_dochi_joy' }, color: '#5b7fa6', chains: ['e', 'f'],
+      lines: ['…이거 있으면 좀 주시오.', '배 손질하는 데 필요하오.', '…그래. 고맙소.'],
+      thanks: ['…고맙소.', '…그래. 잘 쓰겠소.', '…허, 솜씨 좋구먼.', '…이거면 됐소.', '…다음에 생선 한 마리 주겠소.'] },
+    kang: { name: '강 선생', art: 'char_kang', faces: { joy: 'char_kang_joy' }, color: '#c9a04a', chains: ['h'],
+      lines: ['불빛이 필요하네. 부탁해도 되겠나.', '등대 일을 하려면 이게 있어야 하네.', '고맙네.'],
+      thanks: ['고맙네, 정말로.', '허허, 반가운 불빛이로군.', '자네 덕분이야.', '좋구먼. 아주 좋아.'] },
+    rua: { name: '루아', art: 'char_rua', faces: { joy: 'char_rua_joy' }, color: '#9b6fd0', chains: ['g'],
+      lines: ['이 색이 꼭 필요해.', '그림에 넣고 싶은 게 있어.', '고마워.'],
+      thanks: ['와… 그림에 담고 싶어.', '고마워, 색이 참 예쁘다.', '이 빛, 오래 기억할게.', '딱 내가 그리던 거야!'] },
+    hayun: { name: '하윤', art: 'hayun', faces: { joy: 'hayun_joy', wow: 'hayun_wow' }, color: '#7cc29a', chains: [], lines: [], thanks: ['좋아, 하나 끝!'] },
+    mongdol: { name: '몽돌', art: 'char_mongdol', faces: { joy: 'char_mongdol_joy' }, color: '#9fb4c8', chains: [], lines: [], thanks: ['뀨!', '뀨뀨~!'] },
     letter: { name: '할머니의 편지', art: 'secret_letter', color: '#c9a46a', chains: [], lines: [], letter: true },
     who: { name: '???', art: '', color: '#b9aaa0', chains: [], lines: [] }
   };
 
   // 복원 지역 · 순서대로 열려요 (st.area = 지금 지역 번호)
   //  bg: 전/후 배경 그림 id (없으면 '전' 그림에 색 바꾸기, 그것도 없으면 그림 대신 색 풍경)
-  //  view: 배경 그림 중 마을 화면에 보여 줄 세로 구간 (0~1) · 작업 위치 x,y 는 그림 전체 기준 %
+  //  view: 배경 그림 중 마을 화면에 보여 줄 세로 구간 (0~1) · 작업 위치 x,y 는 그림 전체 기준 % (실제 그림 속 그 물건 자리)
   //  chains: 이 지역 주문에 나오는 체인 · orders: 물건 수/단계 범위
   //  tasks: 순서대로 하나씩 (cost = 별) · scene = 끝낸 뒤 볼 이야기 · r = 드러나는 동그라미 반지름(그림 폭 %)
-  //  open: 이 지역이 열릴 때 (장면 · 새 발생기 · 새 체인) · done: 다 고쳤을 때 (장면 · 모래더미 걷기)
+  //         req = 먼저 끝내야 하는 이야기 부탁 (STORY_ORDERS id)
+  //  open: 이 지역이 열릴 때 (장면 · 새 발생기 · 새 체인) · done: 다 고쳤을 때 (장면 · 모래더미 걷기 · ending = 엔딩 장면)
+  //  secrets: 숨은 비밀 (그림 전체 기준 %) · letters: 할머니 편지 조각(after = 그 작업 뒤에 나타남) · gulls: 갈매기 · bottle: 병 속 편지가 떠오를 수 있는 곳
   const AREAS = [
     { id: 'r1', name: '바다별채', sub: '할머니의 한옥 민박', bg: { before: 'r1_before', after: 'r1_after' }, view: [0.36, 0.98],
       sky: ['#ffe2cf', '#ffd2bd'], sea: '#8fd3c8',
@@ -78,12 +104,14 @@
         { id: 'r1_gate', name: '대문 잔해 치우기', cost: 1, x: 16, y: 74, r: 20, scene: 'r1_gate' },
         { id: 'r1_paper', name: '찢어진 창호지 바르기', cost: 2, x: 44, y: 61, r: 19, scene: 'r1_paper' },
         { id: 'r1_sign', name: '현판 다시 달기', cost: 2, x: 52, y: 52, r: 20, scene: 'r1_sign' },
-        { id: 'r1_maru', name: '대청마루 닦기', cost: 3, x: 36, y: 68, r: 21, scene: 'r1_maru' },
+        { id: 'r1_maru', name: '대청마루 닦기', cost: 3, x: 36, y: 68, r: 21, scene: 'r1_maru', req: 'so_r1' },
         { id: 'r1_lamp', name: '마당 석등 켜기', cost: 3, x: 9, y: 68, r: 18, scene: 'r1_lamp' },
         { id: 'r1_room', name: '첫 손님방(온돌방) 꾸미기', cost: 4, x: 76, y: 62, r: 22 }
       ],
       open: { scene: null, gens: [], chains: [] },
-      done: { scene: 'r1_done', uncover: true } },
+      done: { scene: 'r1_done', uncover: true },
+      secrets: { letters: [{ id: 'l1', x: 83, y: 86 }, { id: 'l2', x: 35, y: 73, after: 'r1_maru' }],
+        gulls: [[66, 48], [62, 79], [22, 42]], bottle: [[30, 92], [88, 93]] } },
     { id: 'r2', name: '몽돌 선착장', sub: '물빛포구 장터', bg: { before: 'r2_before', after: 'r2_after' }, view: [0.25, 0.98],
       sky: ['#ffe6d0', '#cfe7f0'], sea: '#7fc6d8',
       chains: ['a', 'b', 'd', 'e'], orders: { items: [1, 2], tiers: [3, 5] },
@@ -92,12 +120,14 @@
         { id: 'r2_net', name: '그물 널기', cost: 3, x: 16, y: 68, r: 18, scene: 'r2_net' },
         { id: 'r2_awning', name: '장터 차양 치기', cost: 3, x: 42, y: 51, r: 20 },
         { id: 'r2_ice', name: '얼음 창고 문 고치기', cost: 4, x: 90, y: 54, r: 17 },
-        { id: 'r2_boat', name: '나룻배 칠하기', cost: 4, x: 88, y: 68, r: 19, scene: 'r2_boat' },
+        { id: 'r2_boat', name: '나룻배 칠하기', cost: 4, x: 88, y: 68, r: 19, scene: 'r2_boat', req: 'so_r2' },
         { id: 'r2_stall', name: '생선 좌판 차리기', cost: 5, x: 63, y: 57, r: 19 },
         { id: 'r2_sotdae', name: '갈매기 솟대 세우기', cost: 7, x: 78, y: 32, r: 18 }
       ],
       open: { scene: 'r2_open', gens: ['gen_e'], chains: ['e'] },
-      done: { scene: 'r2_done', uncover: true } },
+      done: { scene: 'r2_done', uncover: true },
+      secrets: { letters: [{ id: 'l3', x: 8, y: 57 }, { id: 'l4', x: 57, y: 62, after: 'r2_stall' }],
+        gulls: [[35, 38], [22, 52], [72, 88]], bottle: [[62, 92], [12, 88]] } },
     { id: 'r3', name: '바람골목', sub: '떡집 · 찻집 골목', bg: { before: 'r3_before', after: 'r3_after' }, view: [0.16, 1.0],
       sky: ['#ffe9d6', '#f6dce8'], sea: '#a9d8c4',
       chains: ['a', 'b', 'c', 'd', 'e', 'f'], orders: { items: [1, 2], tiers: [4, 6] },
@@ -105,15 +135,133 @@
         { id: 'r3_road', name: '골목 돌길 깔기', cost: 3, x: 50, y: 86, r: 22 },
         { id: 'r3_mill', name: '떡방앗간 절구 고치기', cost: 4, x: 13, y: 82, r: 19, scene: 'r3_mill' },
         { id: 'r3_eave', name: '처마 차양 달기', cost: 5, x: 22, y: 42, r: 20 },
-        { id: 'r3_pyeong', name: '찻집 평상 놓기', cost: 6, x: 72, y: 70, r: 19 },
+        { id: 'r3_pyeong', name: '찻집 평상 놓기', cost: 6, x: 72, y: 70, r: 19, req: 'so_r3' },
         { id: 'r3_pots', name: '돌담 화분 줄 세우기', cost: 6, x: 34, y: 60, r: 17 },
         { id: 'r3_mural', name: '골목 벽화 그리기', cost: 7, x: 88, y: 62, r: 20, scene: 'r3_mural' },
         { id: 'r3_bell', name: '풍경(바람종) 달기', cost: 9, x: 86, y: 32, r: 18 }
       ],
       open: { scene: 'r3_open', gens: ['gen_c', 'gen_f'], chains: ['c', 'f'] },
-      done: { scene: 'r3_done', uncover: true } }
-    // 4 매화언덕 정원 (+G) · 5 반짝 해변 (+H) · 6 등대곶 은 같은 모양으로 추가
+      done: { scene: 'r3_done', uncover: true },
+      secrets: { letters: [{ id: 'l5', x: 47, y: 47 }, { id: 'l6', x: 92, y: 80, after: 'r3_mural' }],
+        gulls: [[60, 24], [8, 30], [55, 66]], bottle: [] } },
+    { id: 'r4', name: '매화언덕 정원', sub: '꽃님 할머니의 정원', bg: { before: 'r4_before', after: 'r4_after' }, view: [0.28, 1.0],
+      sky: ['#ffe6d6', '#fbd9cf'], sea: '#9fd6cf',
+      chains: ['a', 'b', 'c', 'd', 'e', 'f', 'g'], orders: { items: [2, 2], tiers: [4, 7] },
+      tasks: [
+        { id: 'r4_weed', name: '잡초밭 정리하기', cost: 5, x: 14, y: 84, r: 20, scene: 'r4_weed' },
+        { id: 'r4_steps', name: '돌계단 쌓기', cost: 7, x: 23, y: 66, r: 17 },
+        { id: 'r4_pond', name: '연못 맑게 하기', cost: 8, x: 54, y: 73, r: 20, scene: 'r4_pond' },
+        { id: 'r4_bridge', name: '돌다리 고치기', cost: 8, x: 42, y: 63, r: 17 },
+        { id: 'r4_pavilion', name: '정자 세우기', cost: 8, x: 76, y: 54, r: 19, scene: 'r4_pavilion', req: 'so_r4a' },
+        { id: 'r4_path', name: '매화·동백길 가꾸기', cost: 9, x: 50, y: 91, r: 22, req: 'so_r4b' }
+      ],
+      open: { scene: 'r4_open', gens: ['gen_g'], chains: ['g'] },
+      done: { scene: 'r4_done', uncover: true },
+      secrets: { letters: [{ id: 'l7', x: 9, y: 47 }, { id: 'l8', x: 66, y: 80, after: 'r4_pond' }],
+        gulls: [[30, 37], [88, 42], [62, 56]], bottle: [[50, 42]] } },
+    { id: 'r5', name: '반짝 해변', sub: '등불 축제 마당', bg: { before: 'r5_before', after: 'r5_after' }, view: [0.28, 0.98],
+      sky: ['#ffe2d2', '#ffd9c2'], sea: '#7fd0c4',
+      chains: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], orders: { items: [2, 3], tiers: [5, 8] },
+      tasks: [
+        { id: 'r5_clean', name: '모래사장 청소하기', cost: 6, x: 40, y: 90, r: 22 },
+        { id: 'r5_hut', name: '초가 쉼터 고치기', cost: 7, x: 28, y: 72, r: 19, scene: 'r5_hut' },
+        { id: 'r5_stage', name: '놀이마당 무대 놓기', cost: 9, x: 70, y: 64, r: 18 },
+        { id: 'r5_cloth', name: '오색 천 줄 걸기', cost: 9, x: 77, y: 54, r: 17, scene: 'r5_cloth' },
+        { id: 'r5_swing', name: '그네·널뛰기터 만들기', cost: 10, x: 26, y: 48, r: 18 },
+        { id: 'r5_cart', name: '장터 수레 꾸미기', cost: 10, x: 86, y: 84, r: 17 },
+        { id: 'r5_arch', name: '등불 아치 세우기', cost: 12, x: 69, y: 79, r: 18, req: 'so_r5' }
+      ],
+      open: { scene: 'r5_open', gens: ['gen_h'], chains: ['h'] },
+      done: { scene: 'r5_done', uncover: true },
+      secrets: { letters: [{ id: 'l9', x: 48, y: 44 }, { id: 'l10', x: 11, y: 66, after: 'r5_swing' }],
+        gulls: [[15, 31], [56, 36], [93, 62]], bottle: [[30, 31], [74, 29]] } },
+    { id: 'r6', name: '등대곶', sub: '꺼진 등대가 있는 곶', bg: { before: 'r6_before', after: 'r6_after' }, view: [0.14, 1.0],
+      sky: ['#ffe4d6', '#f9dccb'], sea: '#7fcfc6',
+      chains: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], orders: { items: [2, 3], tiers: [6, 9] },
+      tasks: [
+        { id: 'r6_path', name: '오솔길 다시 내기', cost: 8, x: 44, y: 88, r: 22 },
+        { id: 'r6_fence', name: '울타리 세우기', cost: 9, x: 28, y: 76, r: 18 },
+        { id: 'r6_hut', name: '등대지기 오두막 고치기', cost: 10, x: 66, y: 52, r: 16, scene: 'r6_hut' },
+        { id: 'r6_stairs', name: '나선 계단 고치기', cost: 12, x: 55, y: 44, r: 14 },
+        { id: 'r6_wall', name: '등대 외벽 칠하기', cost: 12, x: 63, y: 35, r: 15 },
+        { id: 'r6_bell', name: '종 다시 달기', cost: 14, x: 76, y: 48, r: 13, scene: 'r6_bell' },
+        { id: 'r6_lens', name: '등대 렌즈 끼우기', cost: 15, x: 60, y: 28, r: 14, req: 'so_r6' },
+        { id: 'r6_light', name: '첫 불 켜기', cost: 20, x: 60, y: 21, r: 30 }
+      ],
+      open: { scene: 'r6_open', gens: [], chains: [] },
+      done: { scene: 'r6_done', uncover: true, ending: 'ending' },
+      secrets: { letters: [{ id: 'l11', x: 20, y: 62 }, { id: 'l12', x: 84, y: 70, after: 'r6_light' }],
+        gulls: [[74, 16], [10, 86], [90, 78]], bottle: [[94, 93]] } }
   ];
+
+  // 이야기 부탁 (금색 카드 · [다른 부탁] 없음): area 지역에서 after 작업을 끝내면 나타나고, 건네야 다음 작업(req)을 할 수 있어요
+  const STORY_ORDERS = {
+    so_r1: { area: 0, after: 'r1_sign', who: 'mina', need: [{ c: 'b', t: 4 }], stars: 2, scene: 'so_r1', title: '마루 손님 대접할 송편' },
+    so_r2: { area: 1, after: 'r2_net', who: 'dochi', need: [{ c: 'e', t: 4 }], stars: 3, scene: 'so_r2', title: '아들 배에 실을 조기' },
+    so_r3: { area: 2, after: 'r3_mill', who: 'mina', need: [{ c: 'b', t: 6 }], stars: 3, scene: 'so_r3', title: '재개업 첫 떡, 색동 경단' },
+    so_r4a: { area: 3, after: 'r4_bridge', who: 'kkotnim', need: [{ c: 'd', t: 6 }], stars: 4, scene: 'so_r4a', title: '윤해와 심던 매화 분재' },
+    so_r4b: { area: 3, after: 'r4_pavilion', who: 'rua', need: [{ c: 'g', t: 5 }], stars: 4, scene: 'so_r4b', title: '그림 그릴 때 깔 색동 방석' },
+    so_r5: { area: 4, after: 'r5_cart', who: 'kang', need: [{ c: 'h', t: 4 }, { c: 'h', t: 4 }], stars: 5, scene: 'so_r5', title: '아치에 달 청사초롱 두 개' },
+    so_r6: { area: 5, after: 'r6_bell', who: 'kang', need: [{ c: 'h', t: 7 }], stars: 6, scene: 'so_r6', title: '다시 빛날 등대 렌즈' }
+  };
+
+  // 할머니의 편지 조각 12장 (지역마다 2장 · 순서대로 이으면 한 통) · 다 모으고 엔딩을 보면 '할머니의 앨범'
+  const LETTERS = {
+    l1: '사랑하는 하윤아.\n이 조각들을 다 모으면 편지 한 통이 된단다.',
+    l2: '내가 이 섬에 처음 온 건 열아홉 살 봄이었어.',
+    l3: '작은 나룻배에서 내렸을 때, 등대 불빛이 나를 반겨 주었지.',
+    l4: '아무도 모르는 섬이었는데, 꽃님이가 먼저 손을 내밀었단다.',
+    l5: '도치네 아버지는 생선을, 미나네 할머니는 떡을 나눠 주었고.',
+    l6: '그때 알았지. 집은 지붕이 아니라 사람이라는 걸.',
+    l7: '폭풍이 지나간 뒤, 사람들은 서로 미안해서 멀어졌어.',
+    l8: '그래서 편지를 숨겼단다. 네가 찾으러 다니면 사람들이 다시 모일 테니까.',
+    l9: '네가 바른 창호지, 네가 켠 석등, 할머니는 다 보고 있단다.',
+    l10: '혹시 지치면 몽돌이랑 바닷가에 앉아 쉬어 가렴.',
+    l11: '등대에 불이 다시 켜지면, 떠난 사람들도 그 빛을 보고 돌아올 거야.',
+    l12: '이제 이곳은 네 집이야.\n사랑한다, 우리 하윤이. —할머니 윤해'
+  };
+  const SECRETS = {
+    gullCoins: 20,                 // 갈매기 한 마리 = 동전 20
+    gullTitle: '섬 탐정',           // 18마리 다 찾으면 칭호 + 동전
+    gullAllCoins: 200,
+    letterGems: 1,                 // 편지 조각 = 소라별 1
+    bottleGems: 2,                 // 병 속 편지 = 소라별 2 + 작은 보자기 (하루 한 번)
+    bottleGift: { k: 'item', c: 'bj', t: 1 },
+    bottleNotes: ['물빛포구 바람이 오늘은 순하대요.', '누군가 바다 건너에서 이 섬을 그리워하고 있어요.', '등불 하나가 배 한 척을 집으로 데려온대요.',
+      '오늘도 수고했어요. 따뜻한 차 한 잔 어때요?', '몽돌이가 좋아하는 건 반짝이는 조개래요.', '바다는 기다리는 사람을 잊지 않는대요.']
+  };
+
+  // 매일: 7일 출석 (이어서 안 와도 하루씩 쌓여요 · 7일 다음엔 다시 1일) · 오늘의 부탁 3개
+  const DAILY = {
+    attend: [
+      { label: '식혜 사발', give: [{ k: 'item', c: 'en', t: 2 }] },
+      { label: '동전 50', coins: 50 },
+      { label: '작은 보자기', give: [{ k: 'item', c: 'bj', t: 1 }] },
+      { label: '소라별 3', gems: 3 },
+      { label: '무지개 소라', give: [{ k: 'wild' }] },
+      { label: '동전 150', coins: 150 },
+      { label: '큰 보자기 + 몽돌 모자', give: [{ k: 'item', c: 'bj', t: 3 }], deco: 'mongdol_hat' }
+    ],
+    questReward: { k: 'item', c: 'bj', t: 2 }   // 오늘의 부탁 3개를 다 하면 중간 보자기
+  };
+
+  // 주간 이벤트 (월요일 0시 ~ 일요일 밤 · 주마다 차례로 돌아가요)
+  //  체인은 CHAINS 에(event: id), 발생기는 GENS 에 있어요 · 이벤트 부탁은 일반 부탁과 따로 한 장 (점수 → 10칸 보상 길)
+  //  끝나면 판·가방의 이벤트 물건은 동전으로 바뀌고, 이벤트 발생기는 돌려줘요 · 마지막 칸 장식은 영원히 (마을에 놓기)
+  const EVENTS = [
+    { id: 'kite', name: '연날리기 주간', chain: 'kite', gen: 'gen_kite', banner: 'kite_banner', deco: 'kite_deco', decoName: '연 탑',
+      who: 'juni', orders: { tiers: [2, 5], points: { 2: 3, 3: 8, 4: 15, 5: 30 } },
+      track: [10, 25, 45, 70, 100, 140, 190, 250, 320, 400],
+      rewards: [{ k: 'item', c: 'en', t: 1 }, { k: 'item', c: 'cn', t: 1 }, { k: 'item', c: 'bj', t: 1 }, { k: 'item', c: 'ss', t: 1 }, { k: 'item', c: 'en', t: 2 },
+        { k: 'item', c: 'cn', t: 2 }, { k: 'wild' }, { k: 'item', c: 'ss', t: 2 }, { k: 'item', c: 'bj', t: 2 }, { k: 'deco', id: 'kite_deco' }] },
+    { id: 'dano', name: '단오 그네 주간', chain: 'dano', gen: 'gen_dano', banner: 'dano_banner', deco: 'dano_deco', decoName: '꽃 그네',
+      who: 'kkotnim', orders: { tiers: [2, 5], points: { 2: 3, 3: 8, 4: 15, 5: 30 } },
+      track: [10, 25, 45, 70, 100, 140, 190, 250, 320, 400],
+      rewards: [{ k: 'item', c: 'en', t: 1 }, { k: 'item', c: 'cn', t: 1 }, { k: 'item', c: 'bj', t: 1 }, { k: 'item', c: 'ss', t: 1 }, { k: 'item', c: 'en', t: 2 },
+        { k: 'item', c: 'cn', t: 2 }, { k: 'wild' }, { k: 'item', c: 'ss', t: 2 }, { k: 'item', c: 'bj', t: 2 }, { k: 'deco', id: 'dano_deco' }] }
+  ];
+  const EVENT_REF_MONDAY = [2026, 0, 5];   // 이 월요일부터 주를 세요 (EVENTS 차례)
+  const EVENT_FROM_AREA = 1;               // 1지역을 다 고친 뒤부터 이벤트가 열려요
 
   const BOARD = { cols: 7, rows: 9 };
 
@@ -134,6 +282,8 @@
     bagStart: 6, bagMax: 20, bagPrice: 50, bagGrow: 1.4,   // 가방: 6칸 → 동전으로 한 칸씩 (50 → 1.4배씩)
     giftTier2: 0.3,            // 보자기에서 2단계가 나올 확률 (큰 보자기는 3단계도 조금)
     firstFindGems: 1,          // 처음 발견하면 소라별 1
+    // 발생기 강화 (동전 · 3번): 2단계 확률 10 → 20 → 30% · 마지막 강화는 가끔(8%) 3단계
+    genUp: { prices: [80, 240, 600], tier2: [0.10, 0.20, 0.30, 0.30], tier3: [0, 0, 0, 0.08] },
     shop: [                    // 소라별 가게 (가방 화면)
       { id: 'wild', cell: { k: 'wild' }, gems: 6 },
       { id: 'bj1', cell: { k: 'item', c: 'bj', t: 1 }, gems: 3 },
@@ -153,7 +303,7 @@
   // 이야기 장면 (톡해서 넘김 · 한 장면 3~6줄) · who = VILLAGERS id · face = 표정
   const STORY = {
     intro: [
-      { who: 'hayun', text: '여기가… 할머니의 바다별채.\n폭풍에 많이 망가졌네.' },
+      { who: 'hayun', pic: 'story_start', text: '여기가… 할머니의 바다별채.\n폭풍에 많이 망가졌네.' },
       { who: 'hayun', text: '할머니 편지 끝에 이렇게 쓰여 있었지.\n"섬 곳곳에 내 편지를 숨겨 두었단다."' },
       { who: 'hayun', face: 'joy', text: '마을 사람들 부탁을 들어주면 별을 받아.\n별로 바다별채를 하나씩 고치자!' },
       { who: 'hayun', text: '같은 물건 두 개를 끌어다 겹치면\n더 좋은 물건이 돼. 바구니·절구·항아리를 톡!' }
@@ -247,6 +397,120 @@
       { who: 'kkotnim', text: '아이고, 이렇게 다 같이 모인 게\n얼마 만이고.' },
       { who: 'juni', text: '누나! 꽃언덕에서 누가 그림을 그려요.\n처음 보는 사람이에요!' },
       { who: 'hayun', text: '꽃언덕…\n다음 이야기는 거기서 시작되겠구나.' }
+    ],
+    // ---- 이야기 부탁을 건넸을 때 ----
+    so_r1: [
+      { who: 'mina', face: 'joy', text: '와, 송편 예쁘게도 빚었다!\n마루에 손님 오면 이거 내자.' },
+      { who: 'hayun', face: 'joy', text: '그럼 이제 마루만 반짝반짝 닦으면 되겠다!' }
+    ],
+    so_r2: [
+      { who: 'dochi', text: '…좋은 조기요.\n아들 배에 실어 두겠소.' },
+      { who: 'dochi', face: 'joy', text: '…배 칠은 같이 합시다.' }
+    ],
+    so_r3: [
+      { who: 'mina', face: 'joy', text: '색동 경단!\n재개업 첫 떡은 이걸로 정했어.' },
+      { who: 'mina', text: '평상 놓으면 다 같이 앉아서 먹자.\n할머니 자리도 하나 비워 두고.' }
+    ],
+    so_r4a: [
+      { who: 'kkotnim', face: 'joy', text: '아이고, 매화 분재가 꼭 그때 그 모양이구먼.' },
+      { who: 'kkotnim', text: '윤해랑 둘이 정자에 앉아\n이 나무를 보며 차를 마셨제.' }
+    ],
+    so_r4b: [
+      { who: 'rua', face: 'joy', text: '고마워. 이 방석에 앉으면\n정원이 더 잘 보여.' },
+      { who: 'rua', text: '…이 섬, 처음 온 것 같지 않아.\n오래전부터 편지로 알던 곳 같아.' }
+    ],
+    so_r5: [
+      { who: 'kang', face: 'joy', text: '청사초롱 두 개라… 잘 만들었네.' },
+      { who: 'kang', text: '아치 양쪽에 걸면\n바다에서도 잘 보일 걸세.' }
+    ],
+    so_r6: [
+      { who: 'kang', text: '…이 렌즈다.\n그날 밤 깨진 렌즈가 다시 빛나는구먼.' },
+      { who: 'kang', face: 'joy', text: '자네 덕분에 다시 등대에 오를 용기가 나네.' },
+      { who: 'mongdol', face: 'joy', text: '뀨!' }
+    ],
+    // ---- 4 매화언덕 정원 ----
+    r4_open: [
+      { who: 'kkotnim', text: '어서 오너라, 하윤아.\n여기가 내 정원… 이었제.' },
+      { who: 'kkotnim', text: '폭풍에 잡초만 무성해졌구먼.\n윤해랑 같이 가꾸던 곳인데.' },
+      { who: 'rua', text: '…안녕. 나는 루아.\n이 언덕을 그리러 왔어.' },
+      { who: 'rua', text: '바느질 상자 하나 빌려줄게.\n색실로 정원에 색을 입혀 줘.' },
+      { who: 'hayun', face: 'joy', text: '좋아요! 꽃언덕, 다시 피워 봐요.' }
+    ],
+    r4_weed: [
+      { who: 'kkotnim', face: 'joy', text: '잡초를 걷어 내니 땅이 숨을 쉬는구먼.' },
+      { who: 'mongdol', text: '뀨우~\n(풀숲에서 데굴데굴)' }
+    ],
+    r4_pond: [
+      { who: 'hayun', face: 'wow', text: '연못 바닥에 뭔가 있어요.\n…사진첩?' },
+      { who: 'kkotnim', text: '이건… 윤해랑 내가 열아홉 살 때구먼.\n둘 다 저리 웃었었제.' },
+      { who: 'kkotnim', face: 'joy', text: '고맙다, 하윤아.\n잃어버린 줄 알았던 봄을 찾았어.' }
+    ],
+    r4_pavilion: [
+      { who: 'rua', text: '정자가 서니까 그림이 완성되겠어.' },
+      { who: 'rua', face: 'joy', text: '봐, 연못이랑 매화랑… 하윤이도 그렸어.' },
+      { who: 'hayun', face: 'joy', text: '와, 저 정말 잘 나왔다!' }
+    ],
+    r4_done: [
+      { who: 'kkotnim', face: 'joy', text: '매화 길에 꽃이 피었구먼.\n윤해가 늘 걷던 길이여.' },
+      { who: 'rua', text: '…하윤, 사실 물어보고 싶은 게 있어.\n그런데 아직은 말을 못 하겠어.' },
+      { who: 'letter', text: '꽃님이는 내 평생 친구란다.\n그 정원에 웃음이 돌아왔다면, 다음은 바닷가 축제 마당이야.' },
+      { who: 'juni', text: '누나! 해변에 축제 마당 만든대요!\n강 선생님도 보신대요!' }
+    ],
+    // ---- 5 반짝 해변 ----
+    r5_open: [
+      { who: 'hayun', text: '여기가 반짝 해변…\n모래에 반짝이가 섞여 있어.' },
+      { who: 'kang', text: '…자네가 윤해 씨 손녀로군.\n나는 강이라 하네. 옛 등대지기일세.' },
+      { who: 'kang', text: '축제엔 불빛이 있어야지.\n이 등 공방 상자를 쓰게.' },
+      { who: 'mongdol', face: 'joy', text: '뀨뀨!\n(상자 냄새를 킁킁)' }
+    ],
+    r5_hut: [
+      { who: 'kang', text: '…폭풍 날 밤, 나는 등대에 있었네.' },
+      { who: 'kang', text: '바람에 렌즈가 깨지고 불이 꺼졌지.\n그 밤 배 몇 척이 길을 잃었어.' },
+      { who: 'kang', text: '그 뒤로 등대에 오르지 못했네.\n내 탓이라서.' },
+      { who: 'hayun', text: '선생님 탓이 아니에요.\n…같이 다시 켜요, 등대.' }
+    ],
+    r5_cloth: [
+      { who: 'rua', text: '하윤, 이 편지 봐 줄래?\n우리 할머니가 평생 간직하던 거야.' },
+      { who: 'hayun', face: 'wow', text: '이 글씨… 우리 할머니 글씨예요!' },
+      { who: 'rua', face: 'joy', text: '응. 우리 할머니랑 윤해 할머니는\n오십 년 동안 편지를 나눈 친구였대.' },
+      { who: 'rua', text: '그래서 왔어. 편지 속 섬을\n내 눈으로 보고 그리고 싶어서.' }
+    ],
+    r5_done: [
+      { who: 'mina', face: 'joy', text: '축제 마당 완성!\n떡이랑 차는 내가 맡을게!' },
+      { who: 'dochi', text: '…배는 내가 띄우겠소.' },
+      { who: 'kang', text: '이제 남은 건 하나뿐이로군.\n등대곶으로 가세.' },
+      { who: 'letter', text: '하윤아, 강 선생은 오래 혼자 아파했단다.\n등대에 같이 올라 주렴.' }
+    ],
+    // ---- 6 등대곶 ----
+    r6_open: [
+      { who: 'hayun', text: '등대곶…\n가까이서 보니 정말 크다.' },
+      { who: 'kang', text: '길도 울타리도 다 무너졌구먼.\n하나씩 하세. 천천히.' },
+      { who: 'juni', text: '저도 도울게요!\n자전거로 짐 나를게요!' },
+      { who: 'mongdol', face: 'joy', text: '뀨!' }
+    ],
+    r6_hut: [
+      { who: 'kang', text: '내가 살던 오두막일세.\n…창문에 윤해 씨 쪽지가 꽂혀 있구먼.' },
+      { who: 'letter', text: '강 선생님, 불은 다시 켜면 돼요.\n사람도 그래요. —윤해' },
+      { who: 'kang', face: 'joy', text: '…허허. 그 사람답구먼.' }
+    ],
+    r6_bell: [
+      { who: 'hayun', face: 'joy', text: '종이 다시 울려요!\n땡— 땡—' },
+      { who: 'dochi', text: '…포구까지 들리오.\n오랜만이구먼, 이 소리.' },
+      { who: 'kang', text: '이제 렌즈만 있으면 되네.\n가장 밝은 불빛이 필요하지.' }
+    ],
+    r6_done: [
+      { who: 'kang', face: 'joy', text: '불이… 켜졌네.\n등대에 다시 불이 켜졌어!' },
+      { who: 'hayun', face: 'wow', text: '바다 저 멀리…\n배들이 이쪽으로 오고 있어요!' },
+      { who: 'mina', face: 'joy', text: '떠났던 사람들이야!\n등불을 보고 돌아오는 거야!' }
+    ],
+    ending: [
+      { who: 'hayun', pic: 'story_ending', text: '그날 밤, 소라섬 바다에 등불이 가득 떠올랐다.' },
+      { who: 'kkotnim', face: 'joy', pic: 'story_ending', text: '첫 등불 바다 축제구먼.\n윤해가 꼭 보고 싶어 하던 밤이여.' },
+      { who: 'juni', face: 'joy', pic: 'story_ending', text: '누나! 우체국에 마지막 편지가 있었어요.\n등대에 불이 켜지면 주라고요!' },
+      { who: 'letter', pic: 'story_ending', text: '하윤아, 등대 불빛이 보이니?\n이제 이곳은 네 집이야.' },
+      { who: 'letter', pic: 'story_ending', text: '네가 돌아와 줘서, 섬 사람들이 다시 모였구나.\n고맙다. 사랑한다. —할머니 윤해' },
+      { who: 'hayun', face: 'joy', pic: 'story_ending', text: '할머니, 저 여기 남을게요.\n바다별채 주인으로.' },
+      { who: 'mongdol', face: 'joy', pic: 'story_ending', text: '뀨우~!\n(끝 · 그래도 부탁과 이벤트는 계속돼요)' }
     ]
   };
 
@@ -259,10 +523,13 @@
     '기운은 2분에 1씩 저절로 차요. 앱을 닫아도 차요.',
     '별이 모이면 [마을]에서 바다별채를 고칠 수 있어요.',
     '모래더미 옆에서 합치면 모래가 한 겹씩 벗겨져요.',
-    '물건을 [가방] 버튼으로 끌어다 놓으면 가방에 들어가요.'
+    '물건을 [가방] 버튼으로 끌어다 놓으면 가방에 들어가요.',
+    '[마을]에서 반짝이는 곳을 톡 하면 할머니의 편지 조각이 숨어 있어요.',
+    '☰ 메뉴에서 매일 출석 선물과 오늘의 부탁을 받아요.',
+    '발생기를 고르고 [강화]하면 더 좋은 물건이 나와요.'
   ];
 
-  const API = { CHAINS, GENS, VILLAGERS, AREAS, BOARD, BAL, START, STORY, TIPS, SAVE_KEY: 'arichae_merge_v1', SYNC_KEY: 'arichae_merge_sync', VERSION: 2 };
+  const API = { CHAINS, GENS, VILLAGERS, AREAS, STORY_ORDERS, LETTERS, SECRETS, DAILY, EVENTS, EVENT_REF_MONDAY, EVENT_FROM_AREA, BOARD, BAL, START, STORY, TIPS, SAVE_KEY: 'arichae_merge_v1', SYNC_KEY: 'arichae_merge_sync', VERSION: 2 };
   if (typeof module === 'object' && module.exports) module.exports = API;
   else root.MergeData = API;
 })(typeof window !== 'undefined' ? window : globalThis);

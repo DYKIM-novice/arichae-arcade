@@ -14,12 +14,19 @@
   Object.keys(tiers).forEach((c) => { for (let t = 1; t <= tiers[c]; t++) put('items', [c + t]); });
   put('items', ['wild', 'sand']);
   put('gens', ['gen_a', 'gen_b', 'gen_c', 'gen_d', 'gen_e', 'gen_f', 'gen_g', 'gen_h']);
-  put('ui', ['coin', 'energy', 'secret_letter', 'secret_bottle', 'secret_seagull']);
-  // 인물 얼굴 (data.js 의 art id 'char_juni' → chars/juni)
+  put('ui', ['coin', 'energy', 'secret_letter', 'secret_bottle', 'secret_seagull', 'bag', 'logo', 'sorastar', 'star']);
+  // 인물 얼굴 (data.js 의 art id 'char_juni' → chars/juni · 기쁨 얼굴 'char_juni_joy' → chars/juni_joy)
   put('chars', ['hayun', 'hayun_joy', 'hayun_wow']);
-  ['juni', 'mina', 'kkotnim', 'dochi', 'mongdol', 'mongdol_joy'].forEach((k) => { FILES['char_' + k] = 'chars/' + k; });
-  // 지역 배경 (전/후)
-  put('bg', ['r1_before', 'r1_after', 'r2_before', 'r2_after', 'r3_before', 'r3_after']);
+  ['juni', 'mina', 'kkotnim', 'dochi', 'kang', 'rua', 'mongdol'].forEach((k) => { FILES['char_' + k] = 'chars/' + k; FILES['char_' + k + '_joy'] = 'chars/' + k + '_joy'; });
+  // 지역 배경 1~6 (전/후) · 이야기 그림 (시작·엔딩) · 타이틀·판 배경
+  for (let k = 1; k <= 6; k++) put('bg', ['r' + k + '_before', 'r' + k + '_after']);
+  put('bg', ['story_start', 'story_ending', 'title', 'board']);
+  // 주간 이벤트 (체인 물건 kite1~5 · 발생기 gen_kite → events/kite_gen · 장식 · 배너)
+  ['kite', 'dano'].forEach((e) => {
+    for (let t = 1; t <= 5; t++) put('events', [e + t]);
+    FILES['gen_' + e] = 'events/' + e + '_gen';
+    put('events', [e + '_deco', e + '_banner']);
+  });
 
   let ROOT = 'static/';
   try {

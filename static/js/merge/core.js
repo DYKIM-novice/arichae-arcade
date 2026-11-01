@@ -8,7 +8,7 @@
   'use strict';
 
   const D = (typeof module === 'object' && module.exports) ? require('./data.js') : root.MergeData;
-  const { CHAINS, GENS, AREAS, BOARD, BAL, START, VILLAGERS } = D;
+  const { CHAINS, GENS, AREAS, BOARD, BAL, START, VILLAGERS, STORY_ORDERS, SECRETS, DAILY, EVENTS, LETTERS } = D;
   const N = BOARD.cols * BOARD.rows;
   const COLS = BOARD.cols;
 
@@ -16,6 +16,9 @@
   const pick = (rng, arr) => arr[Math.floor(rng() * arr.length) % arr.length];
   const maxTier = (c) => (CHAINS[c] ? CHAINS[c].tiers.length : 0);
   const isAux = (c) => !!(CHAINS[c] && CHAINS[c].aux);
+  const isEvent = (c) => !!(CHAINS[c] && CHAINS[c].event);
+  // 날짜 글자 → 정수 (매일 바뀌는 것: 병 속 편지 자리·오늘의 부탁)
+  const hash = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
   const itemId = (cell) => (cell && cell.k === 'item' ? cell.c + cell.t : '');
   const rc = (i) => ({ r: Math.floor(i / COLS), c: i % COLS });
   const dayKey = (now) => { const d = new Date(now); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
@@ -54,11 +57,19 @@
       found: {}, unlocked: START.chains.slice(),
       refill: { day: dayKey(now), n: 0 },
       stats: { merges: 0, spawns: 0, delivered: 0, sold: 0, best: {} },
-      settings: { sfx: true, vib: true, easy: false, nums: true, hint: true },
+      settings: { sfx: true, vib: true, easy: false, nums: true, hint: true, bgm: false, vol: 2, bgmVol: 2, big: false, calm: false },
       seen: {},
       area: 0, tasks: {}, story: {},
       bag: new Array(BAL.bagStart).fill(null), gifts: [], charge: {},
       events: {},
+      genLv: {},                 // 발생기 강화 단계 (0~3)
+      sos: {},                   // 끝낸 이야기 부탁 (id → 시각)
+      sec: { letters: {}, gulls: {}, bottleDay: '', title: '' },   // 숨은 비밀
+      daily: { day: '', att: { n: 0, last: '' }, base: null, q: [], del: {}, maxT: 0, claimed: false },
+      ev: null,                  // 지금 주간 이벤트 { id, week, pts, got, seq }
+      evLast: null,              // 지난 이벤트 정리 결과 (화면이 한 번 알려 줘요)
+      decos: [], placed: {},     // 장식 (가진 것 · 마을에 놓은 자리)
+      thx: {},                   // 고맙다는 말 돌려 쓰기 (사람 → 다음 번호)
       createdAt: now, updatedAt: now
     };
     board.forEach((cell) => { if (cell && cell.k === 'item') st.found[itemId(cell)] = true; });
@@ -161,7 +172,10 @@
       if (c.n >= info.charge.taps) { c.n = 0; c.until = now + info.charge.restMs; }
       st.charge[g.g] = c;
     }
-    const t = rng() < BAL.spawnTier2 ? 2 : 1;
+    const lv = genLevel(st, g.g);
+    const t2 = lv ? BAL.genUp.tier2[lv] : BAL.spawnTier2, t3 = BAL.genUp.tier3[lv] || 0;
+    const roll = rng();
+    const t = roll < t3 ? 3 : roll < t3 + t2 ? 2 : 1;
     const cell = { k: 'item', c: info.chain, t };
     st.board[at] = cell;
     const first = markFound(st, cell);
@@ -169,6 +183,26 @@
     st.stats.spawns++;
     st.updatedAt = now;
     return { ok: true, at, cell, first };
+  }
+
+  /* ---------- 발생기 강화 (동전 3번) ---------- */
+  function genLevel(st, gid) { return Math.max(0, Math.min(BAL.genUp.prices.length, (st.genLv && st.genLv[gid]) | 0)); }
+  function genUpInfo(st, gid) {
+    const g = GENS[gid];
+    if (!g || g.event) return null;
+    const lv = genLevel(st, gid);
+    const price = lv < BAL.genUp.prices.length ? BAL.genUp.prices[lv] : 0;
+    return { lv, max: BAL.genUp.prices.length, price, tier2: lv ? BAL.genUp.tier2[lv] : BAL.spawnTier2, tier3: BAL.genUp.tier3[lv] || 0 };
+  }
+  function upgradeGen(st, gid, now) {
+    const u = genUpInfo(st, gid);
+    if (!u) return { ok: false, reason: 'event' };
+    if (!u.price) return { ok: false, reason: 'max' };
+    if (st.coins < u.price) return { ok: false, reason: 'coins', price: u.price };
+    st.coins -= u.price;
+    st.genLv[gid] = u.lv + 1;
+    st.updatedAt = now;
+    return { ok: true, price: u.price, lv: u.lv + 1, info: genUpInfo(st, gid) };
   }
 
   /* ---------- 합치기 · 옮기기 ---------- */
@@ -210,6 +244,7 @@
       if (first) st.gems += BAL.firstFindGems;
       st.stats.merges++;
       st.stats.best[cell.c] = Math.max(st.stats.best[cell.c] || 0, cell.t);
+      if (st.daily && !isAux(cell.c)) st.daily.maxT = Math.max(st.daily.maxT | 0, cell.t);   // 오늘의 부탁 'n단계 만들기'
       const peeled = peel(st, to);
       return { kind: 'merge', at: to, cell, first, max: cell.t >= maxTier(cell.c), peeled };
     }
@@ -357,7 +392,7 @@
     const fresh = chains.filter((c) => usedChains.indexOf(c) < 0);
     const lo = area.orders.tiers[0];
     let hi = area.orders.tiers[1];
-    if (st.orders.some((o) => now - o.at > BAL.orderStuckMs)) hi = Math.max(lo, hi - 1);   // 막힘 방지
+    if (st.orders.some((o) => !o.story && !o.ev && now - o.at > BAL.orderStuckMs)) hi = Math.max(lo, hi - 1);   // 막힘 방지
     const n = rint(rng, area.orders.items[0], area.orders.items[1]);
     const need = [];
     for (let i = 0; i < n; i++) {
@@ -381,10 +416,32 @@
       at: now, story: false
     };
   }
+  // 일반 부탁은 늘 3장 (이야기 부탁·이벤트 부탁은 그 밖에 따로)
   function fillOrders(st, now, rng) {
+    syncStoryOrders(st, now);
     const out = [];
-    while (st.orders.length < BAL.ordersShown) { const o = makeOrder(st, now, rng); st.orders.push(o); out.push(o); }
+    const normal = () => st.orders.filter((o) => !o.story && !o.ev).length;
+    while (normal() < BAL.ordersShown) { const o = makeOrder(st, now, rng); st.orders.push(o); out.push(o); }
     return out;
+  }
+
+  /* ---------- 이야기 부탁 (금색 · 복원 작업 앞에 꼭) ---------- */
+  function storyOrderActive(st, id) {
+    const so = STORY_ORDERS[id];
+    return !!so && !st.sos[id] && so.area <= (st.area | 0) && (!so.after || !!st.tasks[so.after]);
+  }
+  function makeStoryOrder(id, now) {
+    const so = STORY_ORDERS[id];
+    const need = so.need.map((n) => ({ c: n.c, t: n.t }));
+    const sum = need.reduce((s, x) => s + sellValue(x.t), 0);
+    return { id: 's_' + id, who: so.who, need, coins: Math.ceil(sum * BAL.orderCoinMult), stars: so.stars, line: 0, bonus: null, at: now, story: id, title: so.title };
+  }
+  function syncStoryOrders(st, now) {
+    if (!st.sos) st.sos = {};
+    st.orders = st.orders.filter((o) => !o.story || storyOrderActive(st, o.story));
+    Object.keys(STORY_ORDERS).forEach((id) => {
+      if (storyOrderActive(st, id) && !st.orders.some((o) => o.story === id)) st.orders.unshift(makeStoryOrder(id, now));
+    });
   }
   // 이 주문에 쓸 칸 찾기: 판 먼저, 없으면 가방 (같은 물건 2개가 필요하면 다른 칸 2개)
   //  cells[k] = 판 칸 번호(-1 = 판에 없음) · bag[k] = 가방 칸 번호(-1 = 가방에 없음)
@@ -419,17 +476,33 @@
     st.starsEarned += order.stars;
     st.stats.delivered++;
     st.orders.splice(k, 1);
+    if (order.story) st.sos[order.story] = now;
+    if (st.daily && !order.ev) {   // 오늘의 부탁 '○○ 부탁 n번'
+      const seen = {};
+      order.need.forEach((x) => { if (!seen[x.c]) { seen[x.c] = 1; st.daily.del[x.c] = (st.daily.del[x.c] | 0) + 1; } });
+    }
+    let evRewards = null;
+    if (order.ev && st.ev && st.ev.id === order.ev) evRewards = addEventPoints(st, order.pts | 0, now, rng);
     let bonus = null;
     if (order.bonus) bonus = Object.assign({ cell: order.bonus }, giveCell(st, clone(order.bonus), rng, s.cells.find((i) => i >= 0)));
     const added = fillOrders(st, now, rng);
     st.updatedAt = now;
-    return { ok: true, order, cells: s.cells, bag: s.bag, coins: order.coins, stars: order.stars, added, bonus };
+    if (order.ev) eventOrderFill(st, now, rng);
+    return { ok: true, order, cells: s.cells, bag: s.bag, coins: order.coins, stars: order.stars, added, bonus, story: order.story || null, evRewards };
   }
   function skipOrder(st, orderId, now, rng) {
     const wait = (st.skipAt || 0) + BAL.skipCooldownMs - now;
     if (wait > 0) return { ok: false, reason: 'cool', waitMs: wait };
     const k = st.orders.findIndex((o) => o.id === orderId);
     if (k < 0) return { ok: false, reason: 'gone' };
+    if (st.orders[k].story) return { ok: false, reason: 'story' };
+    if (st.orders[k].ev) {   // 이벤트 부탁은 같은 이벤트 부탁으로 바꿔요
+      const old = st.orders.splice(k, 1)[0];
+      const o = makeEventOrder(st, now, rng);
+      st.orders.splice(k, 0, o);
+      st.skipAt = now; st.updatedAt = now;
+      return { ok: true, old, order: o };
+    }
     const old = st.orders.splice(k, 1)[0];
     const o = makeOrder(st, now, rng);
     st.orders.splice(k, 0, o);
@@ -451,9 +524,12 @@
     });
     const doneN = tasks.filter((x) => x.done).length;
     const next = tasks.find((x) => x.next);
+    const reqPending = next && next.task.req && !st.sos[next.task.req] ? next.task.req : null;
     return { area, show, index: Math.min(st.area, AREAS.length - 1), finished: !area, tasks, doneN, total: tasks.length,
-      next: next ? next.task : null, canAfford: !!next && st.stars >= next.task.cost };
+      next: next ? next.task : null, reqPending, canAfford: !!next && !reqPending && st.stars >= next.task.cost };
   }
+  // 마을 그림 위에 그릴 표시: 지금 할 작업(망치) 하나만 · 끝낸 작업·아직 잠긴 작업은 그림에 안 그려요
+  function mapPins(info) { return info.tasks.filter((x) => x.next && !x.done); }
   function doTask(st, taskId, now, rng) {
     const area = AREAS[st.area];
     if (!area) return { ok: false, reason: 'nomore' };
@@ -462,18 +538,20 @@
     const task = area.tasks[k];
     if (st.tasks[task.id]) return { ok: false, reason: 'done' };
     if (k > 0 && !st.tasks[area.tasks[k - 1].id]) return { ok: false, reason: 'order' };
+    if (task.req && !st.sos[task.req]) return { ok: false, reason: 'req', so: task.req };
     if (st.stars < task.cost) return { ok: false, reason: 'stars', need: task.cost - st.stars };
     st.stars -= task.cost;
     st.tasks[task.id] = now;
     st.updatedAt = now;
     const res = { ok: true, task, area, areaDone: false, given: [], uncovered: [] };
     if (area.tasks.every((t) => st.tasks[t.id])) Object.assign(res, completeArea(st, now, rng));
+    fillOrders(st, now, rng || Math.random);   // 새 이야기 부탁이 생겼을 수 있어요
     return res;
   }
   // 지역 다 고침 → 모래더미 걷기 · 다음 지역 열기(새 발생기·체인) · 주문 난이도 오름
   function completeArea(st, now, rng) {
     const area = AREAS[st.area];
-    const out = { areaDone: true, doneArea: area, given: [], uncovered: [], nextArea: null };
+    const out = { areaDone: true, doneArea: area, given: [], uncovered: [], nextArea: null, ending: (area.done && area.done.ending) || null };
     if (area.done && area.done.uncover) {
       for (let i = 0; i < N; i++) if (st.cover[i] > 0) { st.cover[i] = 0; out.uncovered.push(i); }
     }
@@ -486,6 +564,216 @@
       // 새 지역 난이도로 주문 하나씩 바꾸지 않고, 다음에 생기는 주문부터 새 난이도
     }
     return out;
+  }
+
+  /* ---------- 숨은 비밀 (편지 조각 · 갈매기 · 병 속 편지) ---------- */
+  const GULL_TOTAL = AREAS.reduce((s, a) => s + ((a.secrets && a.secrets.gulls) || []).length, 0);
+  const LETTER_TOTAL = Object.keys(LETTERS).length;
+  const gullId = (area, k) => area.id + '_g' + k;
+  // 오늘 병 속 편지가 떠오른 자리 (이미 주웠으면 null) · 지금까지 연 지역의 바닷가 중 날짜로 하나
+  function bottleToday(st, now) {
+    const day = dayKey(now);
+    if (st.sec.bottleDay === day) return null;
+    const spots = [];
+    AREAS.forEach((a, i) => { if (i <= st.area) ((a.secrets && a.secrets.bottle) || []).forEach((p) => spots.push({ area: i, x: p[0], y: p[1] })); });
+    return spots.length ? spots[hash(day) % spots.length] : null;
+  }
+  // 이 지역 그림에 지금 숨어 있는 것들 (아직 안 찾은 것만)
+  function secretsIn(st, idx, now) {
+    const area = AREAS[idx];
+    if (!area || idx > st.area || !area.secrets) return [];
+    const out = [];
+    (area.secrets.letters || []).forEach((l) => { if (!st.sec.letters[l.id] && (!l.after || st.tasks[l.after])) out.push({ kind: 'letter', id: l.id, x: l.x, y: l.y }); });
+    (area.secrets.gulls || []).forEach((g, k) => { const id = gullId(area, k); if (!st.sec.gulls[id]) out.push({ kind: 'gull', id, x: g[0], y: g[1] }); });
+    const b = bottleToday(st, now);
+    if (b && b.area === idx) out.push({ kind: 'bottle', id: 'bottle', x: b.x, y: b.y });
+    return out;
+  }
+  function secretCounts(st) {
+    const letters = Object.keys(st.sec.letters).length;
+    return { letters, lettersMax: LETTER_TOTAL, gulls: Object.keys(st.sec.gulls).length, gullsMax: GULL_TOTAL, title: st.sec.title || '',
+      album: letters >= LETTER_TOTAL && !!(st.seen && st.seen.ending) };
+  }
+  function findSecret(st, kind, id, now, rng) {
+    const where = AREAS.findIndex((a, i) => secretsIn(st, i, now).some((x) => x.kind === kind && x.id === id));
+    if (where < 0) return { ok: false, reason: 'gone' };
+    st.updatedAt = now;
+    if (kind === 'letter') {
+      st.sec.letters[id] = now;
+      st.gems += SECRETS.letterGems;
+      return { ok: true, kind, id, text: LETTERS[id], gems: SECRETS.letterGems, count: Object.keys(st.sec.letters).length, max: LETTER_TOTAL };
+    }
+    if (kind === 'gull') {
+      st.sec.gulls[id] = now;
+      let coins = SECRETS.gullCoins;
+      const count = Object.keys(st.sec.gulls).length;
+      const all = count >= GULL_TOTAL && !st.sec.title;
+      if (all) { st.sec.title = SECRETS.gullTitle; coins += SECRETS.gullAllCoins; }
+      st.coins += coins;
+      return { ok: true, kind, id, coins, count, max: GULL_TOTAL, title: all ? SECRETS.gullTitle : '' };
+    }
+    const day = dayKey(now);
+    st.sec.bottleDay = day;
+    st.gems += SECRETS.bottleGems;
+    const gift = giveCell(st, clone(SECRETS.bottleGift), rng || Math.random);
+    return { ok: true, kind: 'bottle', id, gems: SECRETS.bottleGems, gift: Object.assign({ cell: SECRETS.bottleGift }, gift),
+      note: SECRETS.bottleNotes[hash(day + 'n') % SECRETS.bottleNotes.length] };
+  }
+
+  /* ---------- 매일 (7일 출석 · 오늘의 부탁 3개) ---------- */
+  function dailyTouch(st, now) {
+    const day = dayKey(now);
+    if (st.daily && st.daily.day === day) return false;
+    const att = (st.daily && st.daily.att) || { n: 0, last: '' };
+    const h = hash(day);
+    const chains = st.unlocked.filter((c) => CHAINS[c] && !isAux(c) && !isEvent(c));
+    const c = chains[h % chains.length] || 'a';
+    const tier = st.area >= 3 ? 6 : st.area >= 1 ? 5 : 4;
+    const first = h % 2 ? { kind: 'stat', stat: 'merges', n: 30, text: '합치기 30번' } : { kind: 'stat', stat: 'spawns', n: 40, text: '발생기 40번 톡' };
+    st.daily = {
+      day, att,
+      base: { merges: st.stats.merges | 0, spawns: st.stats.spawns | 0, delivered: st.stats.delivered | 0 },
+      q: [first, { kind: 'chain', c, n: 2, text: `${CHAINS[c].name} 부탁 2번 들어주기` }, { kind: 'tier', n: tier, text: `${tier}단계 물건 하나 만들기` }],
+      del: {}, maxT: 0, claimed: false
+    };
+    return true;
+  }
+  function questInfo(st) {
+    const d = st.daily;
+    const q = (d.q || []).map((x) => {
+      let have = 0, need = x.n;
+      if (x.kind === 'stat') have = (st.stats[x.stat] | 0) - ((d.base && d.base[x.stat]) | 0);
+      else if (x.kind === 'chain') have = d.del[x.c] | 0;
+      else if (x.kind === 'tier') { need = 1; have = (d.maxT | 0) >= x.n ? 1 : 0; }
+      have = Math.max(0, Math.min(need, have));
+      return Object.assign({}, x, { have, need, done: have >= need });
+    });
+    return { q, all: q.length > 0 && q.every((x) => x.done), claimed: !!d.claimed, reward: DAILY.questReward };
+  }
+  function claimQuests(st, now, rng) {
+    const qi = questInfo(st);
+    if (qi.claimed) return { ok: false, reason: 'claimed' };
+    if (!qi.all) return { ok: false, reason: 'notyet' };
+    st.daily.claimed = true;
+    st.updatedAt = now;
+    return Object.assign({ ok: true, cell: DAILY.questReward }, giveCell(st, clone(DAILY.questReward), rng || Math.random));
+  }
+  function attendInfo(st, now) {
+    const att = st.daily.att;
+    return { n: att.n, can: att.last !== dayKey(now), idx: att.n % DAILY.attend.length, list: DAILY.attend, round: Math.floor(att.n / DAILY.attend.length) };
+  }
+  function claimAttend(st, now, rng) {
+    const a = attendInfo(st, now);
+    if (!a.can) return { ok: false, reason: 'done' };
+    const rw = DAILY.attend[a.idx];
+    const placed = [];
+    if (rw.coins) st.coins += rw.coins;
+    if (rw.gems) st.gems += rw.gems;
+    (rw.give || []).forEach((cell) => placed.push(Object.assign({ cell }, giveCell(st, clone(cell), rng || Math.random))));
+    if (rw.deco && st.decos.indexOf(rw.deco) < 0) st.decos.push(rw.deco);
+    st.daily.att = { n: a.n + 1, last: dayKey(now) };
+    st.updatedAt = now;
+    return { ok: true, day: a.idx + 1, reward: rw, placed };
+  }
+
+  /* ---------- 주간 이벤트 (월 0시 ~ 일요일 밤 · 차례로 돌아가요) ---------- */
+  const DAY = 864e5;
+  function weekStart(now) { const d = new Date(now); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.getTime(); }
+  function currentEvent(now) {
+    const ws = weekStart(now);
+    const r = D.EVENT_REF_MONDAY;
+    const ref = new Date(r[0], r[1], r[2]).getTime();
+    const week = Math.round((ws - ref) / (7 * DAY));
+    const ev = EVENTS[((week % EVENTS.length) + EVENTS.length) % EVENTS.length];
+    const end = new Date(ws); end.setDate(end.getDate() + 7);
+    return { ev, week, start: ws, end: end.getTime() };
+  }
+  function eventDef(id) { return EVENTS.find((e) => e.id === id) || null; }
+  function makeEventOrder(st, now, rng) {
+    const e = eventDef(st.ev.id);
+    const t = rint(rng, e.orders.tiers[0], e.orders.tiers[1]);
+    st.ev.seq = (st.ev.seq | 0) + 1;
+    return { id: 'e' + st.ev.week + '_' + st.ev.seq, who: e.who, need: [{ c: e.chain, t }], coins: sellValue(t), stars: 0, pts: e.orders.points[t] | 0,
+      line: 0, bonus: null, at: now, ev: e.id, story: false };
+  }
+  function eventOrderFill(st, now, rng) {
+    if (!st.ev || st.orders.some((o) => o.ev)) return null;
+    const o = makeEventOrder(st, now, rng);
+    const at = st.orders.filter((x) => x.story).length;   // 이야기 부탁 다음 자리
+    st.orders.splice(at, 0, o);
+    return o;
+  }
+  function giveReward(st, rw, now, rng) {
+    if (rw.k === 'deco') { if (st.decos.indexOf(rw.id) < 0) st.decos.push(rw.id); return { reward: rw, deco: rw.id }; }
+    return Object.assign({ reward: rw }, giveCell(st, clone(rw), rng || Math.random));
+  }
+  function addEventPoints(st, pts, now, rng) {
+    const e = eventDef(st.ev.id);
+    st.ev.pts += pts;
+    const got = [];
+    while (st.ev.got < e.track.length && st.ev.pts >= e.track[st.ev.got]) { got.push(giveReward(st, e.rewards[st.ev.got], now, rng)); st.ev.got++; }
+    return got;
+  }
+  function eventInfo(st, now) {
+    const cur = currentEvent(now);
+    if (!st.ev) return { active: false, cur, from: D.EVENT_FROM_AREA };
+    const e = eventDef(st.ev.id);
+    return { active: true, def: e, pts: st.ev.pts, got: st.ev.got, next: e.track[st.ev.got] || 0, leftMs: Math.max(0, cur.end - now), cur };
+  }
+  // 이벤트 물건·발생기 정리 (끝날 때) → 동전
+  function endEvent(st, now) {
+    const e = eventDef(st.ev.id);
+    let coins = 0, n = 0;
+    const conv = (c) => {
+      if (!c) return c;
+      if (c.k === 'item' && isEvent(c.c)) { coins += sellValue(c); n++; return null; }
+      if (c.k === 'gen' && GENS[c.g] && GENS[c.g].event) return null;
+      return c;
+    };
+    st.board = st.board.map(conv);
+    st.bag = st.bag.map(conv);
+    st.gifts = st.gifts.map(conv).filter(Boolean);
+    st.orders = st.orders.filter((o) => !o.ev);
+    st.coins += coins;
+    st.evLast = { id: e ? e.id : st.ev.id, name: e ? e.name : '', coins, n, pts: st.ev.pts, at: now };
+    st.ev = null;
+    st.updatedAt = now;
+    return st.evLast;
+  }
+  function eventTick(st, now, rng) {
+    const out = { ended: null, started: null };
+    const cur = currentEvent(now);
+    if (st.ev && (st.ev.week !== cur.week || !eventDef(st.ev.id))) out.ended = endEvent(st, now);
+    if (!st.ev && st.area >= D.EVENT_FROM_AREA) {
+      st.ev = { id: cur.ev.id, week: cur.week, pts: 0, got: 0, seq: 0 };
+      out.started = { ev: cur.ev, gen: Object.assign({ cell: { k: 'gen', g: cur.ev.gen } }, giveCell(st, { k: 'gen', g: cur.ev.gen }, rng || Math.random)) };
+      st.updatedAt = now;
+    }
+    if (st.ev) eventOrderFill(st, now, rng || Math.random);
+    return out;
+  }
+  // 장식 놓기 (마을 그림 위 · 지역 번호 · 그림 전체 기준 %) · x 가 없으면 치우기
+  function placeDeco(st, id, area, x, y, now) {
+    if (st.decos.indexOf(id) < 0) return { ok: false, reason: 'none' };
+    if (x == null) { delete st.placed[id]; st.updatedAt = now; return { ok: true, removed: true }; }
+    st.placed[id] = { a: area | 0, x: Math.max(3, Math.min(97, +x)), y: Math.max(3, Math.min(97, +y)) };
+    st.updatedAt = now;
+    return { ok: true };
+  }
+  // 고맙다는 말: 사람마다 돌려 가며
+  function thanksLine(st, who) {
+    const v = VILLAGERS[who];
+    const list = (v && v.thanks && v.thanks.length) ? v.thanks : ['고마워요!'];
+    const k = (st.thx[who] | 0) % list.length;
+    st.thx[who] = k + 1;
+    return list[k];
+  }
+  // 도감: 체인마다 찾은 단계
+  function collection(st) {
+    return Object.keys(CHAINS).map((c) => {
+      const tiers = CHAINS[c].tiers.map((nm, k) => ({ t: k + 1, name: nm, found: !!st.found[c + (k + 1)] }));
+      return { c, name: CHAINS[c].name, aux: isAux(c), event: isEvent(c), tiers, n: tiers.filter((t) => t.found).length };
+    });
   }
 
   /* ---------- 저장 문자열 (save.js 가 씀) ---------- */
@@ -542,6 +830,14 @@
     st.unlocked = st.unlocked.filter((c) => CHAINS[c] && !isAux(c));
     st.orders = (Array.isArray(st.orders) ? st.orders : []).filter((o) => o && Array.isArray(o.need) && o.need.length && o.need.every((n) => CHAINS[n.c] && n.t >= 1 && n.t <= maxTier(n.c)));
     st.orders.forEach((o) => { if (o.bonus && !validCell(o.bonus)) o.bonus = null; });
+    ['genLv', 'sos', 'placed', 'thx'].forEach((k) => { if (!st[k] || typeof st[k] !== 'object' || Array.isArray(st[k])) st[k] = {}; });
+    st.sec = Object.assign({ letters: {}, gulls: {}, bottleDay: '', title: '' }, st.sec && typeof st.sec === 'object' ? st.sec : {});
+    st.daily = Object.assign(def.daily, st.daily && typeof st.daily === 'object' ? st.daily : {});
+    if (!st.daily.att || typeof st.daily.att !== 'object') st.daily.att = { n: 0, last: '' };
+    if (!st.daily.del || typeof st.daily.del !== 'object') st.daily.del = {};
+    if (!Array.isArray(st.decos)) st.decos = [];
+    if (st.ev && (typeof st.ev !== 'object' || !eventDef(st.ev.id))) st.ev = null;
+    if (!st.ev) st.orders = st.orders.filter((o) => !o.ev);
     fillOrders(st, now, rng || Math.random);
     regen(st, now);
     return st;
@@ -558,7 +854,11 @@
     covered, isFree, emptyCount, nearestEmpty, giveCell, chargeInfo, tapGen, canMerge, mergeResult, move, peel, findPair,
     sell, useItem, bagPrice, growBag, toBag, fromBag, takeGift, buyShop, snapshot, restore,
     orderLevel, makeOrder, fillOrders, orderStatus, deliver, skipOrder,
-    areaInfo, doTask, completeArea,
+    areaInfo, mapPins, doTask, completeArea,
+    isEvent, genLevel, genUpInfo, upgradeGen, storyOrderActive, syncStoryOrders,
+    bottleToday, secretsIn, secretCounts, findSecret, GULL_TOTAL, LETTER_TOTAL,
+    dailyTouch, questInfo, claimQuests, attendInfo, claimAttend,
+    weekStart, currentEvent, eventInfo, eventTick, endEvent, makeEventOrder, placeDeco, thanksLine, collection,
     serialize, deserialize, summary, MIGRATE
   };
   if (typeof module === 'object' && module.exports) module.exports = API;

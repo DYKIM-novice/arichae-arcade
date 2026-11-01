@@ -6,7 +6,7 @@
 - 화면 코드는 static/js/merge/art.js 한 곳에서만 경로를 만들어요 (여기 ART 의 <묶음>/<id> 와 같은 이름)
 - 물건·발생기·UI 아이콘: 가장자리와 이어진 밝은 배경을 투명하게 지우고(색 거리 + 가장자리 부드럽게),
   그림 크기에 맞게 잘라서 256×256 안에 가운데로 놓아요 (판 칸에서 크기가 고르게 보이게)
-- 인물 얼굴: 배경 그대로 512 (둥근 액자로 보여 줘요) · 배경: 세로 720 폭
+- 인물 얼굴: 배경 그대로 512 (둥근 액자로 보여 줘요) · 배경: 세로 720 폭 · 이벤트 배너: 가로 640 폭
 - 그림을 새로 고르면 ART 의 원본 파일 이름만 바꾸고 다시 실행하면 돼요
 """
 import sys
@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "art_tests" / "merge"
 OUT = ROOT / "static" / "img" / "merge"
 
-# (묶음, id, 원본, 방식)  방식: cut = 배경 지우기 · portrait = 정사각 그대로 · bg = 세로 배경
+# (묶음, id, 원본, 방식)  방식: cut = 배경 지우기 · portrait = 정사각 그대로 · bg = 세로 배경 · banner = 가로 배너 640
 ART = [
     # 체인 A 바다 보물 (발생기: 모래 바구니)
     ("items", "a1", "p1/item_a1_sand.jpg", "cut"),
@@ -62,18 +62,18 @@ ART = [
     ("bg", "r1_before", "bg_r1_before_v2b.jpg", "bg"),
     # ---- 2묶음 (p2/) · 원본이 아직 없으면 건너뛰어요 (화면은 색 동그라미로 대신) ----
     ("chars", "hayun_joy", "p2/char/char_hayun_joy.jpg", "portrait"),
-    ("chars", "hayun_wow", "p2/char/char_hayun_wow.jpg", "portrait"),
-    ("chars", "mongdol", "p2/char/char_mongdol.jpg", "portrait"),
-    ("chars", "mongdol_joy", "p2/char/char_mongdol_joy.jpg", "portrait"),
-    ("chars", "juni", "p2/char/char_juni.jpg", "portrait"),
-    ("chars", "mina", "p2/char/char_mina.jpg", "portrait"),
-    ("chars", "kkotnim", "p2/char/char_kkotnim.jpg", "portrait"),
-    ("chars", "dochi", "p2/char/char_dochi.jpg", "portrait"),
+    ("chars", "hayun_wow", "p2/char/char_hayun_surprised.jpg", "portrait"),
+    # 마을 사람 얼굴: 기본 + 기쁨 (건네기 반응·이야기 장면에서 기쁨 얼굴로 바뀌어요)
+    *[("chars", f"{who}{'' if face == 'base' else '_' + face}", f"p2/char/char_{who}_{face}.jpg", "portrait")
+      for who in ("mongdol", "juni", "mina", "kkotnim", "dochi", "kang", "rua") for face in ("base", "joy")],
+    # 지역 배경 1~6 전/후 (1지역 '전'은 위 0묶음)
     ("bg", "r1_after", "p2/bg/bg_r1_after.jpg", "bg"),
-    ("bg", "r2_before", "p2/bg/bg_r2_before.jpg", "bg"),
-    ("bg", "r2_after", "p2/bg/bg_r2_after.jpg", "bg"),
-    ("bg", "r3_before", "p2/bg/bg_r3_before.jpg", "bg"),
-    ("bg", "r3_after", "p2/bg/bg_r3_after.jpg", "bg"),
+    *[("bg", f"r{k}_{ba}", f"p2/bg/bg_r{k}_{ba}.jpg", "bg") for k in range(2, 7) for ba in ("before", "after")],
+    # 이야기 그림 (시작·엔딩) · 타이틀·판 배경
+    ("bg", "story_start", "p2/story/story_start.jpg", "bg"),
+    ("bg", "story_ending", "p2/story/story_ending.jpg", "bg"),
+    ("bg", "title", "p2/story/bg_title.jpg", "bg"),
+    ("bg", "board", "p2/story/bg_board.jpg", "bg"),
     # 체인 C 찻집 · E 바다 식탁 · F 도자기 · G 바느질·부채 · H 불빛
     ("gens", "gen_c", "p2/chain_c/gen_c_tea_shelf.jpg", "cut"),
     ("items", "c1", "p2/chain_c/item_c1_tea_leaf.jpg", "cut"),
@@ -135,6 +135,22 @@ ART = [
     ("ui", "secret_letter", "p2/secret/secret_letter_piece.jpg", "cut"),
     ("ui", "secret_bottle", "p2/secret/secret_bottle_letter.jpg", "cut"),
     ("ui", "secret_seagull", "p2/secret/secret_seagull.jpg", "cut"),
+    # UI 아이콘
+    ("ui", "bag", "p2/ui/ui_bag.jpg", "cut"),
+    ("ui", "logo", "p2/ui/ui_logo_emblem.jpg", "cut"),
+    ("ui", "sorastar", "p2/ui/ui_sorastar.jpg", "cut"),
+    ("ui", "star", "p2/ui/ui_star.jpg", "cut"),
+    # 주간 이벤트 (연날리기 · 단오): 물건 5 · 발생기 · 장식 · 배너(가로)
+    *[("events", f"kite{k}", f"p2/event_kite/ev_kite_{k}_{n}.jpg", "cut")
+      for k, n in ((1, "paper"), (2, "tail"), (3, "gaori"), (4, "bangpae"), (5, "dragon"))],
+    ("events", "kite_gen", "p2/event_kite/ev_kite_gen_basket.jpg", "cut"),
+    ("events", "kite_deco", "p2/event_kite/ev_kite_deco_tower.jpg", "cut"),
+    ("events", "kite_banner", "p2/event_kite/ev_kite_banner.jpg", "banner"),
+    *[("events", f"dano{k}", f"p2/event_dano/ev_dano_{k}_{n}.jpg", "cut")
+      for k, n in ((1, "iris_leaf"), (2, "iris_water"), (3, "surichwi_tteok"), (4, "dano_fan"), (5, "flower_swing"))],
+    ("events", "dano_gen", "p2/event_dano/ev_dano_gen_basket.jpg", "cut"),
+    ("events", "dano_deco", "p2/event_dano/ev_dano_deco_swing.jpg", "cut"),
+    ("events", "dano_banner", "p2/event_dano/ev_dano_banner.jpg", "banner"),
 ]
 
 # 화면이 '그림이 있는지' 알 수 있게 실제로 있는 파일 목록을 js 로 써 둬요 (없는 그림은 요청조차 안 함)
@@ -206,6 +222,8 @@ def main():
             out = fit_icon(cut_background(im))
         elif mode == "portrait":
             out = im.resize((512, 512), Image.LANCZOS)
+        elif mode == "banner":
+            out = im.resize((640, round(im.height * 640 / im.width)), Image.LANCZOS)
         else:
             out = im.resize((720, round(im.height * 720 / im.width)), Image.LANCZOS)
         dst = OUT / group / f"{gid}.webp"

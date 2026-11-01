@@ -1,13 +1,17 @@
 /* 머지관 · 손맛 (부드러운 효과음 WebAudio · 진동 · 반짝이 가루 · 날아가는 동전)
    - 소리는 파일 없이 합성해요 (작고 동글동글하게 · 크기 낮게)
    - 처음 손가락이 닿을 때 unlock() (휴대폰은 사용자 동작 뒤에만 소리가 나요)
-   - prefers-reduced-motion 이면 가루를 줄이고 튀는 움직임을 끄게 reduced 를 알려 줘요 */
+   - prefers-reduced-motion 이거나 설정 '움직임 줄이기'면 가루를 줄이고 튀는 움직임을 끄게 reduced 를 알려 줘요
+   - 소리 크기(작게·보통·크게) · 배경음(파일 없이 오음 음계로 느긋하게 · 설정에서 켜기) · 하트(건네기 반응) */
 (function (root) {
   'use strict';
 
-  let ac = null, master = null;
-  const opt = { sfx: true, vib: true };
-  const reduced = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
+  let ac = null, master = null, bgmBus = null;
+  const opt = { sfx: true, vib: true, vol: 2, bgm: false, bgmVol: 2, calm: false };
+  const VOL = [0, 0.1, 0.22, 0.36];          // 효과음 크기 (1 작게 · 2 보통 · 3 크게)
+  const BVOL = [0, 0.05, 0.1, 0.17];         // 배경음 크기
+  const sysReduced = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
+  const isReduced = () => sysReduced || !!opt.calm;
   // 맑은 오음 음계 (단계가 오를수록 높게)
   const SCALE = [523.3, 587.3, 659.3, 784.0, 880.0, 1046.5, 1174.7, 1318.5, 1568.0, 1760.0];
 
@@ -18,13 +22,54 @@
         if (!AC) return;
         ac = new AC();
         master = ac.createGain();
-        master.gain.value = 0.22;
+        master.gain.value = VOL[opt.vol] || VOL[2];
         const comp = ac.createDynamicsCompressor();
         master.connect(comp); comp.connect(ac.destination);
+        bgmBus = ac.createGain();
+        bgmBus.gain.value = BVOL[opt.bgmVol] || BVOL[2];
+        bgmBus.connect(comp);
       }
       if (ac.state === 'suspended') ac.resume();
+      applyVol();
+      bgmCheck();
     } catch (e) { ac = null; }
   }
+  function applyVol() {
+    try {
+      if (master) master.gain.setTargetAtTime(VOL[opt.vol] || VOL[2], ac.currentTime, 0.05);
+      if (bgmBus) bgmBus.gain.setTargetAtTime(opt.bgm ? (BVOL[opt.bgmVol] || BVOL[2]) : 0, ac.currentTime, 0.3);
+    } catch (e) { /* 무시 */ }
+  }
+
+  /* ---------- 배경음: 느긋한 오음 음계 (파도 같은 낮은 음 + 맑은 음 몇 개) ---------- */
+  const BGM_NOTES = [392.0, 440.0, 523.3, 587.3, 659.3, 784.0, 880.0];
+  const BGM_BASS = [130.8, 146.8, 174.6, 196.0];
+  let bgmT = 0, bgmStep = 0;
+  function bnote(f, dur, vol, delay, type) {
+    if (!ac || !bgmBus) return;
+    const t = ac.currentTime + (delay || 0);
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.3, dur / 3));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(bgmBus);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+  function bgmTick() {
+    if (!ac || !opt.bgm || (typeof document !== 'undefined' && document.hidden)) return;
+    const k = bgmStep++;
+    if (k % 8 === 0) bnote(BGM_BASS[Math.floor(k / 8) % BGM_BASS.length], 4.2, 0.5, 0, 'triangle');
+    if (Math.random() < 0.72) bnote(BGM_NOTES[Math.floor(Math.random() * BGM_NOTES.length)], 1.4, 0.32, Math.random() * 0.15);
+    if (k % 4 === 2 && Math.random() < 0.5) bnote(BGM_NOTES[Math.floor(Math.random() * 4) + 3] * 2, 0.9, 0.12, 0.25);
+  }
+  function bgmCheck() {
+    if (opt.bgm && ac && !bgmT) bgmT = setInterval(bgmTick, 560);
+    else if ((!opt.bgm || !ac) && bgmT) { clearInterval(bgmT); bgmT = 0; }
+  }
+  // 설정이 바뀌면 화면이 불러요
+  function setOpt(o) { Object.assign(opt, o || {}); applyVol(); bgmCheck(); }
   // 음 하나: 파형 · 시작/끝 높이 · 길이 · 크기 · 늦게 시작
   function tone(type, f0, f1, dur, vol, delay) {
     if (!ac || !opt.sfx) return;
@@ -83,6 +128,13 @@
     }
     cx.closePath(); cx.fill();
   }
+  function heart(x, y, r, rot) {
+    cx.save(); cx.translate(x, y); cx.rotate(rot); cx.beginPath();
+    cx.moveTo(0, r * 0.35);
+    cx.bezierCurveTo(-r * 1.1, -r * 0.35, -r * 0.45, -r * 1.05, 0, -r * 0.45);
+    cx.bezierCurveTo(r * 0.45, -r * 1.05, r * 1.1, -r * 0.35, 0, r * 0.35);
+    cx.closePath(); cx.fill(); cx.restore();
+  }
   function frame() {
     cx.setTransform(dpr, 0, 0, dpr, 0, 0);
     cx.clearRect(0, 0, cv.width, cv.height);
@@ -100,7 +152,8 @@
       const x = p.x + p.vx * e, y = p.y + p.vy * e + p.g * k * k;
       cx.globalAlpha = k < 0.7 ? 1 : (1 - k) / 0.3;
       cx.fillStyle = p.col;
-      if (p.star) star(x, y, p.r * (1 - k * 0.5), p.rot + k * 3);
+      if (p.heart) heart(x, y, p.r * (k < 0.15 ? k / 0.15 : 1), Math.sin(k * 9 + p.rot) * 0.3);
+      else if (p.star) star(x, y, p.r * (1 - k * 0.5), p.rot + k * 3);
       else { cx.beginPath(); cx.arc(x, y, p.r * (1 - k), 0, Math.PI * 2); cx.fill(); }
     });
     cx.globalAlpha = 1;
@@ -112,7 +165,7 @@
   function burst(x, y, cols, count, power) {
     if (!cx) return;
     const t0 = performance.now();
-    const n = reduced ? Math.ceil((count || 14) / 3) : (count || 14);
+    const n = isReduced() ? Math.ceil((count || 14) / 3) : (count || 14);
     const pw = power || 1;
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2, sp = (28 + Math.random() * 46) * pw;
@@ -120,6 +173,21 @@
         col: cols[i % cols.length], star: i % 3 !== 2, rot: Math.random() * 3, t0, life: 520 + Math.random() * 380 });
     }
     parts.push({ ring: true, x, y, r0: 8, r1: 40 * pw, col: cols[0], t0, life: 420 });
+    kick();
+  }
+
+  // 하트가 동동 떠올라요 (건네기 반응)
+  function hearts(x, y, count) {
+    if (!cx) return;
+    const t0 = performance.now();
+    const n = isReduced() ? 3 : (count || 9);
+    const cols = ['#ff6f91', '#ff9eb5', '#ffc2d1', '#f5c142'];
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.9;
+      const sp = 40 + Math.random() * 46;
+      parts.push({ x: x + (Math.random() - 0.5) * 24, y, vx: Math.cos(a) * sp * 0.7, vy: Math.sin(a) * sp, g: -20, r: 6 + Math.random() * 5,
+        col: cols[i % cols.length], heart: i % 4 !== 3, star: true, rot: Math.random() * 3, t0: t0 + i * 25, life: 900 + Math.random() * 400 });
+    }
     kick();
   }
 
@@ -146,5 +214,7 @@
     }
   }
 
-  root.MergeFx = { unlock, sfx, vibrate, canVibrate, attach, burst, fly, reduced, opt };
+  SFX.thanks = () => { [4, 5, 7].forEach((i, k) => tone('sine', SCALE[i], SCALE[i], 0.2, 0.09, k * 0.07)); shimmer(0.2, 0.05); };
+  SFX.secret = () => { [2, 4, 6, 9].forEach((i, k) => tone('triangle', SCALE[i], SCALE[i] * 1.01, 0.22, 0.08, k * 0.07)); shimmer(0.3, 0.06); };
+  root.MergeFx = { unlock, sfx, vibrate, canVibrate, attach, burst, hearts, fly, setOpt, opt, get reduced() { return isReduced(); } };
 })(window);

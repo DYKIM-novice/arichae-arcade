@@ -4,6 +4,8 @@
    - 규칙은 전부 MergeCore(core.js) 에 맡기고, 여기는 그리기·움직임·소리만 해요
    - 2단계: 모래더미 칸 · 아래 [마을]/[가방] 버튼 · 이야기 대사창(talk) · 서버 저장 동기화
    - 3단계(일부): 가방(끌어 넣기)·선물함·소라별 가게 · 팔기(5초 되돌리기) · 되돌리기 ↶ · 보조 물건 쓰기 · 충전식 발생기
+   - 4~6단계: 얼굴 그림(기본·기쁨) · 건네기 반응(기쁨 얼굴 통통 + 하트 + 고맙다는 말풍선) · 이야기 부탁(금색) · 이벤트 부탁
+     · ☰ 메뉴(매일 출석·오늘의 부탁·도감·주간 이벤트·편지와 앨범·설정) · 발생기 강화 · 배경음·소리 크기·글씨·움직임 줄이기 · 오프라인
    - 마을 화면(전/후 배경·복원 작업)은 town.js 가 window.MergeUI 손잡이로 이 화면을 같이 써요 */
 (function () {
   'use strict';
@@ -46,14 +48,19 @@
       const sp = document.createElement('span'); sp.className = 'ph'; sp.textContent = t.dataset.ph; t.replaceWith(sp);
     }
   }, true);
-  function faceHTML(v) {
-    const s = A.src(v.art);
-    return `<span class="face" style="--fc:${esc(v.color)}">${s ? `<img src="${esc(s)}" alt="" draggable="false" data-ph="${esc(v.name[0])}">` : esc(v.name[0])}</span>`;
+  // 얼굴 그림: face = 'joy' | 'wow' (없으면 기본) · 기본도 없으면 색 동그라미 + 첫 글자
+  function faceSrc(v, face) {
+    const id = face && v.faces && v.faces[face];
+    return (id && A.src(id)) || A.src(v.art) || '';
+  }
+  function faceHTML(v, face) {
+    const s = faceSrc(v, face);
+    return `<span class="face" style="--fc:${esc(v.color)}">${s ? `<img src="${esc(s)}" alt="${esc(v.name)}" draggable="false" data-ph="${esc(v.name[0])}">` : esc(v.name[0])}</span>`;
   }
   function cellKey(cell) {
     if (!cell) return '';
     if (cell.k === 'item') return cell.c + cell.t;
-    if (cell.k === 'gen') { const ch = C.chargeInfo(st, cell.g, now()); return cell.g + (ch ? (ch.restMs ? 'r' + Math.ceil(ch.restMs / 1000) : 'n' + ch.left) : ''); }
+    if (cell.k === 'gen') { const ch = C.chargeInfo(st, cell.g, now()); return cell.g + 'L' + C.genLevel(st, cell.g) + (ch ? (ch.restMs ? 'r' + Math.ceil(ch.restMs / 1000) : 'n' + ch.left) : ''); }
     return cell.k;
   }
   function sandHTML(n) { return `<div class="sand s${n}">${artImg('sand', '모래')}</div>`; }
@@ -64,7 +71,9 @@
       const ch = C.chargeInfo(st, cell.g, now());
       let cost = st.settings.easy ? '' : `<span class="gcost">${artImg('energy', '')}1</span>`;
       if (ch) cost += ch.restMs ? `<span class="gcharge rest">${mmss(ch.restMs)}</span>` : `<span class="gcharge">${ch.left}</span>`;
-      return `<div class="it gen c-${g.chain}${ch && ch.restMs ? ' resting' : ''}">${artImg(cell.g, g.name)}${cost}</div>`;
+      const lv = C.genLevel(st, cell.g);
+      if (lv) cost += `<span class="glv">${'★'.repeat(lv)}</span>`;
+      return `<div class="it gen c-${g.chain}${ch && ch.restMs ? ' resting' : ''}${g.event ? ' evgen' : ''}">${artImg(cell.g, g.name)}${cost}</div>`;
     }
     if (cell.k === 'wild') return `<div class="it wild">${artImg('wild', '무지개 소라')}</div>`;
     const max = cell.t >= C.maxTier(cell.c);
@@ -136,15 +145,19 @@
   let wasReady = {};
   function orderCardHTML(o) {
     const v = D.VILLAGERS[o.who] || D.VILLAGERS.hayun;
+    const evd = o.ev ? D.EVENTS.find((e) => e.id === o.ev) : null;
     const need = o.need.map((n, k) => {
       const cell = { k: 'item', c: n.c, t: n.t };
       const nm = C.itemName(cell);
       return `<button type="button" class="oc-item c-${n.c}" data-hl="${o.id}:${k}" aria-label="${esc(nm)} ${n.t}단계">${artImg(C.itemId(cell), nm)}<i class="tier">${n.t}</i><b class="ok">✓</b></button>`;
     }).join('');
+    const tag = o.story ? '<span class="oc-tag story">이야기</span>' : evd ? `<span class="oc-tag ev">${esc(evd.name.replace(/ 주간$/, ''))}</span>` : '';
+    const rew = o.ev ? `<span>${artImg('coin', '동전')}${o.coins}</span><span class="oc-pts">+${o.pts}점</span>`
+      : `<span>${artImg('coin', '동전')}${o.coins}</span><span>${STAR}${o.stars}</span>`;
     return `<button type="button" class="oc-face" data-face="${o.id}">${faceHTML(v)}<span class="oc-name">${esc(v.name)}</span></button>
-      <button type="button" class="oc-skip" data-skip="${o.id}" aria-label="다른 부탁으로 바꾸기">↻</button>
+      ${o.story ? '' : `<button type="button" class="oc-skip" data-skip="${o.id}" aria-label="다른 부탁으로 바꾸기">↻</button>`}${tag}
       <div class="oc-need${o.need.length > 1 ? ' many' : ''}">${need}</div>
-      <div class="oc-rew"><span>${artImg('coin', '동전')}${o.coins}</span><span>${STAR}${o.stars}</span>${o.bonus ? `<span class="oc-bonus" title="덤: ${esc(C.itemName(o.bonus))}">+${artImg(o.bonus.k === 'wild' ? 'wild' : C.itemId(o.bonus), C.itemName(o.bonus))}</span>` : ''}</div>
+      <div class="oc-rew">${rew}${o.bonus ? `<span class="oc-bonus" title="덤: ${esc(C.itemName(o.bonus))}">+${artImg(o.bonus.k === 'wild' ? 'wild' : C.itemId(o.bonus), C.itemName(o.bonus))}</span>` : ''}</div>
       <button type="button" class="oc-go" data-go="${o.id}">건네기</button>`;
   }
   function renderOrders() {
@@ -154,7 +167,7 @@
       let el = box.querySelector(`.oc[data-o="${o.id}"]`);
       if (!el) {
         el = document.createElement('div');
-        el.className = 'oc in'; el.dataset.o = o.id;
+        el.className = 'oc in' + (o.story ? ' story' : '') + (o.ev ? ' evo' : ''); el.dataset.o = o.id;
         el.innerHTML = orderCardHTML(o);
         el.addEventListener('animationend', () => el.classList.remove('in'), { once: true });
       }
@@ -212,7 +225,16 @@
       F.fly(STAR, from, center($('hud-star')), { count: Math.min(5, r.stars), ms: 700, spread: 30, size: 28, s1: 0.7,
         onEach: (i) => { if (i === Math.min(5, r.stars) - 1) { shown.stars = st.stars; renderHudCounts(); bump('hud-star'); shown.hold = Math.max(0, shown.hold - 1); } } });
       const v = D.VILLAGERS[r.order.who] || D.VILLAGERS.hayun;
-      say(v, `${v.lines[2] || '고마워!'}  (동전 ${r.coins} · 별 ${r.stars}${r.bonus ? ' · 덤 ' + C.itemName(r.bonus.cell) : ''})`);
+      const thx = C.thanksLine(st, r.order.who);
+      react(card, v, thx);
+      const rewTxt = r.order.ev ? `동전 ${r.coins} · 이벤트 +${r.order.pts}점` : `동전 ${r.coins} · 별 ${r.stars}`;
+      say(v, `${thx}  (${rewTxt}${r.bonus ? ' · 덤 ' + C.itemName(r.bonus.cell) : ''})`, 'joy');
+      (r.evRewards || []).forEach((g, k) => setTimeout(() => {
+        floatTag(g.deco ? '이벤트 장식을 받았어요!' : '이벤트 보상! ' + (g.reward.k === 'wild' ? '무지개 소라' : C.itemName(g.reward)), from.x, from.y + 40, true);
+        F.sfx('discover');
+        if (g.at >= 0) { renderBoard(); restartAnim(itEl(g.at), 'pop'); }
+      }, 700 + k * 450));
+      if (r.story && D.STORY[r.story]) setTimeout(() => talk(D.STORY[r.story], () => { renderAll(); if (window.MergeTown) window.MergeTown.resume(); }), 1500);
       clearUndo();
       renderBoard(); renderOrders(); renderInfo(); renderNav();
       if (r.bonus) {
@@ -222,6 +244,7 @@
           setTimeout(() => floatTag('덤! ' + C.itemName(r.bonus.cell), b.x, b.y - b.h * 0.6, true), 300);
         } else toast('덤은 자리가 없어서 가방의 선물함에 넣었어요');
       }
+      if (r.story) setTimeout(() => toast('이야기 부탁 완료! [마을]에서 다음 작업을 할 수 있어요'), 1200);
       if (C.areaInfo(st).canAfford && !st.seen.townTip) {
         st.seen.townTip = true;
         setTimeout(() => say(D.VILLAGERS.hayun, '별이 모였어요! 아래 [마을]을 눌러 바다별채를 고쳐 봐요.'), 900);
@@ -230,6 +253,25 @@
     }, 400);
   }
   function renderHudCounts() { $('coins').textContent = shown.coins; $('stars').textContent = shown.stars; }
+
+  // 건네기 반응: 부탁한 사람이 기쁜 얼굴로 통통 + 하트·반짝이 + 짧은 고맙다는 말풍선 (약 1.6초 · 조작은 막지 않아요)
+  function react(card, v, line) {
+    const r = card.getBoundingClientRect();
+    const el = document.createElement('div');
+    el.className = 'thx';
+    el.style.setProperty('--fc', v.color);
+    el.innerHTML = `<div class="thx-face">${faceHTML(v, 'joy')}</div><div class="thx-bub">${esc(line)}</div>`;
+    const x = Math.max(70, Math.min(innerWidth - 70, r.left + r.width / 2));
+    el.style.left = x + 'px'; el.style.top = (r.top + 6) + 'px';
+    document.body.appendChild(el);
+    // 카드 얼굴도 기쁜 얼굴로
+    const fi = card.querySelector('.oc-face .face'); const js = faceSrc(v, 'joy');
+    if (fi && js) fi.innerHTML = `<img src="${esc(js)}" alt="" draggable="false">`;
+    F.sfx('thanks');
+    setTimeout(() => F.hearts(x, r.top + 34, 10), 120);
+    setTimeout(() => el.classList.add('bye'), 1350);
+    setTimeout(() => el.remove(), 1700);
+  }
 
   // 주문 카드의 물건 톡 → 판에서 찾아 반짝 · 없으면 만드는 법
   function showNeed(o, k) {
@@ -255,7 +297,7 @@
   }
 
   /* ---------- 아래 정보 칸 ---------- */
-  function say(v, text) { infoMsg = { v, text }; renderInfo(); }
+  function say(v, text, face) { infoMsg = { v, text, face }; renderInfo(); }
   function ladderHTML(c, cur) {
     const mx = C.maxTier(c);
     let h = '';
@@ -290,12 +332,15 @@
       infoMsg = null;
       const g = D.GENS[cell.g];
       const ch = D.CHAINS[g.chain];
+      const u = C.genUpInfo(st, cell.g);
+      const odds = u ? ` · 2단계 ${Math.round(u.tier2 * 100)}%${u.tier3 ? ` · 3단계 ${Math.round(u.tier3 * 100)}%` : ''}` : ' · 이벤트 발생기';
+      const up = u ? `<div class="info-acts"><button type="button" class="act up" data-act="up" ${u.price ? '' : 'disabled'}>${u.price ? `강화 ${artImg('coin', '')}${u.price}` : '강화 끝'}</button><small class="lv">${'★'.repeat(u.lv)}${'☆'.repeat(u.max - u.lv)}</small></div>` : '';
       h = `<div class="info-box c-${g.chain}"><div class="info-ic">${artImg(cell.g, g.name)}</div>
-        <div class="info-txt"><b>${esc(g.name)}<em>발생기</em></b><p>톡 하면 ${esc(josa(ch.name, '이', '가'))} 나와요 · ${st.settings.easy ? '편하게 모드' : '기운 1'}</p>${ladderHTML(g.chain, 0)}</div></div>`;
+        <div class="info-txt"><b>${esc(g.name)}<em>발생기</em></b><p class="one">톡 → ${esc(ch.name)} · ${st.settings.easy ? '편하게' : '기운 1'}${odds}</p>${ladderHTML(g.chain, 0)}</div>${up}</div>`;
     } else {
       const m = infoMsg || { v: D.VILLAGERS.hayun, text: D.TIPS[tipIdx % D.TIPS.length] };
-      const s = A.src(m.v.art);
-      h = `<div class="info-box"><div class="info-ic face-big">${s ? `<img src="${esc(s)}" alt="" draggable="false" data-ph="${esc(m.v.name[0])}">` : faceHTML(m.v)}</div>
+      const s = faceSrc(m.v, m.face);
+      h = `<div class="info-box"><div class="info-ic face-big" style="--fc:${esc(m.v.color)}">${s ? `<img src="${esc(s)}" alt="${esc(m.v.name)}" draggable="false" data-ph="${esc(m.v.name[0])}">` : faceHTML(m.v)}</div>
         <div class="info-txt"><b>${esc(m.v.name)}</b><p>${esc(m.text)}</p></div></div>`;
     }
     box.innerHTML = h;
@@ -534,10 +579,22 @@
     if (!b || sel < 0 || busy) return;
     F.unlock(); lastAct = now();
     const i = sel;
+    if (b.dataset.act === 'up') { upgradeAt(i); return; }
     if (b.dataset.act === 'use') useAt(i);
     else if (b.dataset.act === 'bag') putInBag(i);
     else if (b.dataset.act === 'sell') sellAt(i, false);
   });
+  function upgradeAt(i) {
+    const cell = st.board[i];
+    if (!cell || cell.k !== 'gen') return;
+    const r = C.upgradeGen(st, cell.g, now());
+    if (!r.ok) { F.sfx('bad'); toast(r.reason === 'coins' ? `동전이 ${r.price - st.coins}개 모자라요` : '더는 강화할 수 없어요'); return; }
+    const p = center(cellEl(i));
+    F.sfx('maxed'); F.vibrate([12, 30, 12]);
+    F.burst(p.x, p.y, ['#ffd25a', '#ffffff', D.CHAINS[D.GENS[cell.g].chain].color], 22, 1.3);
+    floatTag(`강화 ${'★'.repeat(r.lv)} · 2단계 ${Math.round(r.info.tier2 * 100)}%`, p.x, p.y - p.h * 0.6, true);
+    renderAll(); bump('hud-coin'); changed();
+  }
   function useAt(i) {
     const cell = st.board[i];
     const p = center(cellEl(i));
@@ -728,12 +785,19 @@
 
   function settingsHTML(confirmReset) {
     const tg = (k, label, sub) => `<div class="row"><span>${label}${sub ? `<small>${sub}</small>` : ''}</span><button type="button" class="tg${st.settings[k] ? ' on' : ''}" data-tg="${k}" aria-pressed="${!!st.settings[k]}" aria-label="${label}"></button></div>`;
+    const VN = ['', '작게', '보통', '크게'];
+    const vol = (k, label) => `<div class="row"><span>${label}</span><button type="button" class="vol-b" data-vol="${k}" aria-label="${label} ${VN[st.settings[k]]}">${VN[st.settings[k]] || '보통'}</button></div>`;
     return `<h2>설정</h2>
       ${tg('sfx', '효과음')}
+      ${st.settings.sfx ? vol('vol', '효과음 크기') : ''}
+      ${tg('bgm', '배경음', '파도 같은 느긋한 소리')}
+      ${st.settings.bgm ? vol('bgmVol', '배경음 크기') : ''}
       ${F.canVibrate() ? tg('vib', '진동') : ''}
       ${tg('easy', '편하게 모드', '기운 없이 계속 뽑기')}
       ${tg('nums', '단계 숫자 보기')}
       ${tg('hint', '힌트', '가만히 있으면 합칠 짝이 살랑')}
+      ${tg('big', '글씨 크게')}
+      ${tg('calm', '움직임 줄이기', '튀는 움직임·반짝이를 줄여요')}
       <p class="muted center">부탁 ${st.stats.delivered}번 · 합치기 ${st.stats.merges}번 · 복원 ${Object.keys(st.tasks).length}곳</p>
       <h3>저장</h3>
       <p class="muted">이 폰에 바로바로 저장되고, 서버에도 30초마다 올려요.<br>${syncLine()}</p>
@@ -754,6 +818,10 @@
         syncFx();
         F.sfx('pick'); if (k === 'vib') F.vibrate(20);
         re(); renderAll(); changed();
+      } else if (b.dataset.vol) {
+        const k = b.dataset.vol;
+        st.settings[k] = (st.settings[k] % 3) + 1;
+        syncFx(); F.sfx('pick'); re(); changed();
       } else if (b.dataset.sync) {
         syncAction(b.dataset.sync, re);
       } else if (b.dataset.reset) {
@@ -768,8 +836,193 @@
       }
     });
   }
-  $('btn-set').addEventListener('click', () => { F.unlock(); openSettings(); });
-  function syncFx() { F.opt.sfx = !!st.settings.sfx; F.opt.vib = !!st.settings.vib; }
+  $('btn-set').addEventListener('click', () => { F.unlock(); openMenu(); });
+  function syncFx() {
+    const t = st.settings;
+    F.setOpt({ sfx: !!t.sfx, vib: !!t.vib, vol: t.vol || 2, bgm: !!t.bgm, bgmVol: t.bgmVol || 2, calm: !!t.calm });
+    document.body.classList.toggle('big-text', !!t.big);
+    document.body.classList.toggle('calm', !!t.calm);
+  }
+
+  /* ---------- 매일 · 주간 이벤트 (1초마다 살펴봐요) ---------- */
+  // 다른 창(시트·대사·마을)이 없고 조용할 때
+  function quiet() { return $('sheet').classList.contains('hide') && $('talk').classList.contains('hide') && $('town').classList.contains('hide'); }
+  function dailyEventTick() {
+    const t = now();
+    let dirty = C.dailyTouch(st, t);
+    const r = C.eventTick(st, t, rng);
+    if (r.ended || r.started) dirty = true;
+    if (r.ended) {
+      const e = r.ended;
+      setTimeout(() => toast(`${e.name || '이벤트'}이 끝났어요 · 이벤트 물건 ${e.n}개 → 동전 ${e.coins}`), 600);
+    }
+    if (r.started) {
+      const ev = r.started.ev;
+      renderBoard();
+      setTimeout(() => {
+        toast(`${ev.name} 시작! ${D.GENS[ev.gen].name}${r.started.gen.at >= 0 ? '를 판에 놓았어요' : '는 가방의 선물함에'}`);
+        if (r.started.gen.at >= 0) { restartAnim(itEl(r.started.gen.at), 'pop'); flash([r.started.gen.at]); }
+      }, 900);
+    }
+    if (dirty) { renderOrders(); renderMenuBadge(); changed(); }
+  }
+  // 오늘 처음 열면 출석 선물부터 (이야기·시트가 없을 때)
+  function maybeDaily() {
+    if (!st.seen.intro || !C.attendInfo(st, now()).can) return;
+    if (!quiet() || busy) { setTimeout(maybeDaily, 1500); return; }
+    openDaily();
+  }
+  function menuNotes() {
+    const a = C.attendInfo(st, now()), q = C.questInfo(st);
+    return { attend: a.can, quest: q.all && !q.claimed, event: !!st.ev };
+  }
+  function renderMenuBadge() {
+    const n = menuNotes();
+    const b = $('menu-badge');
+    if (b) b.classList.toggle('hide', !(n.attend || n.quest));
+  }
+
+  /* ---------- ☰ 메뉴 ---------- */
+  function menuHTML() {
+    const n = menuNotes();
+    const sc = C.secretCounts(st);
+    const col = C.collection(st).filter((x) => !x.aux && !x.event);
+    const found = col.reduce((s, x) => s + x.n, 0), all = col.reduce((s, x) => s + x.tiers.length, 0);
+    const ei = C.eventInfo(st, now());
+    const tile = (k, ic, label, sub, dot) => `<button type="button" class="mn-b" data-menu="${k}"><span class="mn-ic">${ic}</span><b>${label}</b><small>${sub}</small>${dot ? '<i class="badge">!</i>' : ''}</button>`;
+    return `<h2>소라섬 수첩</h2>
+      <div class="mn-grid">
+        ${tile('daily', '📅', '매일 선물', n.attend ? '오늘 출석 선물이 있어요' : n.quest ? '오늘의 부탁 선물!' : '출석 · 오늘의 부탁', n.attend || n.quest)}
+        ${tile('book', '📖', '도감', `${found} / ${all} 발견`, false)}
+        ${tile('event', ei.active ? artImg(ei.def.gen, '') : '🪁', '주간 이벤트', ei.active ? `${ei.def.name} · ${ei.pts}점` : '1지역을 고치면 열려요', false)}
+        ${tile('letters', '💌', sc.album ? '할머니의 앨범' : '편지 조각', `편지 ${sc.letters}/${sc.lettersMax} · 갈매기 ${sc.gulls}/${sc.gullsMax}`, false)}
+      </div>
+      ${sc.title ? `<p class="center muted">칭호: <b class="title-b">${esc(sc.title)}</b></p>` : ''}
+      <button type="button" class="btn" data-menu="settings">⚙ 설정</button>
+      <button type="button" class="btn" data-close="1">닫기</button>`;
+  }
+  function openMenu() {
+    openSheet(menuHTML(), (b) => {
+      const k = b.dataset.menu;
+      if (k === 'daily') openDaily();
+      else if (k === 'book') openBook();
+      else if (k === 'event') openEvent();
+      else if (k === 'letters') openLetters();
+      else if (k === 'settings') openSettings();
+    });
+  }
+  const backBtn = '<button type="button" class="btn" data-back="1">‹ 수첩으로</button>';
+  function withBack(onClick) { return (b) => { if (b.dataset.back) { openMenu(); return; } if (onClick) onClick(b); }; }
+
+  /* ---------- 매일: 7일 출석 · 오늘의 부탁 ---------- */
+  function rewardIcon(rw) {
+    if (rw.coins && !rw.give) return artImg('coin', '동전');
+    if (rw.gems && !rw.give) return artImg('ss1', '소라별');
+    const c = (rw.give || [])[0] || rw;
+    return artImg(c.k === 'wild' ? 'wild' : C.itemId(c), '');
+  }
+  function dailyHTML() {
+    const a = C.attendInfo(st, now());
+    const q = C.questInfo(st);
+    const doneN = a.can ? a.idx : ((a.n - 1) % a.list.length) + 1;   // 이번 바퀴에서 받은 날 수
+    const days = a.list.map((rw, k) => {
+      const done = k < doneN;
+      const today = k === a.idx && a.can;
+      return `<div class="att${done ? ' done' : ''}${today ? ' today' : ''}${k === 6 ? ' big' : ''}"><small>${k + 1}일</small><div class="att-ic">${rewardIcon(rw)}</div><span>${esc(rw.label)}</span>${done ? '<i>✓</i>' : ''}</div>`;
+    }).join('');
+    const qs = q.q.map((x) => `<li class="${x.done ? 'done' : ''}"><span>${esc(x.text)}</span><b>${x.have} / ${x.need}</b><i class="qbar"><em style="width:${Math.round((x.have / x.need) * 100)}%"></em></i></li>`).join('');
+    return `<h2>매일 선물</h2>
+      <h3>출석 달력 <small>이어서 안 와도 하루씩 쌓여요${a.round ? ` · ${a.round + 1}바퀴째` : ''}</small></h3>
+      <div class="att-grid">${days}</div>
+      <button type="button" class="btn main" data-att="1" ${a.can ? '' : 'disabled'}>${a.can ? `${a.idx + 1}일째 선물 받기` : '오늘 출석 선물은 받았어요 · 내일 또 만나요'}</button>
+      <h3>오늘의 부탁 <small>다 하면 ${esc(C.itemName(q.reward))}</small></h3>
+      <ul class="quests">${qs}</ul>
+      <button type="button" class="btn${q.all && !q.claimed ? ' main' : ''}" data-quest="1" ${q.all && !q.claimed ? '' : 'disabled'}>${q.claimed ? '오늘 부탁 선물은 받았어요' : q.all ? '선물 받기!' : '세 가지를 다 하면 선물'}</button>
+      ${backBtn}`;
+  }
+  function openDaily() {
+    const re = () => { const b = $('sheet').querySelector('.sheet-box'); if (b) b.innerHTML = dailyHTML(); };
+    openSheet(dailyHTML(), withBack((b) => {
+      if (b.dataset.att) {
+        const r = C.claimAttend(st, now(), rng);
+        if (!r.ok) { F.sfx('bad'); return; }
+        F.sfx('discover'); F.vibrate([10, 30, 10]);
+        const p = center(b); F.burst(p.x, p.y, ['#ffd25a', '#ffffff', '#ff9eb5'], 24, 1.4);
+        const extra = r.placed.some((x) => x.at < 0) ? ' (판이 꽉 차서 선물함에)' : '';
+        toast(`${r.day}일째 선물: ${r.reward.label}${extra}`);
+        if (r.reward.deco) setTimeout(() => toast('몽돌이 모자를 얻었어요! 마을에서 몽돌이를 보세요'), 2400);
+      } else if (b.dataset.quest) {
+        const r = C.claimQuests(st, now(), rng);
+        if (!r.ok) { F.sfx('bad'); return; }
+        F.sfx('discover');
+        toast(`오늘의 부탁 선물: ${C.itemName(r.cell)}${r.at < 0 ? ' (선물함)' : ''}`);
+      }
+      re(); renderAll(); changed();
+    }));
+  }
+
+  /* ---------- 도감 ---------- */
+  function bookHTML() {
+    const col = C.collection(st).filter((x) => !x.event || x.n > 0);
+    const rows = col.map((x) => {
+      const ic = x.tiers.map((t) => {
+        const id = x.c + t.t;
+        return `<i class="bk${t.found ? '' : ' unk'}" title="${t.found ? esc(t.name) : '???'}">${t.found ? artImg(id, t.name) : (A.src(id) ? `<img src="${esc(A.src(id))}" alt="" draggable="false">` : '?')}<em>${t.t}</em></i>`;
+      }).join('');
+      return `<div class="bk-row c-${x.c}"><div class="bk-h"><b>${esc(x.name)}</b><small>${x.n} / ${x.tiers.length}</small></div><div class="bk-ic">${ic}</div></div>`;
+    }).join('');
+    return `<h2>도감</h2><p class="center muted">처음 만든 물건은 여기 남아요 · 처음 발견하면 소라별 1개</p>${rows}${backBtn}`;
+  }
+  function openBook() { openSheet(bookHTML(), withBack(null)); }
+
+  /* ---------- 주간 이벤트 ---------- */
+  function eventHTML() {
+    const ei = C.eventInfo(st, now());
+    if (!ei.active) {
+      const nx = ei.cur.ev;
+      return `<h2>주간 이벤트</h2>${A.src(nx.banner) ? `<img class="ev-banner" src="${esc(A.src(nx.banner))}" alt="">` : ''}
+        <p class="center">이번 주는 <b>${esc(nx.name)}</b>이에요.</p>
+        <p class="center muted">바다별채(1지역)를 다 고치면 매주 이벤트가 열려요.</p>${backBtn}`;
+    }
+    const e = ei.def;
+    const d = Math.floor(ei.leftMs / 864e5), h = Math.floor((ei.leftMs % 864e5) / 3600e3);
+    const steps = e.track.map((need, k) => {
+      const rw = e.rewards[k];
+      const ic = rw.k === 'deco' ? artImg(rw.id, e.decoName) : artImg(rw.k === 'wild' ? 'wild' : C.itemId(rw), '');
+      return `<div class="ev-step${k < ei.got ? ' got' : ''}${k === ei.got ? ' next' : ''}${rw.k === 'deco' ? ' deco' : ''}"><div class="ev-ic">${ic}</div><small>${need}</small>${k < ei.got ? '<i>✓</i>' : ''}</div>`;
+    }).join('');
+    const ladder = e.chain ? `<div class="ladder c-${e.chain} ev-ladder">${D.CHAINS[e.chain].tiers.map((nm, k) => `<i title="${esc(nm)}">${artImg(e.chain + (k + 1), nm)}</i>`).join('')}</div>` : '';
+    const pct = Math.min(100, Math.round((ei.pts / e.track[e.track.length - 1]) * 100));
+    return `<h2>${esc(e.name)}</h2>
+      ${A.src(e.banner) ? `<img class="ev-banner" src="${esc(A.src(e.banner))}" alt="">` : ''}
+      <p class="center muted">남은 시간 ${d}일 ${h}시간 · 판의 <b>${esc(D.GENS[e.gen].name)}</b>를 톡 → 합쳐서 이벤트 부탁에 건네요</p>
+      ${ladder}
+      <div class="ev-pts"><b>${ei.pts}점</b><span class="ev-bar"><em style="width:${pct}%"></em></span>${ei.next ? `<small>다음 보상까지 ${ei.next - ei.pts}점</small>` : '<small>보상을 다 받았어요!</small>'}</div>
+      <div class="ev-track">${steps}</div>
+      <p class="center muted">마지막 칸 「${esc(e.decoName)}」 장식은 이벤트가 끝나도 남아요 · [마을]에서 놓을 수 있어요<br>이벤트가 끝나면 남은 이벤트 물건은 동전으로 바뀌어요</p>
+      ${backBtn}`;
+  }
+  function openEvent() { openSheet(eventHTML(), withBack(null)); }
+
+  /* ---------- 편지 조각 · 할머니의 앨범 ---------- */
+  function lettersHTML() {
+    const sc = C.secretCounts(st);
+    const ids = Object.keys(D.LETTERS);
+    const where = {};
+    D.AREAS.forEach((a) => a.secrets.letters.forEach((l) => { where[l.id] = a.name; }));
+    const list = ids.map((id, k) => st.sec.letters[id]
+      ? `<li class="got"><i>${k + 1}</i><span>${esc(D.LETTERS[id])}</span></li>`
+      : `<li><i>${k + 1}</i><span class="muted">??? · ${esc(where[id] || '')} 어딘가</span></li>`).join('');
+    const album = sc.album ? `<h3>할머니의 앨범</h3><div class="album">${D.AREAS.map((a) => A.src(a.bg.after) ? `<figure><img src="${esc(A.src(a.bg.after))}" alt=""><figcaption>${esc(a.name)}</figcaption></figure>` : '').join('')}
+      ${A.src('story_ending') ? `<figure class="wide"><img src="${esc(A.src('story_ending'))}" alt=""><figcaption>첫 등불 바다 축제</figcaption></figure>` : ''}</div>`
+      : `<p class="center muted">편지 12장을 다 모으고 등대에 불을 켜면 「할머니의 앨범」이 열려요</p>`;
+    return `<h2>${sc.album ? '할머니의 편지' : '편지 조각'}</h2>
+      <p class="center muted">마을 그림 속 반짝이는 곳을 톡 · 몽돌이가 꼬리를 흔들면 근처에 있어요</p>
+      <ol class="letters${sc.album ? ' full' : ''}">${list}</ol>
+      <p class="center muted">갈매기 ${sc.gulls} / ${sc.gullsMax}마리${sc.title ? ` · 칭호 「${esc(sc.title)}」` : ' · 다 찾으면 칭호 「섬 탐정」'}</p>
+      ${album}${backBtn}`;
+  }
+  function openLetters() { openSheet(lettersHTML(), withBack(null)); }
 
   /* ---------- 이야기 대사창 (톡해서 넘김) ---------- */
   function talk(lines, done) {
@@ -778,10 +1031,11 @@
     const show = () => {
       const l = lines[k];
       const v = D.VILLAGERS[l.who] || D.VILLAGERS.hayun;
-      const faceId = l.face && v.faces && A.has(v.faces[l.face]) ? v.faces[l.face] : v.art;
-      const s = A.src(faceId) || (v.faces && A.src(v.faces.joy)) || '';
+      const s = faceSrc(v, l.face) || (v.faces && A.src(v.faces.joy)) || '';
       const right = l.who !== 'hayun' && !v.letter;
-      box.innerHTML = `<div class="talk-box${v.letter ? ' letter' : ''}${right ? ' right' : ''}" style="--fc:${esc(v.color)}">
+      const pic = l.pic && A.src(l.pic);
+      box.classList.toggle('has-pic', !!pic);
+      box.innerHTML = (pic ? `<div class="talk-pic"><img src="${esc(pic)}" alt="" draggable="false"></div>` : '') + `<div class="talk-box${v.letter ? ' letter' : ''}${right ? ' right' : ''}${l.face === 'joy' ? ' joy' : ''}" style="--fc:${esc(v.color)}">
         <div class="talk-face${s ? '' : ' none'}">${s ? `<img src="${esc(s)}" alt="" draggable="false">` : esc(v.letter ? '✉' : v.name[0])}</div>
         <div class="talk-name">${esc(v.name)}</div><div class="talk-txt">${esc(l.text)}</div><div class="talk-next">${k + 1} / ${lines.length} · 톡 ▶</div></div>`;
       if (l.who === 'mongdol') F.sfx('spawn');
@@ -800,6 +1054,7 @@
       st.seen.intro = true; changed();
       const g = st.board.findIndex((c) => c && c.k === 'gen');
       if (g >= 0) flash([g]);
+      setTimeout(maybeDaily, 1200);
     });
   }
 
@@ -810,10 +1065,11 @@
     Array.prototype.forEach.call(document.querySelectorAll('.it.hint'), (e) => e.classList.remove('hint'));
   }
   function tick() {
+    dailyEventTick();
     renderHud();
     if (st.board.some((c) => c && c.k === 'gen' && D.GENS[c.g].charge)) renderBoard();
     syncTick();
-    if (st.settings.hint && !hintOn && !drag && !busy && now() - lastAct > 10000 && $('sheet').classList.contains('hide') && $('talk').classList.contains('hide') && $('town').classList.contains('hide')) {
+    if (st.settings.hint && !hintOn && !drag && !busy && now() - lastAct > 10000 && quiet()) {
       const p = C.findPair(st);
       if (p) { hintOn = true; p.forEach((i) => restartAnim(itEl(i), 'hint')); setTimeout(() => { hintOn = false; lastAct = now(); }, 1600); }
     }
@@ -831,7 +1087,7 @@
   addEventListener('pagehide', () => { saver.flush(); syncBeacon(); });
   addEventListener('resize', () => layout());
 
-  function renderAll() { renderHud(); renderOrders(); renderBoard(); renderInfo(); renderNav(); }
+  function renderAll() { renderHud(); renderOrders(); renderBoard(); renderInfo(); renderNav(); renderMenuBadge(); }
 
   /* ---------- 서버 저장 (기기 저장이 1차 · 서버는 백업·폰 옮기기) ---------- */
   const server = S.Server();
@@ -952,19 +1208,34 @@
     F.attach($('fx'));
     setTimeout(layout, 400);   // 글꼴을 다 읽은 뒤 한 번 더 (높이가 달라질 수 있어요)
     try { document.fonts.ready.then(layout); } catch (e) { /* 무시 */ }
-    A.preload(Object.keys(A.FILES).filter((id) => !/^r\d_/.test(id)));
+    A.preload(Object.keys(A.FILES).filter((id) => !/^r\d_|^story_|^title$|^board$|_banner$|_deco$/.test(id)));
     setInterval(tick, 1000);
+    dailyEventTick();
     if (!st.seen.intro) setTimeout(playIntro, 300);
-    else setTimeout(() => { if (window.MergeTown) window.MergeTown.resume(); }, 300);
+    else setTimeout(() => { if (window.MergeTown) window.MergeTown.resume(); maybeDaily(); }, 300);
+    offline();
     saver.schedule();
     syncPull(false, freshLocal);
+  }
+  // 오프라인: 한 번 열면 그 폰에서 그림·화면을 저장해 두고(서비스 워커), 인터넷이 없어도 열려요
+  function offline() {
+    try {
+      if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
+      const swUrl = new URL(A.root + '../sw.js', location.href);
+      if (swUrl.origin !== location.origin) return;
+      // 정적 서버 등 sw.js 가 없으면 그냥 온라인으로 (없는 파일을 등록하려다 콘솔에 오류가 남지 않게 먼저 살펴봐요)
+      fetch(swUrl.pathname, { method: 'HEAD', cache: 'no-store' })
+        .then((r) => { if (r.ok) return navigator.serviceWorker.register(swUrl.pathname); return null; })
+        .catch(() => { /* 무시 */ });
+    } catch (e) { /* 무시 */ }
   }
   start();
 
   // 시험용 손잡이 (브라우저 콘솔 · 자동 시험)
   window.MergeUI = {
     get state() { return st; }, renderAll, renderNav, apply, tap, deliver, layout, changed, toast, say, talk, flash, floatTag, center, cellEl, itEl,
-    artImg, esc, josa, setBg, clearUndo, restartAnim, openBag, syncPush, sync, STAR,
+    artImg, esc, josa, setBg, clearUndo, restartAnim, openBag, syncPush, sync, STAR, faceSrc, faceHTML, react, quiet,
+    openMenu, openDaily, openBook, openEvent, openLetters, openSettings, openSheet, closeSheet, dailyEventTick, mmss,
     get busy() { return busy; }
   };
 })();
