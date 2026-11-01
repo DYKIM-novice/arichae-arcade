@@ -222,6 +222,93 @@ test('[다른 부탁]: 바꾸고 10분 쿨타임', () => {
   assert.strictEqual(r2.reason, 'cool'); assert.strictEqual(r2.waitMs, 9 * 60000);
   assert.ok(C.skipOrder(st, st.orders[0].id, T0 + 10 * 60000, seeded(12)).ok);
 });
+test('건넨 뒤 새 부탁은 맨 오른쪽 끝 · 나머지는 왼쪽으로 한 칸씩', () => {
+  for (let s = 1; s < 25; s++) {
+    for (const k of [0, 1, 2]) {
+      const st = emptyState(seeded(s));
+      const before = st.orders.map((o) => o.id);
+      const o = st.orders[k];
+      o.need.forEach((x, j) => { st.board[10 + j] = item(x.c, x.t); });
+      const r = C.deliver(st, o.id, T0, seeded(s + 50));
+      assert.ok(r.ok);
+      const after = st.orders.map((x) => x.id);
+      assert.deepStrictEqual(after.slice(0, 2), before.filter((id) => id !== o.id), '남은 카드는 순서대로 왼쪽으로');
+      assert.strictEqual(after[2], r.added[0].id, '새 카드는 맨 오른쪽');
+    }
+  }
+});
+test('이벤트 부탁을 건네도 다음 이벤트 부탁은 맨 오른쪽 끝', () => {
+  const st = emptyState(seeded(4));
+  st.ev = { id: D.EVENTS[0].id, week: 1, pts: 0, got: [], seq: 0 };
+  st.orders.unshift(C.makeEventOrder(st, T0, seeded(5)));
+  const eo = st.orders.find((o) => o.ev);
+  assert.strictEqual(st.orders.indexOf(eo), 0);
+  st.board[3] = item(eo.need[0].c, eo.need[0].t);
+  const r = C.deliver(st, eo.id, T0, seeded(6));
+  assert.ok(r.ok);
+  const last = st.orders[st.orders.length - 1];
+  assert.ok(last.ev && last.id !== eo.id);
+});
+test('다른 사람이 있으면 같은 얼굴이 카드 두 장에 동시에 안 나와요 (이야기·이벤트 부탁 포함)', () => {
+  const dupes = (st) => { const w = st.orders.map((o) => o.who); return w.length !== new Set(w).size; };
+  for (let s = 1; s < 60; s++) {
+    // 1지역: 준이·미나·꽃님 셋뿐 → 한 번도 겹치면 안 돼요 (건네고 다시 채워도)
+    const st = emptyState(seeded(s));
+    assert.ok(!dupes(st));
+    for (let d = 0; d < 6; d++) {
+      const o = st.orders[(s + d) % st.orders.length];
+      o.need.forEach((x, j) => { st.board[10 + j] = item(x.c, x.t); });
+      assert.ok(C.deliver(st, o.id, T0, seeded(s * 7 + d)).ok);
+      assert.ok(!dupes(st), '건넨 뒤에도 겹치지 않아요');
+      o.need.forEach((x, j) => { st.board[10 + j] = null; });
+    }
+    // 뒤 지역(2개짜리 부탁·사람 많음): 이야기 부탁(미나)·이벤트 부탁(준이)이 있어도 다른 사람이 나와요
+    const s2 = emptyState(seeded(s));
+    s2.area = 4; s2.unlocked = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+    s2.orders = [{ id: 's_x', who: 'mina', need: [{ c: 'b', t: 4 }], story: 'x', at: T0 }, { id: 'e_x', who: 'juni', need: [{ c: 'kite', t: 2 }], ev: 'kite', at: T0 }];
+    for (let i = 0; i < 3; i++) s2.orders.push(C.makeOrder(s2, T0, seeded(s * 13 + i)));
+    assert.ok(!dupes(s2), s2.orders.map((o) => o.who).join(','));
+    s2.orders.slice(2).forEach((o) => assert.ok(D.VILLAGERS[o.who].chains.some((c) => o.need.some((x) => x.c === c)), '체인 맞는 사람'));
+  }
+});
+test('다른 사람이 없으면(1지역 셋 다 카드에 있음) 그래도 부탁은 만들어져요', () => {
+  const st = emptyState(seeded(3));
+  st.orders = ['juni', 'mina', 'kkotnim'].map((w, k) => ({ id: 'q' + k, who: w, need: [{ c: 'abd'[k], t: 2 }], at: T0 }));
+  const o = C.makeOrder(st, T0, seeded(9));
+  assert.ok(o && o.need.length === 1 && D.VILLAGERS[o.who].chains.indexOf(o.need[0].c) >= 0);
+});
+test('만드는 법: 발생기 · 1단계부터 부탁 단계까지 · 판/가방에 가진 단계 표시', () => {
+  const st = emptyState(seeded(2));
+  st.board[5] = { k: 'gen', g: 'gen_a' };
+  st.board[6] = item('a', 1); st.board[7] = item('a', 1); st.board[8] = item('a', 3); st.board[9] = item('b', 2);
+  st.cover[20] = 1; st.board[20] = item('a', 2);   // 모래더미 아래는 못 써요
+  st.bag[0] = item('a', 2);
+  const g = C.orderGuide(st, 'a', 4);
+  assert.strictEqual(g.from, 'gen');
+  assert.deepStrictEqual(g.gen, { id: 'gen_a', name: D.GENS.gen_a.name, cells: [5] });
+  assert.deepStrictEqual(g.steps.map((s) => s.t), [1, 2, 3, 4]);
+  assert.deepStrictEqual(g.steps.map((s) => s.id), ['a1', 'a2', 'a3', 'a4']);
+  assert.deepStrictEqual(g.steps[0].cells, [6, 7]);
+  assert.deepStrictEqual(g.steps[1].cells, []); assert.strictEqual(g.steps[1].bag, 1); assert.strictEqual(g.steps[1].have, 1);
+  assert.deepStrictEqual(g.steps[2].cells, [8]);
+  assert.strictEqual(g.steps[3].have, 0);
+  assert.strictEqual(g.best, 3); assert.strictEqual(g.ready, false);
+  assert.strictEqual(g.name, D.CHAINS.a.tiers[3]);
+  // 주문 카드의 물건 그대로
+  const o = st.orders[0];
+  const og = C.orderGuide(st, o.need[0].c, o.need[0].t);
+  assert.strictEqual(og.steps.length, o.need[0].t);
+  assert.strictEqual(og.gen.id, Object.keys(D.GENS).find((k) => D.GENS[k].chain === o.need[0].c));
+  // 발생기가 판에 없으면 cells 빈칸 · 다 있으면 ready
+  st.board[30] = item('a', 4);
+  const g2 = C.orderGuide(st, 'a', 4);
+  assert.ok(g2.ready);
+  assert.deepStrictEqual(C.orderGuide(st, 'h', 2).gen.cells, []);
+  // 보자기처럼 발생기가 없는 물건은 '다른 데서 나와요'
+  const gb = C.orderGuide(st, 'bj', 2);
+  assert.strictEqual(gb.gen, null); assert.strictEqual(gb.from, 'box');
+  assert.strictEqual(C.orderGuide(st, 'zz', 1), null);
+});
 
 console.log('저장 · 불러오기');
 function memStore() { const m = {}; return { getItem: (k) => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: (k) => { delete m[k]; }, m }; }

@@ -378,33 +378,42 @@
   /* ---------- 주문 ---------- */
   // 주문 난이도 = 지금 복원 중인 지역 (다 고친 뒤에는 마지막 지역)
   function orderLevel(st) { return Math.max(0, Math.min(st.area || 0, AREAS.length - 1)); }
+  const askersOf = (chain) => Object.keys(VILLAGERS).filter((k) => VILLAGERS[k].chains.indexOf(chain) >= 0);
   function villagerFor(chain, used, rng) {
-    const all = Object.keys(VILLAGERS).filter((k) => VILLAGERS[k].chains.indexOf(chain) >= 0);
+    const all = askersOf(chain);
     const free = all.filter((k) => used.indexOf(k) < 0);
     const pool = free.length ? free : all;
     return pool.length ? pick(rng, pool) : 'hayun';
+  }
+  // 새 부탁의 '대표 체인' 고르기: ① 아직 안 나온 체인 + 지금 카드에 없는 사람 ② 카드에 없는 사람 ③ 안 나온 체인 ④ 아무거나
+  //  → 다른 사람이 있으면 같은 얼굴이 카드 두 장에 동시에 나오지 않아요
+  function leadChain(st, chains, rng) {
+    const usedChains = [], usedWho = st.orders.map((o) => o.who);
+    st.orders.forEach((o) => o.need.forEach((x) => { if (usedChains.indexOf(x.c) < 0) usedChains.push(x.c); }));
+    const whoFree = (c) => askersOf(c).some((k) => usedWho.indexOf(k) < 0);
+    const fresh = chains.filter((c) => usedChains.indexOf(c) < 0);
+    const tries = [fresh.filter(whoFree), chains.filter(whoFree), fresh, chains];
+    return pick(rng, tries.find((p) => p.length));
   }
   function makeOrder(st, now, rng) {
     const area = AREAS[orderLevel(st)];
     let chains = area.chains.filter((c) => st.unlocked.indexOf(c) >= 0);
     if (!chains.length) chains = st.unlocked.filter((c) => !isAux(c));
-    const usedChains = st.orders.map((o) => o.need[0].c);
-    const fresh = chains.filter((c) => usedChains.indexOf(c) < 0);
+    const lead = leadChain(st, chains, rng);
     const lo = area.orders.tiers[0];
     let hi = area.orders.tiers[1];
     if (st.orders.some((o) => !o.story && !o.ev && now - o.at > BAL.orderStuckMs)) hi = Math.max(lo, hi - 1);   // 막힘 방지
     const n = rint(rng, area.orders.items[0], area.orders.items[1]);
     const need = [];
     for (let i = 0; i < n; i++) {
-      const pool = i === 0 && fresh.length ? fresh : chains;
-      const c = pick(rng, pool);
+      const c = i === 0 ? lead : pick(rng, chains);
       const t = Math.min(maxTier(c), rint(rng, lo, hi));
       need.push({ c, t });
     }
     need.sort((x, y) => (x.c < y.c ? -1 : x.c > y.c ? 1 : x.t - y.t));
     const sum = need.reduce((s, x) => s + sellValue(x.t), 0);
     const tsum = need.reduce((s, x) => s + x.t, 0);
-    const who = villagerFor(need[0].c, st.orders.map((o) => o.who), rng);
+    const who = villagerFor(lead, st.orders.map((o) => o.who), rng);
     st.orderSeq++;
     const line = Math.floor(rng() * 3);
     const bonus = rng() < BAL.orderBonus ? clone(pick(rng, BAL.bonusPool)) : null;
@@ -463,6 +472,34 @@
     const have = cells.map((i, k) => i >= 0 || bag[k] >= 0);
     return { cells, bag, have, ready: have.every(Boolean) };
   }
+  // 만드는 법: 이 물건(체인 c · 단계 t)을 어디서 얻고, 1단계부터 어떻게 합쳐 올라가는지
+  //  gen = 이 체인을 내놓는 발생기 { id, name, cells(판 위 칸) } · null 이면 from 으로 출처 안내
+  //  from = 'gen' | 'box'(보자기·선물·보상에서 나와요) | 'none'
+  //  steps[k] = { t, id, name, cells(판 위 칸), bag(가방 속 개수), have(판+가방 개수) } · 1단계 → t단계
+  function orderGuide(st, c, t) {
+    const ch = CHAINS[c];
+    if (!ch) return null;
+    t = Math.max(1, Math.min(t | 0, ch.tiers.length));
+    const gid = Object.keys(GENS).find((g) => GENS[g].chain === c) || null;
+    const gcells = [];
+    if (gid) st.board.forEach((x, i) => { if (x && x.k === 'gen' && x.g === gid) gcells.push(i); });
+    const steps = [];
+    for (let k = 1; k <= t; k++) {
+      const cells = [];
+      st.board.forEach((x, i) => { if (x && x.k === 'item' && x.c === c && x.t === k && !covered(st, i)) cells.push(i); });
+      const bag = (st.bag || []).filter((x) => x && x.k === 'item' && x.c === c && x.t === k).length;
+      steps.push({ t: k, id: c + k, name: ch.tiers[k - 1], cells, bag, have: cells.length + bag });
+    }
+    // 가장 높은 단계 중 이미 가진 것 (거기부터 합치면 돼요)
+    let best = 0;
+    steps.forEach((s) => { if (s.have) best = s.t; });
+    return {
+      c, t, name: ch.tiers[t - 1], chain: ch.name,
+      gen: gid ? { id: gid, name: GENS[gid].name, cells: gcells } : null,
+      from: gid ? 'gen' : (ch.aux || isEvent(c) ? 'box' : 'none'),
+      steps, best, ready: steps[t - 1].have > 0
+    };
+  }
   function deliver(st, orderId, now, rng) {
     const k = st.orders.findIndex((o) => o.id === orderId);
     if (k < 0) return { ok: false, reason: 'gone' };
@@ -485,9 +522,11 @@
     if (order.ev && st.ev && st.ev.id === order.ev) evRewards = addEventPoints(st, order.pts | 0, now, rng);
     let bonus = null;
     if (order.bonus) bonus = Object.assign({ cell: order.bonus }, giveCell(st, clone(order.bonus), rng, s.cells.find((i) => i >= 0)));
+    // 건넨 자리의 다음 부탁은 늘 맨 오른쪽 끝으로 (나머지는 왼쪽으로 한 칸씩) → 앞쪽에 다른 사람이 와요
     const added = fillOrders(st, now, rng);
+    if (order.ev) { const eo = eventOrderFill(st, now, rng); if (eo) added.push(eo); }
+    added.forEach((o) => { const j = st.orders.indexOf(o); if (j >= 0) { st.orders.splice(j, 1); st.orders.push(o); } });
     st.updatedAt = now;
-    if (order.ev) eventOrderFill(st, now, rng);
     return { ok: true, order, cells: s.cells, bag: s.bag, coins: order.coins, stars: order.stars, added, bonus, story: order.story || null, evRewards };
   }
   function skipOrder(st, orderId, now, rng) {
@@ -853,7 +892,7 @@
     newState, regen, energyInfo, refill, refillPrice,
     covered, isFree, emptyCount, nearestEmpty, giveCell, chargeInfo, tapGen, canMerge, mergeResult, move, peel, findPair,
     sell, useItem, bagPrice, growBag, toBag, fromBag, takeGift, buyShop, snapshot, restore,
-    orderLevel, makeOrder, fillOrders, orderStatus, deliver, skipOrder,
+    orderLevel, makeOrder, fillOrders, orderStatus, orderGuide, deliver, skipOrder,
     areaInfo, mapPins, doTask, completeArea,
     isEvent, genLevel, genUpInfo, upgradeGen, storyOrderActive, syncStoryOrders,
     bottleToday, secretsIn, secretCounts, findSecret, GULL_TOTAL, LETTER_TOTAL,

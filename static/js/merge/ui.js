@@ -273,25 +273,82 @@
     setTimeout(() => el.remove(), 1700);
   }
 
-  // 주문 카드의 물건 톡 → 판에서 찾아 반짝 · 없으면 만드는 법
-  function showNeed(o, k) {
-    const n = o.need[k];
-    const cell = { k: 'item', c: n.c, t: n.t };
-    const nm = C.itemName(cell);
-    const hits = [];
-    st.board.forEach((c, i) => { if (c && c.k === 'item' && c.c === n.c && c.t === n.t) hits.push(i); });
-    if (hits.length) { flash(hits); say(D.VILLAGERS.hayun, `${josa(nm, '은', '는')} 여기 있어요! 끌어서 놓을 필요 없이 [건네기]만 누르면 돼요.`); return; }
-    if (st.bag.some((c) => c && c.k === 'item' && c.c === n.c && c.t === n.t)) { restartAnim($('btn-bag'), 'wig1'); say(D.VILLAGERS.hayun, `${josa(nm, '은', '는')} 가방에 있어요! [건네기]를 누르면 가방에서 꺼내 줘요.`); return; }
-    if (n.t > 1) {
-      const prev = { k: 'item', c: n.c, t: n.t - 1 };
-      const pn = C.itemName(prev);
-      const have = [];
-      st.board.forEach((c, i) => { if (c && c.k === 'item' && c.c === n.c && c.t === n.t - 1) have.push(i); });
-      if (have.length) flash(have);
-      else { const g = st.board.findIndex((c) => c && c.k === 'gen' && D.GENS[c.g].chain === n.c); if (g >= 0) flash([g]); }
-      say(D.VILLAGERS.hayun, `${pn} 2개를 합치면 ${josa(nm, '이', '가')} 돼요. (${n.t}단계)`);
-    }
+  // 주문 카드의 물건 톡 → '만드는 법' 안내 (발생기 → 1단계 → … → 부탁 단계) + 판의 발생기·같은 체인 물건 반짝
+  //  다른 곳을 톡 하면 닫혀요
+  function showNeed(o, k) { openGuide(o, k); }
+  let guide = null;   // { el, oid, k }
+  function closeGuide() {
+    if (!guide) return;
+    const g = guide; guide = null;
+    g.el.classList.add('bye');
+    setTimeout(() => g.el.remove(), 180);
+    Array.prototype.forEach.call(document.querySelectorAll('.cell.guide'), (c) => c.classList.remove('guide', 'gen-g'));
+    Array.prototype.forEach.call(document.querySelectorAll('.oc-item.on'), (b) => b.classList.remove('on'));
   }
+  function openGuide(o, k) {
+    const was = guide && guide.oid === o.id && guide.k === k;
+    closeGuide();
+    if (was) return;   // 같은 물건을 다시 톡 → 닫기만
+    const n = o.need[k];
+    const g = C.orderGuide(st, n.c, n.t);
+    if (!g) return;
+    const ch = D.CHAINS[n.c];
+    let src;
+    if (g.gen) {
+      const lock = !g.gen.cells.length;
+      src = `<div class="gd-src">${artImg(g.gen.id, g.gen.name, 'gd-gen')}<span><b>${esc(g.gen.name)}</b> 톡 → ${esc(ch.name)} 1단계${lock ? `<br><small>${D.GENS[g.gen.id].event ? '이벤트 동안 판에 나오는 발생기예요' : '이 발생기는 아직 판에 없어요 · [마을]을 고치면 생겨요'}</small>` : ''}</span></div>`;
+    } else {
+      const nm = esc(josa(ch.name, '은', '는'));
+      src = `<div class="gd-src"><span>${g.from === 'box' ? `${nm} 발생기에서 안 나와요 · 선물 보자기·매일 선물·이벤트 보상에서 나와요` : `${nm} 다른 곳에서 얻어요`}</span></div>`;
+    }
+    const steps = g.steps.map((s, j) => {
+      const known = !!st.found[s.id] || s.have > 0;
+      const im = A.src(s.id);
+      const arrow = j ? `<i class="gd-arr" aria-hidden="true"><small>2개</small>→</i>` : '';
+      return `${arrow}<span class="gd-step${s.have ? ' have' : ''}${s.t === g.t ? ' goal' : ''}${known ? '' : ' unk'}" title="${esc(s.name)}">`
+        + `${im ? `<img src="${esc(im)}" alt="${esc(s.name)}" draggable="false">` : `<span class="ph">${esc(s.name)}</span>`}<i class="tier">${s.t}</i>`
+        + `${s.have ? `<b class="gd-n">${s.have}</b>` : ''}</span>`;
+    }).join('');
+    let tip;
+    if (g.ready) tip = g.steps[g.t - 1].cells.length ? '벌써 판에 있어요! [건네기]만 누르면 돼요.' : '가방에 있어요! [건네기]를 누르면 가방에서 꺼내 줘요.';
+    else if (g.best) tip = `${g.best}단계는 가지고 있어요 · 같은 것 2개를 합쳐서 한 단계씩 올려요.`;
+    else tip = g.gen ? '발생기를 톡 해서 1단계를 꺼내고, 같은 것 2개를 합쳐요.' : '같은 것 2개를 합치면 한 단계 올라가요.';
+    const el = document.createElement('div');
+    el.className = 'gd-pop c-' + n.c;
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', '만드는 법');
+    el.innerHTML = `<div class="gd-head"><b>만드는 법</b><span>${esc(g.name)} · ${g.t}단계</span><button type="button" class="gd-x" aria-label="닫기">✕</button></div>
+      ${src}<div class="gd-steps">${steps}</div><p class="gd-tip">${esc(tip)}</p>`;
+    document.body.appendChild(el);
+    const top = $('orders').getBoundingClientRect().bottom + 2;
+    const w = Math.min(innerWidth - 16, 420);
+    el.style.width = w + 'px';
+    el.style.left = Math.round((innerWidth - w) / 2) + 'px';
+    el.style.top = Math.round(top) + 'px';
+    guide = { el, oid: o.id, k };
+    const btn = $('orders').querySelector(`.oc-item[data-hl="${o.id}:${k}"]`);
+    if (btn) btn.classList.add('on');
+    // 판에서 반짝: 발생기 + 부탁 단계까지의 같은 체인 물건
+    const mark = (i, gen) => { const c = cellEl(i); if (c) { c.classList.add('guide'); if (gen) c.classList.add('gen-g'); } };
+    if (g.gen) g.gen.cells.forEach((i) => mark(i, true));
+    g.steps.forEach((s) => s.cells.forEach((i) => mark(i, false)));
+    // 반짝이는 칸을 덜 가리는 쪽에 (위: 부탁 카드 바로 아래 · 아래: 정보 칸 바로 위)
+    const lit = Array.prototype.map.call(document.querySelectorAll('.cell.guide'), (c) => c.getBoundingClientRect());
+    const h = el.offsetHeight;
+    const bottomTop = Math.round($('foot').getBoundingClientRect().top - 4 - h);
+    const hidden = (y) => lit.filter((r) => r.bottom > y && r.top < y + h).length;
+    if (bottomTop > top && hidden(bottomTop) < hidden(top)) el.style.top = bottomTop + 'px';
+    if (g.ready && !g.steps[g.t - 1].cells.length) restartAnim($('btn-bag'), 'wig1');
+  }
+  // 안내창 밖을 톡 → 닫기 (안내창 안의 ✕ 도)
+  document.addEventListener('pointerdown', (e) => {
+    if (!guide) return;
+    const t = e.target;
+    if (t.closest && t.closest('.gd-pop') && !t.closest('.gd-x')) return;
+    if (t.closest && t.closest('.oc-item')) return;   // 카드 물건 톡은 click 에서 처리 (다른 물건으로 바꾸기·같은 물건이면 닫기)
+    closeGuide();
+  }, true);
+  document.addEventListener('click', (e) => { if (guide && e.target.closest && e.target.closest('.gd-x')) closeGuide(); });
   function flash(list) {
     list.forEach((i) => { const c = cellEl(i); if (!c) return; c.classList.remove('hl'); void c.offsetWidth; c.classList.add('hl'); setTimeout(() => c.classList.remove('hl'), 1500); });
   }
@@ -344,6 +401,8 @@
         <div class="info-txt"><b>${esc(m.v.name)}</b><p>${esc(m.text)}</p></div></div>`;
     }
     box.innerHTML = h;
+    const bx = box.firstElementChild;
+    if (bx) bx.classList.toggle('has-acts', !!bx.querySelector('.info-acts'));
   }
   function auxText(aux, t) {
     const a = aux.amount[t - 1];
