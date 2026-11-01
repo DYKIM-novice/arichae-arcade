@@ -210,7 +210,7 @@ img { -webkit-user-drag: none; user-select: none; }
 #app { overflow: clip; }
 #foot .info-box { height: 84px; min-height: 0; overflow: hidden; }
 #foot .info-txt p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-#btn-undo { position: absolute; right: 12px; bottom: -4px; z-index: 5; width: 40px; height: 40px; font-size: 21px; animation: ocIn .35s cubic-bezier(.3,1.5,.5,1); }
+#btn-undo { animation: ocIn .35s cubic-bezier(.3,1.5,.5,1); }
 
 /* 정보 칸 버튼 */
 .info-box { position: relative; }
@@ -577,11 +577,9 @@ body.calm .cell.guide::after { animation: none !important; opacity: 1; }
 .nav-b.shop b { color: #8a5a10; font-size: 13px; }
 .nav-b .nav-img { width: 34px; height: 34px; object-fit: contain; }
 .nav-b.shop .nav-ic { font-size: 26px; }
-/* 🔨 자동 합치기 (판 오른쪽 아래) · 되돌리기는 왼쪽 아래로 */
-#btn-undo { right: auto; left: 12px; }
-#btn-auto { position: absolute; right: 12px; bottom: -4px; z-index: 5; width: 42px; height: 42px; font-size: 20px; }
+/* 🔨 자동 합치기 · ↶ 되돌리기: 아래 버튼 칸 안 (판 위에 겹치지 않게 · 아래 '판 화면 배치' 참고) */
 #btn-auto.dim { opacity: .55; filter: grayscale(.6); }
-#btn-auto .am-tok { position: absolute; right: -8px; top: -9px; background: var(--green); color: #fff; font-style: normal; font-size: 10px; line-height: 16px; padding: 0 5px; border-radius: 8px; box-shadow: 0 1px 0 #2f9b5f; }
+#btn-auto .am-tok { position: absolute; right: -6px; top: -7px; background: var(--green); color: #fff; font-style: normal; font-size: 10px; line-height: 16px; padding: 0 5px; border-radius: 8px; box-shadow: 0 1px 0 #2f9b5f; }
 .am-big { font-size: 44px; }
 /* 고정(핀) */
 .it .pin { position: absolute; left: -2px; top: -4px; font-size: 13px; font-style: normal; pointer-events: none; filter: drop-shadow(0 1px 0 rgba(0,0,0,.2)); }
@@ -781,3 +779,85 @@ body.calm .cell.guide::after { animation: none !important; opacity: 1; }
 .fr-it small { position: absolute; left: 0; right: 0; bottom: -1px; font-size: 10px; text-align: center; color: #b2506a; background: rgba(255,255,255,.8); border-radius: 0 0 8px 8px; }
 #toast { z-index: 75; }
 .float-tag, .mg-fly, #fx, .thx { z-index: 72; pointer-events: none; }
+
+/* ===== 판 화면 배치 (작은 폰·주소창이 보이는 폰에서도 안 겹치게) =====
+   위 칸 → 부탁 카드 → 판(남은 자리에 맞춰 칸 크기를 줄여요 · ui.js layout) → 아래 칸(말하는 칸 + 버튼 3×2)
+   화면 높이는 ui.js 가 visualViewport 로 --app-h 에 넣어요 (없으면 100dvh) */
+#app { height: 100%; height: 100dvh; height: var(--app-h, 100dvh); bottom: auto; }
+#hud, #orders, #foot { flex: none; }
+#board-wrap { flex: 1 1 0; min-height: 0; width: 100%; max-width: 560px; padding: 4px 8px; overflow: visible; }
+#board { flex: none; padding: var(--bpad, 7px); }
+
+/* 아래 칸: [말하는 칸 · 고른 물건][버튼 3×2] 한 줄 */
+#foot { --info-h: 100px; --nav-w: 48px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: stretch; padding: 4px 8px calc(env(safe-area-inset-bottom, 0px) + 8px); }
+body.big-text #foot { --info-h: 110px; }
+#foot #info { min-width: 0; }
+#nav { display: grid; grid-template-columns: repeat(3, var(--nav-w)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 4px; width: auto; height: var(--info-h); }
+#nav .nav-b { min-height: 0; min-width: 0; border-radius: 12px; padding: 1px; gap: 1px; }
+#nav #btn-town { grid-column: 1; grid-row: 1; } #nav #btn-bag { grid-column: 2; grid-row: 1; } #nav #btn-folk { grid-column: 3; grid-row: 1; }
+#nav #btn-shop { grid-column: 1 / span 2; grid-row: 2; display: flex; flex-direction: row; gap: 3px; }   /* .shop(상점 시트 격자)과 이름이 겹쳐서 display 를 다시 */
+#nav #btn-undo { grid-column: 2; grid-row: 2; }
+#nav #btn-auto { grid-column: 3; grid-row: 2; }
+#nav #btn-undo:not(.hide) ~ #btn-shop { grid-column: 1; flex-direction: column; gap: 1px; }   /* 되돌리기가 보이면 상점은 한 칸 */
+#nav .nav-b .nav-ic { font-size: 18px; line-height: 1; }
+#nav .nav-b b { font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+#nav #bag-n { font-size: 10.5px; letter-spacing: -.3px; }
+#nav .nav-b .nav-img { width: 24px; height: 24px; }
+#nav .nav-b.shop b { font-size: 12.5px; }
+#btn-auto .am-ic { font-size: 18px; }
+#btn-auto.dim .am-ic, #btn-auto.dim b { opacity: .55; filter: grayscale(.6); }
+#btn-auto.dim { opacity: 1; filter: none; }
+
+/* 정보 칸: 높이 고정 · 말은 2줄까지 */
+#foot .info-box { height: var(--info-h); padding: 5px 8px; row-gap: 4px; column-gap: 7px; }
+#foot .info-ic { width: 42px; height: 42px; }
+#foot .info-ic.face-big .face { width: 42px; height: 42px; }
+#foot .info-txt b { font-size: 16px; }
+#foot .info-txt b em { font-size: 11.5px; padding: 1px 5px; margin-left: 3px; }
+#foot .info-txt p { font-size: 13px; -webkit-line-clamp: 2; line-clamp: 2; }
+#foot .has-acts .info-txt p { font-size: 12px; line-height: 1.25; }
+#foot .has-acts .info-txt { gap: 1px; }
+#foot .has-acts .info-txt b { line-height: 1.15; }
+#foot .info-txt .ladder i { flex: 0 1 17px; max-width: 17px; }
+#foot .info-acts .act { height: 28px; font-size: 12.5px; padding: 0 3px; gap: 1px; }
+#foot .info-acts .act img { width: 13px; height: 13px; }
+body.big-text #foot .info-txt b { font-size: 17.5px; }
+body.big-text #foot .info-txt p { font-size: 14.5px; }
+body.big-text #foot .has-acts .info-txt p { font-size: 13px; }
+body.big-text #foot .info-acts .act { font-size: 13.5px; }
+/* 말하는 칸: 톡하면 닫혀요 · 3초 뒤 저절로 (ui.js say) / 평소엔 작은 도움말 */
+#foot .info-box.talking { cursor: pointer; border-color: var(--fc, #fff); animation: infoIn .3s cubic-bezier(.3,1.5,.5,1); }
+#foot .info-box.idle { background: rgba(255,250,242,.78); box-shadow: 0 2px 0 var(--line); }
+#foot .info-box.idle .info-ic { width: 34px; height: 34px; opacity: .9; }
+#foot .info-box.idle .info-txt b { font-size: 13.5px; color: var(--ink2); }
+#foot .info-box.idle .info-txt p { font-size: 12.5px; }
+body.big-text #foot .info-box.idle .info-txt b { font-size: 15px; }
+body.big-text #foot .info-box.idle .info-txt p { font-size: 14px; }
+@keyframes infoIn { from { transform: translateY(6px) scale(.97); opacity: .4; } }
+
+/* 부탁 카드: 낮은 화면에선 조금 작게 */
+#orders { padding: 6px 8px 4px; }
+@media (max-height: 780px) {
+  .oc { padding: 4px 5px 5px; gap: 3px; border-radius: 14px; }
+  .oc .face { width: 32px; height: 32px; }
+  .oc-item { width: 44px; height: 44px; }
+  .oc-need.many .oc-item { width: 38px; height: 38px; }
+  .oc-go { height: 27px; font-size: 13.5px; }
+  .oc-rew { font-size: 12px; }
+  .oc-rew img, .oc-rew svg { width: 15px; height: 15px; }
+}
+@media (max-height: 680px) {
+  #hud { padding-top: calc(env(safe-area-inset-top, 0px) + 5px); padding-bottom: 3px; }
+  #hud .chip { height: 32px; } #hud .chip.round { width: 32px; }
+  #hud .chip img, #hud .chip svg { width: 24px; height: 24px; }
+  .oc .face { width: 28px; height: 28px; }
+  .oc-item { width: 38px; height: 38px; }
+  .oc-need.many .oc-item { width: 34px; height: 34px; }
+  .oc-go { height: 25px; }
+  #foot { --info-h: 94px; }
+  body.big-text #foot { --info-h: 104px; }
+  #foot .info-acts .act { height: 26px; }
+  #foot .info-txt .ladder i { flex-basis: 14px; max-width: 14px; }
+}
+@media (max-width: 370px) { #foot { --nav-w: 44px; gap: 5px; } #orders { gap: 5px; } .oc { min-width: 100px; } }
+#toast { bottom: calc(var(--foot-h, 110px) + 8px); }

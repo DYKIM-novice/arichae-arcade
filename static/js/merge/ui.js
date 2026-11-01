@@ -120,16 +120,30 @@
     document.body.classList.toggle('nonums', !st.settings.nums);
   }
 
+  // 판 크기: 위 칸·부탁 카드·아래 칸을 놓고 '남은 자리'(#board-wrap)에 가로·세로 둘 다 맞춰요 (칸은 늘 정사각형)
+  // 화면 높이는 visualViewport(주소창·탭 줄이 보였다 숨었다 해도 실제로 보이는 높이)로 --app-h 에 넣어요
+  var layoutRaf = 0;   // var: 설정 적용(글씨 크게)이 이 줄보다 먼저 불려도 괜찮게
   function layout() {
-    const vw = Math.min(innerWidth, 560);
-    const gap = 3;
-    const W = vw - 16 - 20;
-    const used = $('hud').offsetHeight + $('orders').offsetHeight + $('foot').offsetHeight;
-    const H = innerHeight - used - 20 - 8;
-    const cell = Math.floor(Math.max(34, Math.min(76, (W - 6 * gap) / 7, (H - 8 * gap) / 9)));
-    document.documentElement.style.setProperty('--cell', cell + 'px');
-    document.documentElement.style.setProperty('--gap', gap + 'px');
+    const root = document.documentElement.style;
+    const vv = window.visualViewport;
+    const vh = Math.round(vv && vv.height > 0 ? Math.min(vv.height, innerHeight || vv.height) : innerHeight);
+    if (vh > 0) root.setProperty('--app-h', vh + 'px');
+    const wrap = $('board-wrap');
+    const cs = getComputedStyle(wrap);
+    const W = wrap.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const H = wrap.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    if (!(W > 0 && H > 0)) return;
+    const cols = D.BOARD.cols, rows = D.BOARD.rows;
+    const fit = (gap, pad) => Math.floor(Math.min(76, (W - 2 * (pad + 3) - (cols - 1) * gap) / cols, (H - 2 * (pad + 3) - (rows - 1) * gap) / rows));
+    let gap = 3, pad = 7, cell = fit(gap, pad);
+    if (cell < 36) { gap = 2; pad = 5; cell = fit(gap, pad); }
+    cell = Math.max(18, cell);
+    root.setProperty('--cell', cell + 'px');
+    root.setProperty('--gap', gap + 'px');
+    root.setProperty('--bpad', pad + 'px');
+    root.setProperty('--foot-h', $('foot').offsetHeight + 'px');
   }
+  function queueLayout() { clearTimeout(layoutRaf); layoutRaf = setTimeout(layout, 16); }   // rAF 는 탭이 숨으면 멈춰서 타이머로
 
   /* ---------- 위 칸 (기운 · 동전 · 별) ---------- */
   function mmss(ms) { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
@@ -399,7 +413,16 @@
   }
 
   /* ---------- 아래 정보 칸 ---------- */
-  function say(v, text, face) { infoMsg = { v, text, face }; renderInfo(); }
+  // 말하는 칸: 고맙다는 말·수다는 잠깐 (약 3초, 긴 말은 조금 더) 보였다가 평소 도움말로 · 톡하면 바로 닫혀요
+  let sayT = 0;
+  function say(v, text, face) {
+    const m = { v, text, face };
+    infoMsg = m;
+    clearTimeout(sayT);
+    sayT = setTimeout(() => { if (infoMsg === m) { infoMsg = null; renderInfo(); } }, Math.min(6000, Math.max(3000, String(text).length * 60)));
+    renderInfo();
+  }
+  function hush() { if (!infoMsg) return false; clearTimeout(sayT); infoMsg = null; renderInfo(); return true; }
   function ladderHTML(c, cur) {
     const mx = C.maxTier(c);
     let h = '';
@@ -442,7 +465,7 @@
     } else {
       const m = infoMsg || { v: D.VILLAGERS.hayun, text: D.TIPS[tipIdx % D.TIPS.length] };
       const s = faceSrc(m.v, m.face);
-      h = `<div class="info-box"><div class="info-ic face-big" style="--fc:${esc(m.v.color)}">${s ? `<img src="${esc(s)}" alt="${esc(m.v.name)}" draggable="false" data-ph="${esc(m.v.name[0])}">` : faceHTML(m.v)}</div>
+      h = `<div class="info-box ${infoMsg ? 'talking' : 'idle'}" style="--fc:${esc(m.v.color)}"${infoMsg ? ' role="button" aria-label="말 닫기"' : ''}><div class="info-ic face-big" style="--fc:${esc(m.v.color)}">${s ? `<img src="${esc(s)}" alt="${esc(m.v.name)}" draggable="false" data-ph="${esc(m.v.name[0])}">` : faceHTML(m.v)}</div>
         <div class="info-txt"><b>${esc(m.v.name)}</b><p>${esc(m.text)}</p></div></div>`;
     }
     box.innerHTML = h;
@@ -713,6 +736,7 @@
   /* ---------- 정보 칸 버튼: 쓰기 · 가방에 · 팔기 ---------- */
   $('info').addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]');
+    if (!b && e.target.closest('.talking')) { hush(); return; }
     if (!b || sel < 0 || busy) return;
     F.unlock(); lastAct = now();
     const i = sel;
@@ -1331,6 +1355,7 @@
     F.setOpt({ sfx: !!t.sfx, vib: !!t.vib, vol: t.vol | 0, bgm: !!t.bgm, bgmVol: t.bgmVol | 0, calm: !!t.calm });
     musicTick();
     document.body.classList.toggle('big-text', !!t.big);
+    queueLayout();   // 글씨 크게: 아래 칸 높이가 바뀌어서 판 크기를 다시
     document.body.classList.toggle('calm', !!t.calm);
   }
 
@@ -1655,7 +1680,11 @@
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden) { saver.flush(); syncBeacon(); } else { renderHud(); } });
   addEventListener('pagehide', () => { saver.flush(); syncBeacon(); });
-  addEventListener('resize', () => layout());
+  const relayout = () => { layout(); queueLayout(); };   // 바로 한 번 + 자리 잡은 뒤 한 번 더 (주소창이 나타나고 사라질 때 깜빡이지 않게)
+  addEventListener('resize', relayout);
+  addEventListener('orientationchange', () => setTimeout(layout, 250));
+  if (window.visualViewport) { visualViewport.addEventListener('resize', relayout); visualViewport.addEventListener('scroll', queueLayout); }
+  if (window.ResizeObserver) { const ro = new ResizeObserver(queueLayout); ro.observe($('board-wrap')); ro.observe($('foot')); }
 
   function renderAll() { renderHud(); renderOrders(); renderBoard(); renderInfo(); renderNav(); renderMenuBadge(); renderBoost(); }
 
