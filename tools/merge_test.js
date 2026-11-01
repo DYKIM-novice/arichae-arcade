@@ -667,6 +667,25 @@ test('마을 지도: 작업마다 짓기 자리(지역 그림 안) · 잔해·�
   Object.keys(T.fillers).forEach((k) => assert.ok(has(T.fillers[k].art), k));
   ['w_mongdol', 'c_scaffold', T.ruin.art, 'm_sunglasses', 'm_tube'].forEach((id) => assert.ok(has(id), id));
 });
+test('마을 지도: 섬 테두리(box) 안에 모든 짓기 자리 · 현판은 본채 앞벽에 걸어요(모양 3가지마다 자리)', () => {
+  const T = D.TOWN;
+  D.AREAS.forEach((a) => {
+    const bx = T.areas[a.id].box;
+    assert.ok(Array.isArray(bx) && bx.length === 4 && bx[2] - bx[0] > 600 && bx[3] - bx[1] > 500, a.id + ' 섬 테두리');
+    a.tasks.forEach((t) => {
+      const b = T.build[t.id];
+      [b.at].concat(b.rep || []).forEach((p) => { if (p) assert.ok(p[0] > bx[0] && p[0] < bx[2] && p[1] > bx[1] && p[1] < bx[3], '섬 밖 ' + t.id); });
+      if (b.mount) {
+        const h = T.build[b.mount.on];
+        assert.ok(h && h.kind === 'B3' && a.tasks.some((x) => x.id === b.mount.on), '걸 집 ' + t.id);
+        assert.strictEqual(b.mount.looks.length, 3);
+        b.mount.looks.forEach((L) => { assert.ok(L[0] > 0.1 && L[0] < 0.9 && L[1] > 0.3 && L[1] < 0.8 && Math.abs(L[2]) < 1); });
+        assert.ok(b.mount.w < h.w * 0.25, '현판은 집보다 한참 작게');
+      }
+    });
+  });
+  assert.strictEqual(T.build.r1_sign.mount.on, 'r1_paper');
+});
 test('지역 4~6: 주문 난이도(2개·4~7 → 2~3개·5~8 → 2~3개·6~9) · 체인 G·H', () => {
   const st = soAll(emptyState(seeded(4)));
   st.unlocked = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
@@ -1180,5 +1199,66 @@ test('우정: 선물 점수(최애·좋아함·보통) · 하루 3번 · 단계 
   o.need.forEach((nd, k) => { d.board[k] = item(nd.c, nd.t); });
   const del = C.deliver(d, o.id, T0, seeded(1)); assert.ok(del.ok); assert.strictEqual(d.friend[o.who].pts, D.FRIEND.deliverPts);
   const back = C.deserialize(C.serialize(st), T0, seeded(1)); assert.strictEqual(back.friend.juni.lv, 5);
+});
+console.log('기록 보호 · 이전 기록 되살리기 (버전이 섞여도 진행이 날아가지 않게)');
+// 2지역(몽돌 선착장)까지 간 v3 저장 (옛 버전 모양 그대로)
+function v3Area2() {
+  const v3 = soAll(C.newState(T0, seeded(11)));
+  v3.v = 3; ['look', 'owned', 'outfit', 'mongAcc', 'cam', 'tapDay', 'friend'].forEach((k) => delete v3[k]);
+  D.AREAS[0].tasks.forEach((t) => { v3.tasks[t.id] = T0; });
+  v3.area = 1; v3.stars = 10; v3.coins = 340; v3.stats.delivered = 40; v3.cover = v3.cover.map(() => 0); v3.updatedAt = T0;
+  return v3;
+}
+test('v3 → v4 바꾸기: 지역·별·작업 그대로 + 바꾸기 전 저장 글을 따로 보관', () => {
+  const ls = memStore(); const ad = S.localAdapter(ls);
+  const raw = JSON.stringify(v3Area2()); ls.setItem(D.SAVE_KEY, raw);
+  const o = S.open(ad, T0 + 1000, seeded(1));
+  assert.strictEqual(o.fresh, false); assert.ok(o.migrated); assert.ok(!o.broken);
+  assert.strictEqual(o.st.area, 1); assert.strictEqual(o.st.stars, 10); assert.strictEqual(Object.keys(o.st.tasks).length, 6);
+  assert.ok(o.st.cover.every((v) => v === 0), '판 모래가 다시 덮이지 않아요');
+  const bk = S.backups(ad); assert.strictEqual(bk.length, 1); assert.strictEqual(bk[0].why, 'migrate'); assert.strictEqual(bk[0].data, raw);
+  assert.strictEqual(bk[0].sum.area, 1); assert.strictEqual(bk[0].sum.v, 3);
+  S.open(ad, T0 + 2000, seeded(1)); assert.strictEqual(S.backups(ad).length, 1, '같은 기록은 한 번만');
+  assert.strictEqual(C.deserialize(bk[0].data, T0, seeded(1)).area, 1, '보관본으로 되살릴 수 있어요');
+});
+test('읽지 못하는 저장(망가짐·더 새 버전): 새 판으로 시작하되 지우기 전에 보관 · 처음으로 쳐서 서버 기록이 이겨요', () => {
+  const ls = memStore(); const ad = S.localAdapter(ls);
+  const future = JSON.stringify(Object.assign(v3Area2(), { v: D.VERSION + 1 }));
+  ls.setItem(D.SAVE_KEY, future);
+  const o = S.open(ad, T0, seeded(1));
+  assert.ok(o.broken && o.newer && o.fresh); assert.strictEqual(o.st.area, 0);
+  assert.strictEqual(S.backups(ad)[0].data, future); assert.strictEqual(S.backups(ad)[0].why, 'newer');
+  ls.setItem(D.SAVE_KEY, '{"v":3,"board":');
+  const o2 = S.open(ad, T0, seeded(1)); assert.ok(o2.broken && !o2.newer && o2.fresh);
+  assert.strictEqual(S.backups(ad)[0].why, 'broken'); assert.strictEqual(S.backups(ad).length, 2);
+  // 처음 판(fresh) → 서버에 있던 진행 기록을 받아요 (예전엔 새 판이 '더 새것'이라 이겨서 서버까지 덮었어요)
+  const remote = C.deserialize(JSON.stringify(v3Area2()), T0, seeded(1));
+  o2.st.updatedAt = T0 + 99999;
+  assert.strictEqual(S.pickSave(o2.st, remote, o2.fresh), 'remote');
+});
+test('기기 기록이 더 새것이어도 서버가 지역·작업·부탁 모두 앞서면 바로 덮지 않고 물어봐요', () => {
+  const remote = C.deserialize(JSON.stringify(v3Area2()), T0, seeded(1));
+  const local = C.newState(T0, seeded(2)); local.updatedAt = T0 + 5000;
+  local.stats.delivered = 3;   // 처음부터 다시 몇 번 해 본 판
+  assert.strictEqual(S.pickSave(local, remote, false), 'ask');
+  local.stats.delivered = 99; assert.strictEqual(S.pickSave(local, remote, false), 'local', '이 폰이 더 많이 했으면 그대로');
+  const same = C.deserialize(C.serialize(remote), T0, seeded(1)); same.updatedAt = T0 + 1;
+  assert.strictEqual(S.pickSave(same, remote, false), 'local', '같은 진행이면 새것');
+});
+test('보관함: 처음 판은 안 넣고 · 최근 5개 · 가장 많이 한 기록은 오래돼도 남아요', () => {
+  const ad = S.localAdapter(memStore());
+  assert.strictEqual(S.backupState(ad, C.newState(T0, seeded(1)), 'reset', T0), false);
+  const big = v3Area2(); big.v = D.VERSION; S.backupState(ad, big, 'reset', T0);
+  for (let i = 1; i <= 8; i++) { const s2 = C.newState(T0, seeded(i)); s2.stats.delivered = i; S.backupState(ad, s2, 'remote', T0 + i); }
+  const list = S.backups(ad);
+  assert.strictEqual(list.length, S.BACKUP_MAX);
+  assert.strictEqual(list[0].sum.delivered, 8, '가장 최근 것이 맨 앞');
+  assert.ok(list.some((b) => b.sum.area === 1 && b.sum.tasks === 6), '2지역 기록은 그대로');
+});
+test('예전 load() 는 그대로 상태를 돌려줘요 (깨진 저장 → 새 판 + 보관)', () => {
+  const ls = memStore(); const ad = S.localAdapter(ls);
+  ls.setItem(D.SAVE_KEY, '{망가진');
+  assert.strictEqual(S.load(ad, T0, seeded(1)).board.length, 63);
+  assert.strictEqual(S.backups(ad)[0].data, '{망가진');
 });
 console.log(`\n모두 통과 (${n}개)`);

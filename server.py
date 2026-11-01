@@ -1896,7 +1896,9 @@ async def handle_http(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
         elif path.startswith("/static/"):
             # 주소에 ?v=버전 이 붙은 파일은 내용이 바뀌면 주소도 바뀌니 오래 저장해도 돼요
             versioned = "v=" in (urlsplit(target).query or "")
-            await serve_file(writer, STATIC_DIR / path[len("/static/"):], head_only, False, immutable=versioned)
+            # 머지관 화면·코드는 주소에 버전이 없어서, 새로 배포한 뒤 옛 파일과 새 파일이 섞이면 저장을 못 읽어요 → 매번 확인
+            merge_code = not versioned and (path == "/static/merge.html" or path.startswith("/static/js/merge/") or path == "/static/css/merge.css")
+            await serve_file(writer, STATIC_DIR / path[len("/static/"):], head_only, merge_code, immutable=versioned)
         elif path == "/manifest.webmanifest":
             await serve_file(writer, STATIC_DIR / "manifest.webmanifest", head_only, True, "application/manifest+json; charset=utf-8")
         elif path == "/sw.js":

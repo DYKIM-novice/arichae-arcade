@@ -71,6 +71,7 @@
   function sitePos(id) {
     const x = taskOf(id); if (!x) return { x: 0, y: 0 };
     const b = T.build[id];
+    if (b.mount) { const m = mountObj(id, x.i); if (m && m.center) return { x: m.wx, y: m.wy + 34 }; }
     if (b.at) return W(x.i, b.at);
     if (b.clears && b.clears.length) return W(x.i, [b.clears[0][1], b.clears[0][2]]);
     if (b.fx === 'ruin') return W(x.i, T.ruin.at);
@@ -94,6 +95,21 @@
     if (T.eventDecos[id] && A.has(id)) return { art: 'ui:' + id, w: T.eventDecos[id].w };
     return null;
   }
+  // 벽에 거는 것(현판): 걸 집이 지어졌으면 그 집 그림 위 비율 자리에 · 벽 기울기만큼 비스듬히 · 집 바로 앞 깊이
+  function mountObj(id, i) {
+    const b = T.build[id], m = b.mount, s = st(), host = T.build[m.on];
+    if (s.tasks[m.on] && !(anim && anim.id === m.on)) {
+      const hi = img(lookArt(m.on));
+      if (!hi) return null;                                   // 집 그림을 읽으면 다시 그려요 (dirty)
+      const k = preview[m.on] != null ? preview[m.on] : C.lookOf(s, m.on);
+      const L = m.looks[k] || m.looks[0];
+      const hp = W(i, host.at), hh = host.w * hi.h / hi.w;
+      return { art: b.art, wx: hp.x - host.w / 2 + host.w * L[0], wy: hp.y - hh + hh * L[1], w: m.w, kind: 'build', task: id,
+        center: true, skew: L[2], label: m.label, noShadow: true, z: (host.z != null ? origin(i).y + host.z : hp.y) + 0.5 };
+    }
+    const p = W(i, b.at);
+    return { art: b.art, wx: p.x, wy: p.y, w: b.w, kind: 'build', task: id, label: m.label };
+  }
   function buildScene() {
     const s = st(), out = [];
     const push = (o) => { o.z = o.z != null ? o.z : o.wy; out.push(o); };
@@ -108,6 +124,7 @@
           return;
         }
         if (b.kind === 'G') return;
+        if (b.mount) { const m = mountObj(t.id, i); if (m) push(m); return; }
         const art = b.kind === 'B3' ? lookArt(t.id) : b.art;
         const p = W(i, b.at);
         const o = { art, wx: p.x, wy: p.y, w: b.w, kind: 'build', task: t.id, b3: b.kind === 'B3', lights: b.lights, fx: b.fx };
@@ -138,15 +155,40 @@
   let VW = 360, VH = 640, DPR = 1;
   const cam = { x: 0, y: 0, s: 0.4 };
   let vel = { x: 0, y: 0 }, fly = null, shake = 0;
-  const sMin = () => Math.min(VW / (WW * 0.9), VH / (WH * 0.9));
+  // 위 칸·아래 버튼이 가리는 화면 높이 (resize 때 실제 크기로) · 섬은 그 사이 칸에 맞춰요
+  let UI_T = 70, UI_B = 90;
+  // 섬 테두리 (세계 px · data.js TOWN.areas.box) · 열린 지역들을 합친 테두리 = 끌기 한계
+  function boxOf(i) {
+    const o = origin(i), b = T.areas[D.AREAS[i].id].box || [0, 0, TW, TH];
+    return { x0: o.x + b[0], y0: o.y + b[1], x1: o.x + b[2], y1: o.y + b[3] };
+  }
+  function openBox() {
+    let r = null;
+    for (let i = 0; i <= Math.min(st().area, NA - 1); i++) {
+      const b = boxOf(i);
+      r = r ? { x0: Math.min(r.x0, b.x0), y0: Math.min(r.y0, b.y0), x1: Math.max(r.x1, b.x1), y1: Math.max(r.y1, b.y1) } : b;
+    }
+    return r || boxOf(0);
+  }
+  const availH = () => Math.max(160, VH - UI_T - UI_B);
+  // 가장 작게: 열린 섬이 다 보일 만큼 (그보다 멀리는 바다뿐) · 가장 크게: 화면 폭에 380px
   const sMax = () => VW / 380;
-  const sDef = () => clamp(VW / 760, sMin(), sMax());
+  const sMin = () => { const b = openBox(); return Math.min(sMax() * 0.9, Math.min((VW - 16) / (b.x1 - b.x0 + 80), availH() / (b.y1 - b.y0 + 80))); };
+  // 지역 하나를 화면에 맞춰 보기: 섬이 화면 폭을 거의 채우게(세로 폰은 가장자리 바닷가만 살짝 잘림 · 끌어서 봐요) · 높이는 위·아래 칸 사이 안
+  function frameOf(i) {
+    const b = boxOf(i), bw = b.x1 - b.x0, bh = b.y1 - b.y0;
+    const s = clamp(Math.min(availH() / (bh + 30), (VW - 16) / (VW > VH ? bw + 40 : bw * 0.78)), sMin(), sMax());
+    return { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 - (UI_T - UI_B) / 2 / s, s };
+  }
+  const sDef = () => frameOf(openN()).s;
+  // 끌기 한계: 열린 섬 테두리 밖으로는 화면 여유(가로 40px · 위아래는 칸 아래로 20px)까지만 · 화면보다 작으면 가운데
   function clampCam(soft) {
     cam.s = clamp(cam.s, sMin(), sMax());
-    // 지도 밖 여유: 화면 px 기준 (위 칸·아래 버튼에 섬이 가리지 않게 위 90 · 아래 150)
-    const hw = VW / 2 / cam.s, hh = VH / 2 / cam.s, k = (soft ? 1.6 : 1) / cam.s;
-    cam.x = clamp(cam.x, Math.min(hw - 60 * k, WW / 2), Math.max(WW - hw + 60 * k, WW / 2));
-    cam.y = clamp(cam.y, Math.min(hh - 90 * k, WH / 2), Math.max(WH - hh + 150 * k, WH / 2));
+    const b = openBox(), s = cam.s, hw = VW / 2 / s, sl = (soft ? 60 : 0) / s;
+    const xlo = b.x0 - 40 / s + hw - sl, xhi = b.x1 + 40 / s - hw + sl;
+    const ylo = b.y0 + (VH / 2 - UI_T - 20) / s - sl, yhi = b.y1 - (VH / 2 - UI_B - 20) / s + sl;
+    cam.x = xlo <= xhi ? clamp(cam.x, xlo, xhi) : (xlo + xhi) / 2;
+    cam.y = ylo <= yhi ? clamp(cam.y, ylo, yhi) : (ylo + yhi) / 2;
   }
   const toScr = (wx, wy) => ({ x: (wx - cam.x) * cam.s + VW / 2, y: (wy - cam.y) * cam.s + VH / 2 });
   const toWorld = (x, y) => ({ x: (x - VW / 2) / cam.s + cam.x, y: (y - VH / 2) / cam.s + cam.y });
@@ -164,6 +206,11 @@
     DPR = Math.min(window.devicePixelRatio || 1, 2);
     if (VW * VH * DPR * DPR > 2.4e6) DPR = Math.max(1, Math.sqrt(2.4e6 / (VW * VH)));
     [cv, stat].forEach((c) => { c.width = Math.round(VW * DPR); c.height = Math.round(VH * DPR); });
+    try {
+      const top = $('town').querySelector('.tw-top'), bot = $('town').querySelector('.tw-bot');
+      if (top) UI_T = Math.max(40, top.getBoundingClientRect().bottom - cv.getBoundingClientRect().top);
+      if (bot) UI_B = Math.max(40, cv.getBoundingClientRect().bottom - bot.getBoundingClientRect().top);
+    } catch (e) { /* 기본값 */ }
     statKey = '';
     clampCam();
   }
@@ -180,12 +227,33 @@
     const im = img(o.art);
     if (!im) return null;
     const h = o.w * im.h / im.w;
+    if (o.center) { const sk = Math.abs(o.skew || 0) * o.w; return { im, x: o.wx - o.w / 2, y: o.wy - h / 2 - sk / 2, w: o.w, h: h + sk }; }
     return { im, x: o.wx - o.w / 2, y: o.wy - h, w: o.w, h };
+  }
+  // 현판 글씨 (그림은 빈 나무판이라 코드로 써요)
+  function drawLabel(g, text, w, h) {
+    let fs = Math.min(h * 0.46, w * 0.8 / Math.max(1, text.length));
+    if (fs < 4) return;
+    g.font = `${fs}px Jua, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#5b3416'; g.fillText(text, 0, h * 0.02);
   }
   function drawSprite(g, o, sc, dy, alpha) {
     const r = spriteRect(o);
     if (!r) return;
     const s = cam.s;
+    if (o.center) {   // 가운데 기준 + 벽 기울기 (현판)
+      const ih = o.w * r.im.h / r.im.w, cxs = (o.wx - cam.x) * s + VW / 2, cys = (o.wy - cam.y) * s + VH / 2 + (dy || 0) * s;
+      if (cxs < -80 || cys < -80 || cxs > VW + 80 || cys > VH + 80) return;
+      if (alpha != null) g.globalAlpha = alpha;
+      g.save(); g.translate(cxs, cys);
+      if (sc && sc !== 1) g.scale(typeof sc === 'object' ? sc.x : sc, typeof sc === 'object' ? sc.y : sc);
+      g.transform(1, o.skew || 0, 0, 1, 0, 0);
+      g.drawImage(r.im.im, -o.w * s / 2, -ih * s / 2, o.w * s, ih * s);
+      if (o.label) drawLabel(g, o.label, o.w * s, ih * s);
+      g.restore();
+      if (alpha != null) g.globalAlpha = 1;
+      return;
+    }
     const x = (r.x - cam.x) * s + VW / 2, y = (r.y - cam.y) * s + VH / 2 + (dy || 0) * s;
     if (x > VW + 40 || y > VH + 40 || x + r.w * s < -40 || y + r.h * s < -40) return;
     if (o.kind !== 'debris' && o.kind !== 'deco' && !o.noShadow && o.fx !== 'bob' && o.fx !== 'pond') {
@@ -200,6 +268,7 @@
       g.drawImage(r.im.im || r.im, -r.w * s / 2, -r.h * s + (dy || 0) * s, r.w * s, r.h * s);
       g.restore();
     } else g.drawImage(r.im.im, x, y, r.w * s, r.h * s);
+    if (o.label && !(sc && sc !== 1)) { g.save(); g.translate(x + r.w * s / 2, y + r.h * s / 2); drawLabel(g, o.label, r.w * s, r.h * s); g.restore(); }
     if (alpha != null) g.globalAlpha = 1;
   }
   function drawStatic(g) {
@@ -253,11 +322,17 @@
       if (isOpen(i) && !(fogLift && fogLift.i === i)) continue;
       let a = 1;
       if (fogLift && fogLift.i === i) { a = 1 - clamp((t - fogLift.t0) / 1500, 0, 1); if (a <= 0) continue; }
-      const tt = T.areas[D.AREAS[i].id];
-      const x = (tt.col * TW - cam.x) * s + VW / 2, y = (tt.row * TH - cam.y) * s + VH / 2, w = TW * s, h = TH * s;
+      // 안개는 섬 위에만 (바다는 그대로 보여요 · 예전엔 지역 칸 전체를 하얗게 덮어 화면 위가 텅 빈 띠처럼 보였어요)
+      const bx = boxOf(i), pad = 60;
+      const x = (bx.x0 - pad - cam.x) * s + VW / 2, y = (bx.y0 - pad - cam.y) * s + VH / 2, w = (bx.x1 - bx.x0 + pad * 2) * s, h = (bx.y1 - bx.y0 + pad * 2) * s;
       if (x > VW || y > VH || x + w < 0 || y + h < 0) continue;
-      g.globalAlpha = a * (i > st().area + 1 ? 0.8 : 0.55);
-      g.fillStyle = '#f4f7f6'; g.fillRect(x, y, w, h);
+      const fcx = x + w / 2, fcy = y + h / 2, fr = Math.max(w, h) / 2;
+      g.save(); g.translate(fcx, fcy); g.scale(w / 2 / fr, h / 2 / fr);
+      const fg = g.createRadialGradient(0, 0, 0, 0, 0, fr);
+      const fa = i > st().area + 1 ? 0.92 : 0.8;
+      fg.addColorStop(0, `rgba(226,240,236,${fa})`); fg.addColorStop(0.7, `rgba(226,240,236,${fa * 0.8})`); fg.addColorStop(1, 'rgba(226,240,236,0)');
+      g.globalAlpha = a; g.fillStyle = fg; g.beginPath(); g.arc(0, 0, fr, 0, 6.283); g.fill();
+      g.restore();
       g.globalAlpha = a * 0.9;
       for (let k = 0; k < 7; k++) {
         const ph = (t / 26000 + k * 0.17) % 1;
@@ -482,6 +557,8 @@
       const k = clamp((e - 1750) / 450, 0, 1);
       const sc = k < 0.45 ? 0.6 + (1.12 - 0.6) * (k / 0.45) : k < 0.75 ? 1.12 - 0.16 * ((k - 0.45) / 0.3) : 0.96 + 0.04 * ((k - 0.75) / 0.25);
       const art = b.kind === 'B3' ? lookArt(a.id) : b.art;
+      const mo = b.mount ? mountObj(a.id, x.i) : null;
+      if (mo) { drawSprite(g, mo, { x: sc * (k < 0.45 ? 0.94 : 1), y: sc * (k < 0.45 ? 1.06 : 1) }); return; }
       const all = [b.at].concat(b.rep || []);
       all.forEach((p) => { const w = W(x.i, p); drawSprite(g, { art, wx: w.x, wy: w.y, w: b.w, fx: b.fx }, { x: sc * (k < 0.45 ? 0.94 : 1), y: sc * (k < 0.45 ? 1.06 : 1) }); });
     }
@@ -602,6 +679,7 @@
   }
 
   /* ---------- 열기 · 닫기 ---------- */
+  let sessCam = null;
   function open() {
     if (U.busy) return;
     const s = st();
@@ -610,9 +688,10 @@
     shell();
     deco = false; placing = null; hold = null; pick = null; drawer = false;
     resize();
-    const c = s.cam && isOpen(areaAt(s.cam.x, s.cam.y)) ? s.cam : null;
+    // 이 화면을 연 뒤 다시 들어오면 보던 자리 · 새로 열면 지금 지역 섬을 화면에 맞춰요 (옛 저장의 카메라는 안 써요)
+    const c = sessCam && isOpen(areaAt(sessCam.x, sessCam.y)) ? sessCam : null;
     if (c) { cam.x = c.x; cam.y = c.y; cam.s = clamp(c.z, sMin(), sMax()); }
-    else { const p = areaCenter(openN()); cam.x = p.x; cam.y = p.y; cam.s = sDef(); }
+    else { const f = frameOf(openN()); cam.x = f.x; cam.y = f.y; cam.s = f.s; }
     clampCam();
     dirty(); makeWalkers(); start();
     U.musicTick();
@@ -623,7 +702,7 @@
   function close() {
     if (anim || hold) return;
     if (pick) { closePick(); }
-    st().cam = { x: Math.round(cam.x), y: Math.round(cam.y), z: +cam.s.toFixed(4) };
+    st().cam = sessCam = { x: Math.round(cam.x), y: Math.round(cam.y), z: +cam.s.toFixed(4) };
     U.changed();
     stop();
     $('town').classList.add('hide');
@@ -643,8 +722,8 @@
     const s = st();
     delete s.seen.townNew; U.changed();
     U.toast('마을이 새 모습이 됐어요! 🏡');
-    const p = areaCenter(openN());
-    flyTo(p.x, p.y, sDef() * 0.8, 700, () => {
+    const p = frameOf(openN());
+    flyTo(p.x, p.y, p.s, 700, () => {
       getScene().filter((o) => o.kind === 'build' && areaAt(o.wx, o.wy) === openN()).slice(0, 12).forEach((o, k) => setTimeout(() => {
         if (!cv) return;
         const q = toScr(o.wx, o.wy - o.w * 0.4), r = cv.getBoundingClientRect();
@@ -816,8 +895,8 @@
     if (ni < 0) { bubFor = ''; U.toast('소라섬에 등불이 다시 켜졌어요! 부탁과 이벤트는 계속돼요'); return; }
     fogLift = { i: ni, t0: performance.now() };
     fogHold = -1; dirty(); makeWalkers();
-    const c = areaCenter(ni);
-    flyTo(c.x, c.y, sDef(), 1100, () => {
+    const c = frameOf(ni);
+    flyTo(c.x, c.y, c.s, 1100, () => {
       setTimeout(() => { fogLift = null; }, 1500);
       U.musicTick();
       const next = D.AREAS[ni];
@@ -1177,7 +1256,7 @@
   window.MergeTown = {
     open, close, resume, doTask, refresh, openFolk, openFriend, friendUps, skipAnim,
     render: () => { dirty(); bubFor = ''; },
-    show: (i) => { const p = areaCenter(i); flyTo(p.x, p.y, null, 500); },
+    show: (i) => { const p = frameOf(i); flyTo(p.x, p.y, p.s, 500); },
     // 배경음악: 카메라 가운데 지역 (안 열린 곳이면 지금 지역)
     get index() { if (!cv) return openN(); const i = areaAt(cam.x, cam.y); return i >= 0 && isOpen(i) ? i : openN(); },
     get cam() { return { x: cam.x, y: cam.y, s: cam.s }; },

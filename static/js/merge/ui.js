@@ -23,9 +23,17 @@
 
   let ls = null;
   try { ls = window.localStorage; } catch (e) { ls = null; }
-  const store = S.localAdapter(ls);
-  const freshLocal = !S.hasSave(store);
-  let st = S.load(store, now(), rng);
+  const baseStore = S.localAdapter(ls);
+  // 이 폰 저장 열기: 옛 버전 저장은 바꾸기 전에 보관 · 읽지 못한 저장도 지우기 전에 보관(새 판은 '처음'으로 쳐서 서버 기록이 이겨요)
+  // (배포 직후 save.js 만 옛 것이 남아 있어도 멈추지 않게 open 이 없으면 예전 방식)
+  const opened = S.open ? S.open(baseStore, now(), rng) : { st: S.load(baseStore, now(), rng), fresh: !S.hasSave(baseStore) };
+  const bkList = () => (S.backups ? S.backups(store) : []);
+  const bkSave = (x, why) => { if (S.backupState) S.backupState(store, x, why, now()); };
+  const freshLocal = opened.fresh;
+  // 더 새 버전의 저장(옛 화면 파일이 남아 있을 때): 이 화면에서는 저장·서버 올리기를 막아 덮어쓰지 않아요
+  const saveLock = !!opened.newer;
+  const store = saveLock ? { read: baseStore.read, write: (k, v) => (k === D.SAVE_KEY ? false : baseStore.write(k, v)), remove: baseStore.remove } : baseStore;
+  let st = opened.st;
   const saver = S.Saver(store, () => st, 1000);
   function changed() { st.updatedAt = now(); saver.schedule(); }
 
@@ -1200,8 +1208,37 @@
       <button type="button" class="btn" data-sync="now">서버에 지금 저장</button>
       <button type="button" class="btn" data-sync="code">다른 폰의 코드로 불러오기</button>
       <div class="two"><button type="button" class="btn" data-sync="export">내보내기(복사)</button><button type="button" class="btn" data-sync="import">불러오기(붙여넣기)</button></div>
+      ${bkList().length ? '<button type="button" class="btn" data-backups="1">이전 기록 되살리기</button>' : ''}
       <button type="button" class="btn warn" data-reset="1">${confirmReset ? '정말 처음부터 할까요? 한 번 더 누르면 지워져요' : '처음부터 하기'}</button>
       <button type="button" class="btn" data-close="1">닫기</button>`;
+  }
+  // 이전 기록 되살리기: 덮어쓰기 전에 보관해 둔 기록 (save.js backupRaw)
+  const WHY = { migrate: '새 버전으로 바꾸기 전', broken: '읽지 못한 기록', newer: '더 새 버전의 기록', reset: '처음부터 하기 전',
+    remote: '서버 기록으로 바꾸기 전', code: '다른 폰 코드로 바꾸기 전', import: '붙여넣기 전', restore: '되살리기 전' };
+  function bkLine(b) {
+    const m = b.sum || {}; const t = new Date(m.updatedAt || b.at);
+    const area = D.AREAS[Math.min(D.AREAS.length - 1, m.area | 0)];
+    return `${esc(area ? area.name : '')} · 별 ${m.stars | 0} · 동전 ${m.coins | 0} · 복원 ${m.tasks | 0}곳 · 부탁 ${m.delivered | 0}번<br><small>${t.getMonth() + 1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')} · ${esc(WHY[b.why] || '보관')}</small>`;
+  }
+  function openBackups() {
+    const list = bkList();
+    if (!list.length) { toast('보관된 기록이 없어요'); return; }
+    openSheet(`<h2>이전 기록 되살리기</h2>
+      <p class="center muted">고르면 지금 기록도 따로 보관해 두고 바꿔요</p>
+      ${list.map((b, i) => `<button type="button" class="btn pick" data-bk="${i}">${bkLine(b)}</button>`).join('')}
+      <button type="button" class="btn" data-close="1">닫기</button>`,
+    (b) => {
+      if (b.dataset.bk == null) return;
+      const bk = list[+b.dataset.bk]; if (!bk) return;
+      let next = null;
+      try { next = C.deserialize(bk.data, now(), rng); } catch (e) { next = null; }
+      if (!next) { toast(bk.v > D.VERSION ? '이 기록은 새 버전에서 열려요 · 화면을 새로 고쳐 주세요' : '이 기록을 읽지 못했어요'); return; }
+      closeSheet();
+      bkSave(st, 'restore');
+      next.updatedAt = now();
+      adopt(next, '이전 기록을 되살렸어요');
+      syncPush(true);
+    });
   }
   function openSettings() {
     let armed = false;
@@ -1215,8 +1252,11 @@
         re(); renderAll(); changed();
       } else if (b.dataset.sync) {
         syncAction(b.dataset.sync, re);
+      } else if (b.dataset.backups) {
+        openBackups();
       } else if (b.dataset.reset) {
         if (!armed) { armed = true; F.sfx('bad'); re(); return; }
+        bkSave(st, 'reset');   // 처음부터 해도 설정 › 이전 기록 되살리기로 돌아갈 수 있게
         st = C.newState(now(), rng);
         sel = -1; wasReady = {}; shown.reset(st);
         $('orders').innerHTML = '';
@@ -1584,7 +1624,7 @@
     return `서버 저장: ${m < 1 ? '방금' : m + '분 전'}`;
   }
   async function syncPush(force) {
-    if (syncSt.busy || syncSt.conflict) return null;
+    if (syncSt.busy || syncSt.conflict || saveLock) return null;
     syncSt.busy = true; syncSt.lastTry = now();
     saver.flush();
     const r = await server.save(sync.id, st, force);
@@ -1597,7 +1637,7 @@
   function syncTick() {
     if (st.updatedAt > (sync.sentAt || 0) && now() - syncSt.lastTry > 30000) syncPush(false);
   }
-  function syncBeacon() { if (st.updatedAt > (sync.sentAt || 0) && !syncSt.conflict && server.beacon(sync.id, st)) { sync.sentAt = st.updatedAt; S.setSyncInfo(store, sync); } }
+  function syncBeacon() { if (!saveLock && st.updatedAt > (sync.sentAt || 0) && !syncSt.conflict && server.beacon(sync.id, st)) { sync.sentAt = st.updatedAt; S.setSyncInfo(store, sync); } }
   // 서버 저장을 받아서 고르기 (처음 열 때 · 다른 폰 코드 · 서버가 더 새것일 때)
   async function syncPull(conflict, fresh) {
     const r = await server.load(sync.id);
@@ -1605,7 +1645,7 @@
     const remote = C.deserialize(r.data, now(), rng);
     if (!remote) return { ok: false };
     const how = conflict ? 'ask' : S.pickSave(st, remote, fresh);
-    if (how === 'remote') adopt(remote, '서버에 있던 기록을 불러왔어요');
+    if (how === 'remote') adopt(remote, '서버에 있던 기록을 불러왔어요', 'remote');
     else if (how === 'ask') askWhich(remote);
     else syncSt.conflict = false;
     return r;
@@ -1620,11 +1660,12 @@
       if (!b.dataset.which) return;
       closeSheet();
       syncSt.conflict = false;
-      if (b.dataset.which === 'remote') adopt(remote, '서버 기록으로 바꿨어요');
+      if (b.dataset.which === 'remote') adopt(remote, '서버 기록으로 바꿨어요', 'remote');
       else { st.updatedAt = Math.max(now(), (remote.updatedAt || 0) + 1); syncPush(true); toast('이 폰 기록을 서버에 올렸어요'); }
     });
   }
-  function adopt(next, msg) {
+  function adopt(next, msg, why) {
+    if (why) bkSave(st, why);   // 바꾸기 전 이 폰 기록을 보관 (처음 판이면 건너뜀)
     st = next;
     sel = -1; wasReady = {}; shown.reset(st); clearUndo();
     $('orders').innerHTML = '';
@@ -1648,7 +1689,7 @@
         const remote = C.deserialize(r.data, now(), rng);
         if (!remote) { toast('기록을 읽지 못했어요'); return; }
         sync.id = id; S.setSyncInfo(store, sync);
-        adopt(remote, '그 폰의 기록을 불러왔어요 · 이제 같은 코드로 저장돼요');
+        adopt(remote, '그 폰의 기록을 불러왔어요 · 이제 같은 코드로 저장돼요', 'code');
       });
     } else if (kind === 'export') {
       saver.flush();
@@ -1662,7 +1703,7 @@
         const next = C.deserialize(String(val || '').trim(), now(), rng);
         if (!next) { toast('저장 글을 읽지 못했어요'); return; }
         next.updatedAt = now();
-        adopt(next, '불러왔어요!');
+        adopt(next, '불러왔어요!', 'import');
       });
     }
   }
@@ -1707,6 +1748,12 @@
     if (!st.seen.intro) setTimeout(playIntro, 300);
     else setTimeout(() => { if (window.MergeTown) window.MergeTown.resume(); maybeDaily(); }, 300);
     offline();
+    if (saveLock) {
+      openSheet(`<h2>새 버전이 나왔어요</h2><p class="center">이 폰에는 더 새 버전의 기록이 있어요.<br>화면을 새로 고치면 그대로 이어서 할 수 있어요.</p>
+        <button type="button" class="btn main" data-reload="1">새로 고치기</button>`, (b) => { if (b.dataset.reload) location.reload(); });
+      return;   // 이 화면에서는 저장도 서버 불러오기도 하지 않아요 (기록 보호)
+    }
+    if (opened.broken) setTimeout(() => toast('기록을 읽지 못해 따로 보관했어요 · 설정 › 이전 기록 되살리기'), 1500);
     saver.schedule();
     syncPull(false, freshLocal);
   }

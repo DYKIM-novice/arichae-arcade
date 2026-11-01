@@ -20,11 +20,65 @@
     };
   }
 
-  function load(adapter, now, rng) {
-    const raw = adapter.read(D.SAVE_KEY);
-    const st = raw ? C.deserialize(raw, now, rng) : null;
-    return st || C.newState(now, rng);
+  /* ---------- 이전 기록 보관 (덮어쓰기 전에 한 벌씩 · 설정 › 이전 기록 되살리기) ----------
+     옛 저장을 새 버전으로 바꾸기 전 · 읽지 못한 저장 · 서버/코드/붙여넣기 기록으로 바꾸기 전 · 처음부터 하기 전
+     → localStorage['arichae_merge_backup'] 에 [{ at, why, v, sum, data(저장 글 그대로) }] 최근 BACKUP_MAX 개
+     (가장 많이 한 기록 하나는 오래돼도 지우지 않아요) */
+  const BACKUP_KEY = 'arichae_merge_backup';
+  const BACKUP_MAX = 5;
+  // 저장 글 → 짧은 요약 (버전이 달라도 · 읽지 못해도 되게 그냥 JSON 에서 꺼내요)
+  function rawSummary(raw) {
+    let o = null;
+    try { o = JSON.parse(raw); } catch (e) { o = null; }
+    if (!o || typeof o !== 'object') return null;
+    return { v: typeof o.v === 'number' ? o.v : 0, stars: o.stars | 0, coins: o.coins | 0,
+      tasks: o.tasks && typeof o.tasks === 'object' ? Object.keys(o.tasks).length : 0, area: o.area | 0,
+      delivered: (o.stats && o.stats.delivered) | 0, updatedAt: +o.updatedAt || 0 };
   }
+  const progress = (m) => (m ? m.area * 1e6 + m.tasks * 1e3 + Math.min(999, m.delivered) : -1);
+  // 처음 시작한 판(부탁·작업 0)은 보관할 필요 없어요
+  const hasProgress = (m) => !!m && (m.tasks > 0 || m.delivered > 0 || m.area > 0);
+  function backups(adapter) {
+    let a = null;
+    try { a = JSON.parse(adapter.read(BACKUP_KEY) || 'null'); } catch (e) { a = null; }
+    return Array.isArray(a) ? a.filter((b) => b && typeof b.data === 'string') : [];
+  }
+  function backupRaw(adapter, raw, why, now) {
+    if (typeof raw !== 'string' || !raw) return false;
+    const sum = rawSummary(raw);
+    if (sum && !hasProgress(sum) && why !== 'broken' && why !== 'newer') return false;
+    const list = backups(adapter).filter((b) => b.data !== raw);   // 같은 기록은 한 번만
+    list.unshift({ at: now || Date.now(), why: String(why || ''), v: sum ? sum.v : 0, sum, data: raw });
+    while (list.length > BACKUP_MAX) {
+      let best = 0;
+      list.forEach((b, i) => { if (progress(b.sum) > progress(list[best].sum)) best = i; });
+      list.splice(best === list.length - 1 ? list.length - 2 : list.length - 1, 1);
+    }
+    if (adapter.write(BACKUP_KEY, JSON.stringify(list))) return true;
+    // 저장소가 꽉 찼으면 가장 많이 한 기록 + 이번 것만이라도
+    const best = list.slice(1).reduce((m, b) => (progress(b.sum) > progress(m ? m.sum : null) ? b : m), null);
+    return adapter.write(BACKUP_KEY, JSON.stringify(best ? [list[0], best] : [list[0]]));
+  }
+  const backupState = (adapter, st, why, now) => backupRaw(adapter, C.serialize(st), why, now);
+
+  // 이 폰의 저장 열기 → { st, fresh(새 판), broken(읽지 못해 보관함), newer(더 새 버전의 저장), migrated }
+  // 읽지 못한 저장은 지우기 전에 반드시 보관 · 더 새 버전 저장(옛 화면이 남아 있을 때)은 덮어쓰지 않게 newer 로 알려요
+  function open(adapter, now, rng) {
+    const raw = adapter.read(D.SAVE_KEY);
+    if (!raw) return { st: C.newState(now, rng), fresh: true };
+    const sum = rawSummary(raw);
+    let st = null;
+    try { st = C.deserialize(raw, now, rng); } catch (e) { st = null; }
+    if (!st) {
+      const newer = !!sum && sum.v > D.VERSION;
+      backupRaw(adapter, raw, newer ? 'newer' : 'broken', now);
+      return { st: C.newState(now, rng), fresh: true, broken: true, newer };
+    }
+    const migrated = !!sum && sum.v !== D.VERSION;
+    if (migrated) backupRaw(adapter, raw, 'migrate', now);
+    return { st, fresh: false, migrated };
+  }
+  function load(adapter, now, rng) { return open(adapter, now, rng).st; }
   const hasSave = (adapter) => !!adapter.read(D.SAVE_KEY);
   function save(adapter, st) { return adapter.write(D.SAVE_KEY, C.serialize(st)); }
 
@@ -77,7 +131,8 @@
     if (!remote) return 'local';
     if (!local || freshLocal) return 'remote';
     const a = C.summary(local), b = C.summary(remote);
-    if (b.updatedAt <= a.updatedAt) return 'local';
+    // 이 폰이 더 새것인데 진행은 서버가 훨씬 앞서요(지역·작업) → 이 폰 기록이 처음으로 돌아간 것일 수 있으니 물어봐요
+    if (b.updatedAt <= a.updatedAt) return (b.area > a.area || b.tasks > a.tasks) && (b.delivered > a.delivered) ? 'ask' : 'local';
     // 서버가 더 새것: 진행이 같거나 앞서면 그냥 서버 · 이 폰이 더 많이 했으면 물어봐요
     const localAhead = a.tasks > b.tasks || a.area > b.area || a.delivered > b.delivered;
     if (!localAhead) return 'remote';
@@ -117,7 +172,7 @@
     };
   }
 
-  const API = { localAdapter, load, hasSave, save, Saver, newId, syncInfo, setSyncInfo, prettyId, cleanId, ID_RE, pickSave, Server };
+  const API = { localAdapter, open, load, hasSave, backups, backupRaw, backupState, rawSummary, BACKUP_KEY, BACKUP_MAX, save, Saver, newId, syncInfo, setSyncInfo, prettyId, cleanId, ID_RE, pickSave, Server };
   if (typeof module === 'object' && module.exports) module.exports = API;
   else root.MergeSave = API;
 })(typeof window !== 'undefined' ? window : globalThis);
