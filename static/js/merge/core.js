@@ -8,7 +8,7 @@
   'use strict';
 
   const D = (typeof module === 'object' && module.exports) ? require('./data.js') : root.MergeData;
-  const { CHAINS, GENS, AREAS, BOARD, BAL, START, VILLAGERS, STORY_ORDERS, SECRETS, DAILY, EVENTS, LETTERS } = D;
+  const { CHAINS, GENS, AREAS, BOARD, BAL, START, VILLAGERS, STORY_ORDERS, SECRETS, DAILY, EVENTS, LETTERS, SHOP } = D;
   const N = BOARD.cols * BOARD.rows;
   const COLS = BOARD.cols;
 
@@ -57,7 +57,8 @@
       found: {}, unlocked: START.chains.slice(),
       refill: { day: dayKey(now), n: 0 },
       stats: { merges: 0, spawns: 0, delivered: 0, sold: 0, best: {} },
-      settings: { sfx: true, vib: true, easy: false, nums: true, hint: true, bgm: false, vol: 2, bgmVol: 2, big: false, calm: false },
+      // 소리 크기 vol·bgmVol = 0~100 (v3 부터 · 옛 1~3 단계는 MIGRATE[2]) · bgm 은 처음부터 켜짐 (첫 톡 뒤에 들려요)
+      settings: { sfx: true, vib: true, easy: false, nums: true, hint: true, bgm: true, bgmAsked: true, vol: 65, bgmVol: 60, quietNight: false, autoKeep: true, big: false, calm: false },
       seen: {},
       area: 0, tasks: {}, story: {},
       bag: new Array(BAL.bagStart).fill(null), gifts: [], charge: {},
@@ -70,6 +71,8 @@
       evLast: null,              // 지난 이벤트 정리 결과 (화면이 한 번 알려 줘요)
       decos: [], placed: {},     // 장식 (가진 것 · 마을에 놓은 자리)
       thx: {},                   // 고맙다는 말 돌려 쓰기 (사람 → 다음 번호)
+      shop: { day: '', deals: [], bought: {}, rerolled: false, freeTaken: false, free: 0 },   // 상점 (매일 0시 새로)
+      boost: { autoMs: 0, handsMs: 0, autoTok: 0 },   // 자동 합치기 1분 · 바쁜 손 남은 시간(앱을 연 동안만 줄어요) · 무료 자동 합치기
       createdAt: now, updatedAt: now
     };
     board.forEach((cell) => { if (cell && cell.k === 'item') st.found[itemId(cell)] = true; });
@@ -95,7 +98,7 @@
   function refillPrice(st, now) {
     if (!st.refill || st.refill.day !== dayKey(now)) st.refill = { day: dayKey(now), n: 0 };
     const n = st.refill.n;
-    return { price: n < BAL.refillPrices.length ? BAL.refillPrices[n] : 0, left: BAL.refillPrices.length - n };
+    return { price: n < BAL.refillPrices.length ? BAL.refillPrices[n] * shopMult(st) : 0, left: BAL.refillPrices.length - n };
   }
   function refill(st, now) {
     regen(st, now);
@@ -159,7 +162,7 @@
     const at = nearestEmpty(st, idx, rng);
     if (at < 0) return { ok: false, reason: 'full' };
     regen(st, now);
-    const free = !!st.settings.easy;
+    const free = !!st.settings.easy || !!(st.boost && st.boost.handsMs > 0);   // 편하게 모드 · 바쁜 손
     if (!free && st.energy < BAL.spawnCost) return { ok: false, reason: 'energy' };
     if (!free) {
       if (st.energy >= BAL.energyMax) st.energyAt = now;   // 가득 찬 상태에서 처음 쓰면 그때부터 회복 시계 시작
@@ -355,22 +358,12 @@
     st.updatedAt = now;
     return { ok: true, at, cell };
   }
-  function buyShop(st, id, now, rng) {
-    const it = BAL.shop.find((x) => x.id === id);
-    if (!it) return { ok: false, reason: 'gone' };
-    if (st.gems < it.gems) return { ok: false, reason: 'gems', price: it.gems };
-    st.gems -= it.gems;
-    const r = giveCell(st, clone(it.cell), rng);
-    st.updatedAt = now;
-    return Object.assign({ ok: true, cell: it.cell, price: it.gems }, r);
-  }
-
   /* ---------- 되돌리기 (마지막 행동 1번: 옮기기·합치기·팔기·가방) ---------- */
-  function snapshot(st) { return JSON.stringify({ board: st.board, bag: st.bag, cover: st.cover, gifts: st.gifts, coins: st.coins, gems: st.gems }); }
+  function snapshot(st) { return JSON.stringify({ board: st.board, bag: st.bag, cover: st.cover, gifts: st.gifts, coins: st.coins, gems: st.gems, boost: st.boost }); }
   function restore(st, snap) {
     try {
       const s = JSON.parse(snap);
-      ['board', 'bag', 'cover', 'gifts', 'coins', 'gems'].forEach((k) => { st[k] = s[k]; });
+      ['board', 'bag', 'cover', 'gifts', 'coins', 'gems', 'boost'].forEach((k) => { if (s[k] !== undefined) st[k] = s[k]; });
       return true;
     } catch (e) { return false; }
   }
@@ -404,10 +397,12 @@
     let hi = area.orders.tiers[1];
     if (st.orders.some((o) => !o.story && !o.ev && now - o.at > BAL.orderStuckMs)) hi = Math.max(lo, hi - 1);   // 막힘 방지
     const n = rint(rng, area.orders.items[0], area.orders.items[1]);
+    const easy = (st.area | 0) === 0 && (st.orderSeq | 0) < (BAL.firstEasyOrders | 0);   // 새 판 첫 부탁 2장은 1단계 (첫 고치기까지 빨리)
     const need = [];
     for (let i = 0; i < n; i++) {
       const c = i === 0 ? lead : pick(rng, chains);
-      const t = Math.min(maxTier(c), rint(rng, lo, hi));
+      const tr = Math.min(maxTier(c), rint(rng, lo, hi));
+      const t = easy ? 1 : tr;
       need.push({ c, t });
     }
     need.sort((x, y) => (x.c < y.c ? -1 : x.c > y.c ? 1 : x.t - y.t));
@@ -548,6 +543,217 @@
     st.skipAt = now;
     st.updatedAt = now;
     return { ok: true, old, order: o };
+  }
+
+  /* ---------- 상점 (merge_town.md §F · 동전이 기본 · 소라별은 특별한 것만) ---------- */
+  const seeded = (seed) => { let s = seed >>> 0 || 1; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; };
+  // 가격 배수 m: 지금 지역(다 고친 뒤엔 마지막 지역) 번호로
+  function shopMult(st) { return SHOP.mult[Math.max(0, Math.min(SHOP.mult.length - 1, st.area | 0))]; }
+  const shopChains = (st) => st.unlocked.filter((c) => CHAINS[c] && !isAux(c) && !isEvent(c));
+  function itemCoins(st, id) { const it = SHOP.items[id]; return it && it.coins ? it.coins * (it.mult ? shopMult(st) : 1) : 0; }
+  // 오늘의 특가 3칸: 한 칸은 꼭 지금 지역 체인 3~4단계 (주문 막힘 풀기) · 나머지는 dealPool 에서 · 30~50% 할인
+  function genDeals(st, day, salt) {
+    const r = seeded(hash(day + ':' + (salt || '') + ':' + (st.area | 0)));
+    const area = AREAS[orderLevel(st)];
+    let ch = area.chains.filter((c) => st.unlocked.indexOf(c) >= 0);
+    if (!ch.length) ch = shopChains(st);
+    const deals = [{ id: 'tier', c: pick(r, ch), t: r() < 0.5 ? 3 : 4, off: pick(r, SHOP.dealOff) }];
+    const pool = SHOP.dealPool.slice();
+    while (deals.length < 3 && pool.length) deals.push({ id: pool.splice(Math.floor(r() * pool.length) % pool.length, 1)[0], off: pick(r, SHOP.dealOff) });
+    return deals;
+  }
+  // 날이 바뀌면 새로 (특가·무료 칸·하루 제한)
+  function shopTouch(st, now) {
+    const day = dayKey(now);
+    if (st.shop && st.shop.day === day) return false;
+    st.shop = { day, deals: genDeals(st, day), bought: {}, rerolled: false, freeTaken: false, free: hash(day + 'free') % SHOP.free.length };
+    return true;
+  }
+  const dealBase = (st, d) => (d.id === 'tier' ? SHOP.tierPrice[d.t] : itemCoins(st, d.id));
+  const dealPrice = (st, d) => Math.max(1, Math.round(dealBase(st, d) * (1 - d.off)));
+  const dealGive = (d) => (d.id === 'tier' ? { k: 'item', c: d.c, t: d.t } : null);
+  const bought = (st, key) => (st.shop.bought[key] | 0);
+  // 쉬고 있는 충전식 발생기 (가장 오래 기다려야 하는 것부터)
+  function restingGens(st, now) {
+    const out = [];
+    st.board.forEach((x, i) => { if (x && x.k === 'gen') { const ch = chargeInfo(st, x.g, now); if (ch && ch.restMs > 0) out.push({ at: i, g: x.g, restMs: ch.restMs }); } });
+    return out.sort((a, b) => b.restMs - a.restMs);
+  }
+  // 받은 것 넣기: 물건이면 판 빈칸(없으면 선물함) · 도우미면 남은 시간
+  function grant(st, what, rng, kind) {
+    if (kind === 'auto1m') { st.boost.autoMs += SHOP.auto1mMs; return { kind }; }
+    if (kind === 'hands') { st.boost.handsMs += SHOP.handsMs; return { kind }; }
+    if (kind === 'token') { st.boost.autoTok = (st.boost.autoTok | 0) + 1; return { kind }; }
+    const cell = clone(what);
+    return Object.assign({ cell }, giveCell(st, cell, rng || Math.random));
+  }
+  // 사기: req = { id, pay:'coins'|'gems', c, t (id 'tier'), slot (id 'deal') }
+  function shopBuy(st, req, now, rng) {
+    shopTouch(st, now);
+    const id = req.id;
+    let price = 0, pay = req.pay === 'gems' ? 'gems' : 'coins', what = null, kind = null, limitKey = null, limit = 0;
+    if (id === 'tier') {
+      const t = req.t | 0;
+      if (!SHOP.tierPrice[t] || t > 3 || shopChains(st).indexOf(req.c) < 0) return { ok: false, reason: 'gone' };
+      price = SHOP.tierPrice[t]; what = { k: 'item', c: req.c, t };
+      if (SHOP.tierDay[t]) { limitKey = 'tier' + t; limit = SHOP.tierDay[t]; }
+      pay = 'coins';
+    } else if (id === 'deal') {
+      const d = st.shop.deals[req.slot | 0];
+      if (!d) return { ok: false, reason: 'gone' };
+      price = dealPrice(st, d); limitKey = 'deal' + (req.slot | 0); limit = 1; pay = 'coins';
+      what = dealGive(d);
+      if (!what) { const it = SHOP.items[d.id]; what = it.give || null; kind = it.kind || null; }
+    } else {
+      const it = SHOP.items[id];
+      if (!it) return { ok: false, reason: 'gone' };
+      if (it.kind === 'refill') return Object.assign(refill(st, now), { kind: 'refill' });
+      if (it.kind === 'bag') return Object.assign(growBag(st, now), { kind: 'bag' });
+      if (it.kind === 'auto') return { ok: false, reason: 'auto' };
+      kind = it.kind || null; what = it.give || null;
+      if (pay === 'gems' && !it.gems) pay = 'coins';
+      price = pay === 'gems' ? it.gems : itemCoins(st, id);
+      if (pay === 'coins' && it.day) { limitKey = id; limit = it.day; }
+      if (kind === 'recharge' && !restingGens(st, now).length) return { ok: false, reason: 'norest' };
+      if (kind === 'skip' && (st.skipAt || 0) + BAL.skipCooldownMs <= now) return { ok: false, reason: 'nocool' };
+    }
+    if (limitKey && bought(st, limitKey) >= limit) return { ok: false, reason: 'limit' };
+    if (st[pay] < price) return { ok: false, reason: pay, price, short: price - st[pay] };
+    st[pay] -= price;
+    if (limitKey) st.shop.bought[limitKey] = bought(st, limitKey) + 1;
+    st.updatedAt = now;
+    let got;
+    if (kind === 'recharge') { const g = restingGens(st, now)[0]; st.charge[g.g] = { n: 0, until: 0 }; got = { kind, gen: g }; }
+    else if (kind === 'skip') { st.skipAt = 0; got = { kind }; }
+    else got = grant(st, what, rng, kind);
+    return Object.assign({ ok: true, price, pay }, got);
+  }
+  // [다시 섞기] 하루 1번 · 10 × m
+  function shopReroll(st, now) {
+    shopTouch(st, now);
+    if (st.shop.rerolled) return { ok: false, reason: 'done' };
+    const price = SHOP.rerollCoins * shopMult(st);
+    if (st.coins < price) return { ok: false, reason: 'coins', price, short: price - st.coins };
+    st.coins -= price;
+    st.shop.deals = genDeals(st, st.shop.day, 'r');
+    Object.keys(st.shop.bought).forEach((k) => { if (/^deal/.test(k)) delete st.shop.bought[k]; });
+    st.shop.rerolled = true;
+    st.updatedAt = now;
+    return { ok: true, price };
+  }
+  // 오늘의 무료 1칸
+  function shopFree(st, now, rng) {
+    shopTouch(st, now);
+    if (st.shop.freeTaken) return { ok: false, reason: 'done' };
+    const f = SHOP.free[st.shop.free % SHOP.free.length];
+    st.shop.freeTaken = true;
+    st.updatedAt = now;
+    return Object.assign({ ok: true, free: f }, f.token ? grant(st, null, rng, 'token') : grant(st, f.give, rng));
+  }
+
+  /* ---------- 자동 합치기 (merge_town.md §G · 동전) ---------- */
+  // 지금 부탁에 필요한 물건 (단계·개수만큼 남겨요 · 가방에 있는 만큼은 빼요) · 설정 autoKeep 끄면 안 남김
+  function autoReserve(st) {
+    const need = {};
+    if (st.settings && st.settings.autoKeep === false) return need;
+    st.orders.forEach((o) => o.need.forEach((n) => { const id = n.c + n.t; need[id] = (need[id] | 0) + 1; }));
+    st.bag.forEach((c) => { if (c && c.k === 'item') { const id = itemId(c); if (need[id] > 0) need[id]--; } });
+    return need;
+  }
+  // 건드리지 않는 것: 발생기 · 마지막 단계 · 모래더미 · 보조 물건(식혜·엽전·소라별·보자기) · 무지개 소라 · 고정(핀)
+  const autoOk = (st, i) => { const c = st.board[i]; return !!c && c.k === 'item' && !isAux(c.c) && c.t < maxTier(c.c) && !c.pin && !covered(st, i); };
+  // 결과는 두 칸 중 아래쪽(같은 줄이면 왼쪽)
+  const lowerLeft = (a, b) => { const A = rc(a), B = rc(b); if (A.r !== B.r) return A.r > B.r ? a : b; return A.c < B.c ? a : b; };
+  function autoPairs(st) {
+    const res = autoReserve(st), groups = {};
+    for (let i = 0; i < N; i++) if (autoOk(st, i)) { const id = itemId(st.board[i]); (groups[id] = groups[id] || []).push(i); }
+    const pairs = [];
+    Object.keys(groups).forEach((id) => {
+      const list = groups[id];
+      const avail = list.slice(0, Math.max(0, list.length - (res[id] | 0)));
+      for (let k = 0; k + 1 < avail.length; k += 2) {
+        const to = lowerLeft(avail[k], avail[k + 1]);
+        pairs.push({ from: to === avail[k] ? avail[k + 1] : avail[k], to });
+      }
+    });
+    return pairs;
+  }
+  // 짝지어 합치기 → 결과가 또 짝이 되면 이어서(연쇄) · 더 없을 때까지
+  function runAuto(st, now) {
+    const steps = [];
+    for (let guard = 0; guard < 120; guard++) {
+      const ps = autoPairs(st);
+      if (!ps.length) break;
+      ps.forEach((p) => steps.push(Object.assign({ from: p.from }, move(st, p.from, p.to, now))));
+    }
+    return steps;
+  }
+  function autoPrice(st, n) {
+    if (!n) return 0;
+    const m = shopMult(st);
+    return Math.min(m * BAL.autoMerge.cap, m * (BAL.autoMerge.base + n));
+  }
+  // 미리 계산 (판은 그대로): { n 합치는 횟수, steps:[{from,to}], price, token 무료 횟수 }
+  function autoMergePlan(st, now) {
+    const sim = clone(st);
+    const steps = runAuto(sim, now || 0);
+    return { n: steps.length, steps: steps.map((s) => ({ from: s.from, to: s.at })), price: autoPrice(st, steps.length), token: (st.boost && st.boost.autoTok) | 0 };
+  }
+  // 값 치르기까지 (화면은 steps 를 하나씩 move 로 보여 줘요) · 무료 횟수가 있으면 그것부터
+  function autoMergeBuy(st, now, opts) {
+    const plan = autoMergePlan(st, now);
+    if (!plan.n) return { ok: false, reason: 'none' };
+    const useTok = !(opts && opts.token === false) && plan.token > 0;
+    const price = useTok ? 0 : plan.price;
+    if (st.coins < price) return { ok: false, reason: 'coins', price, short: price - st.coins };
+    st.coins -= price;
+    if (useTok) st.boost.autoTok--;
+    st.updatedAt = now;
+    return { ok: true, steps: plan.steps, n: plan.n, price, token: useTok };
+  }
+  function autoMerge(st, now, opts) {
+    const b = autoMergeBuy(st, now, opts);
+    if (!b.ok) return b;
+    b.results = b.steps.map((p) => Object.assign({ from: p.from }, move(st, p.from, p.to, now)));
+    return b;
+  }
+  // 자동 합치기 1분 동안: 방금 놓인 물건(at)이 짝을 만나면 바로 합치고, 결과가 또 짝이면 이어서
+  //  max: 한 번에 몇 번까지 (화면은 1번씩 불러 하나씩 보여 줘요)
+  function autoChain(st, at, now, max) {
+    const steps = [];
+    if (!(st.boost && st.boost.autoMs > 0)) return steps;
+    let cur = at;
+    for (let guard = 0; guard < 24 && (!max || steps.length < max); guard++) {
+      if (cur < 0 || !autoOk(st, cur)) break;
+      const id = itemId(st.board[cur]);
+      const list = [];
+      for (let i = 0; i < N; i++) if (i !== cur && autoOk(st, i) && itemId(st.board[i]) === id) list.push(i);
+      if (list.length + 1 - (autoReserve(st)[id] | 0) < 2) break;
+      const o = rc(cur);
+      list.sort((a, b) => { const A = rc(a), B = rc(b); return (Math.abs(A.r - o.r) + Math.abs(A.c - o.c)) - (Math.abs(B.r - o.r) + Math.abs(B.c - o.c)); });
+      const to = lowerLeft(cur, list[0]), from = to === cur ? list[0] : cur;
+      const r = move(st, from, to, now);
+      if (r.kind !== 'merge') break;
+      steps.push(Object.assign({ from }, r));
+      cur = r.at;
+    }
+    return steps;
+  }
+  // 도우미 남은 시간은 앱을 연 동안만 줄어요 (화면이 1초마다 dt 를 줘요)
+  function boostTick(st, dt) {
+    const b = st.boost;
+    if (!b || dt <= 0) return false;
+    const was = b.autoMs > 0 || b.handsMs > 0;
+    b.autoMs = Math.max(0, b.autoMs - dt);
+    b.handsMs = Math.max(0, b.handsMs - dt);
+    return was;
+  }
+  // 고정(핀): 자동 합치기가 건드리지 않아요 (옮겨도 따라가요 · 손으로 합치면 풀려요)
+  function setPin(st, i, on) {
+    const c = st.board[i];
+    if (!c || c.k !== 'item') return false;
+    if (on) c.pin = true; else delete c.pin;
+    return true;
   }
 
   /* ---------- 마을 복원 ---------- */
@@ -815,6 +1021,27 @@
     });
   }
 
+  /* ---------- 위 칸 숫자 붙잡기 (동전·별이 날아가는 동안만 옛 숫자) ----------
+     버그(2026-11): 이벤트 부탁(별 0)을 건네면 '별 도착' 콜백이 안 와서 붙잡기가 영영 안 풀림
+     → 위 칸은 그때 숫자에 멈추고(예: 1593) 실제 동전(353)은 강화·가방에 써서 줄어든 채 '동전이 모자라요'.
+     이제: 날아가는 것 개수만큼 land() 를 세고, 늦어도 maxMs 뒤엔 저절로 풀려요 · 언제나 진짜 값은 st 에서 읽어요 */
+  function hudShown(st, maxMs) {
+    const MAX = maxMs || 2500;
+    const h = { coins: st.coins, stars: st.stars, hold: 0, at: 0, left: 0 };
+    return {
+      // flies = 날아가는 묶음 수 (동전 1 + 별이 있으면 1)
+      begin(now, flies) { h.hold++; h.at = now; h.left += Math.max(1, flies | 0); },
+      land(key, live) { h[key] = live[key]; },
+      done() { h.left = Math.max(0, h.left - 1); if (!h.left) h.hold = 0; },
+      reset(live) { h.hold = 0; h.left = 0; h.coins = live.coins; h.stars = live.stars; },
+      read(live, now) {
+        if (h.hold && now - h.at > MAX) { h.hold = 0; h.left = 0; }
+        if (!h.hold) { h.coins = live.coins; h.stars = live.stars; }
+        return { coins: h.coins, stars: h.stars, holding: !!h.hold };
+      }
+    };
+  }
+
   /* ---------- 저장 문자열 (save.js 가 씀) ---------- */
   function serialize(st) { return JSON.stringify(st); }
   function validCell(c) {
@@ -840,6 +1067,17 @@
       st.charge = {};
       if (st.stats && st.stats.sold == null) st.stats.sold = 0;
       st.v = 2;
+      return st;
+    },
+    // v2 → v3: 소리 크기 1~3 단계 → 0~100 · 배경음은 옛 기본값(꺼짐)이었을 뿐이라 한 번만 켜요(bgmAsked) · 상점·도우미 칸
+    2: (st) => {
+      const s = st.settings && typeof st.settings === 'object' ? st.settings : {};
+      const SV = [0, 35, 65, 100], BV = [0, 35, 60, 90];
+      if (typeof s.vol === 'number' && s.vol <= 3) s.vol = SV[Math.max(0, s.vol | 0)];
+      if (typeof s.bgmVol === 'number' && s.bgmVol <= 3) s.bgmVol = BV[Math.max(0, s.bgmVol | 0)];
+      if (!s.bgmAsked) { s.bgm = true; s.bgmAsked = true; }
+      st.settings = s;
+      st.v = 3;
       return st;
     }
   };
@@ -877,6 +1115,13 @@
     if (!Array.isArray(st.decos)) st.decos = [];
     if (st.ev && (typeof st.ev !== 'object' || !eventDef(st.ev.id))) st.ev = null;
     if (!st.ev) st.orders = st.orders.filter((o) => !o.ev);
+    ['vol', 'bgmVol'].forEach((k) => { st.settings[k] = Math.max(0, Math.min(100, Number(st.settings[k]) || 0)); });
+    if (!st.shop || typeof st.shop !== 'object' || Array.isArray(st.shop)) st.shop = def.shop;
+    if (!Array.isArray(st.shop.deals)) st.shop.deals = [];
+    st.shop.deals = st.shop.deals.filter((d) => d && (d.id === 'tier' ? CHAINS[d.c] && D.SHOP.tierPrice[d.t] : D.SHOP.items[d.id]));
+    if (!st.shop.bought || typeof st.shop.bought !== 'object') st.shop.bought = {};
+    st.boost = Object.assign({ autoMs: 0, handsMs: 0, autoTok: 0 }, st.boost && typeof st.boost === 'object' ? st.boost : {});
+    ['autoMs', 'handsMs', 'autoTok'].forEach((k) => { st.boost[k] = Math.max(0, Number(st.boost[k]) || 0); });
     fillOrders(st, now, rng || Math.random);
     regen(st, now);
     return st;
@@ -891,14 +1136,16 @@
     N, HOME, maxTier, isAux, itemId, itemName, sellValue, sellAsk, rc, dayKey,
     newState, regen, energyInfo, refill, refillPrice,
     covered, isFree, emptyCount, nearestEmpty, giveCell, chargeInfo, tapGen, canMerge, mergeResult, move, peel, findPair,
-    sell, useItem, bagPrice, growBag, toBag, fromBag, takeGift, buyShop, snapshot, restore,
+    sell, useItem, bagPrice, growBag, toBag, fromBag, takeGift, snapshot, restore,
+    shopMult, shopChains, itemCoins, shopTouch, shopBuy, shopReroll, shopFree, dealPrice, restingGens,
+    autoReserve, autoPairs, autoPrice, autoMergePlan, autoMergeBuy, autoMerge, autoChain, boostTick, setPin,
     orderLevel, makeOrder, fillOrders, orderStatus, orderGuide, deliver, skipOrder,
     areaInfo, mapPins, doTask, completeArea,
     isEvent, genLevel, genUpInfo, upgradeGen, storyOrderActive, syncStoryOrders,
     bottleToday, secretsIn, secretCounts, findSecret, GULL_TOTAL, LETTER_TOTAL,
     dailyTouch, questInfo, claimQuests, attendInfo, claimAttend,
     weekStart, currentEvent, eventInfo, eventTick, endEvent, makeEventOrder, placeDeco, thanksLine, collection,
-    serialize, deserialize, summary, MIGRATE
+    serialize, deserialize, summary, MIGRATE, hudShown
   };
   if (typeof module === 'object' && module.exports) module.exports = API;
   else root.MergeCore = API;

@@ -6,7 +6,9 @@
    - 숨은 비밀: 편지 조각(반짝이)·갈매기·병 속 편지를 그림에서 톡 · 몽돌이 칩이 근처 편지를 알려 줘요
    - ‹ › 로 이미 고친 지역도 다시 볼 수 있어요 (비밀 찾기·장식 놓기) · 장식은 그림을 톡 해서 놓아요
    - 이야기 부탁(req)이 남은 작업은 [고치기] 대신 '부탁 먼저' · 6지역을 다 고치면 엔딩 장면
-   - 규칙은 MergeCore(doTask·areaInfo·secretsIn·findSecret·placeDeco), 화면 손잡이는 window.MergeUI 를 써요 */
+   - 규칙은 MergeCore(doTask·areaInfo·secretsIn·findSecret·placeDeco), 화면 손잡이는 window.MergeUI 를 써요
+   - 소리: 마을을 열면 보고 있는 지역 곡(U.musicTick) · 고치기 = 망치 딱딱딱 → 징 + 건물 징글 · 지역 완성 징글 · 엔딩 징글
+   - 장면 [건너뛰기]: st.story[id] = 'skip' (본 장면은 true · 둘 다 '봤음'으로 치고 앨범에서 다시 볼 수 있어요) */
 (function () {
   'use strict';
 
@@ -214,6 +216,7 @@
     F.sfx('open');
     $('town').classList.remove('hide');   // 먼저 보이게 해야 그림 틀 크기를 잴 수 있어요
     render();
+    U.musicTick();
     // 아직 못 본 지역 장면(앱을 닫았다 열었을 때 등)이 있으면 먼저
     const area = D.AREAS[st().area];
     if (area && area.open.scene && !st().story[area.open.scene]) setTimeout(() => scene(area.open.scene), 250);
@@ -226,11 +229,12 @@
     $('town').innerHTML = '';
     F.sfx('close');
     U.renderAll();
+    U.musicTick();
   }
   function scene(id, done) {
     const lines = D.STORY[id];
     if (!lines) { if (done) done(); return; }
-    U.talk(lines, () => { st().story[id] = true; U.changed(); if (done) done(); });
+    U.talk(lines, (skipped) => { st().story[id] = skipped && !st().story[id] ? 'skip' : true; U.changed(); if (done) done(); });
   }
 
   /* ---------- 고치기 ---------- */
@@ -257,8 +261,9 @@
     const from = U.center(document.querySelector('.tw-stars'));
     F.fly(U.STAR, from, pc, { count: Math.min(6, r.task.cost), ms: 560, spread: 20, size: 26, s1: 0.5 });
     document.querySelector('.tw-stars b').textContent = s.stars;
+    if (!F.reduced) setTimeout(() => F.sfx('hammer'), 120);
     setTimeout(() => {
-      F.sfx('merge', 5); F.vibrate([12, 30, 12]);
+      F.sfx('build'); F.jingle('build'); F.vibrate([12, 30, 12]);
       // 끝낸 자리: ✓ 이 톡 튀었다가 사르르 사라져요 (다시 그리지 않아요)
       if (pin) { pin.className = 'tw-pin done pop'; pin.textContent = '✓'; setTimeout(() => { pin.classList.add('gone'); setTimeout(() => pin.remove(), 450); }, 700); }
       F.burst(pc.x, pc.y, ['#ffd25a', '#ffffff', '#8fd3c8', '#ff9eb5'], 26, 1.6);
@@ -291,7 +296,7 @@
       applyMask(area);
       const fr = $('tw-frame');
       const c = U.center(fr);
-      F.sfx('maxed'); F.vibrate([20, 40, 20, 40, 60]);
+      F.jingle(r.ending ? 'ending' : 'area'); F.sfx('build'); F.vibrate([20, 40, 20, 40, 60]);
       for (let i = 0; i < 4; i++) setTimeout(() => F.burst(c.x + (Math.random() - 0.5) * c.w * 0.8, c.y + (Math.random() - 0.5) * c.h * 0.6, ['#ffd25a', '#ffffff', '#ff9eb5', '#8fd3c8'], 26, 1.8), i * 220);
       const ban = $('tw-banner');
       ban.innerHTML = `<b>${esc(area.name)}</b><span>복원 완료!</span>`;
@@ -331,6 +336,7 @@
     box.classList.add('swap');
     setTimeout(() => {
       render();
+      U.musicTick();
       document.querySelector('#town .tw-box').classList.add('swapin');
       playing = false;
       if (next.open.scene && !st().story[next.open.scene]) setTimeout(() => scene(next.open.scene), 400);
@@ -351,7 +357,7 @@
       const to = Math.max(0, Math.min(reachable(), cur + (b.dataset.tw === 'prev' ? -1 : 1)));
       browse = to >= Math.min(st().area, D.AREAS.length) ? null : to;
       placing = null;
-      F.sfx('swap'); render();
+      F.sfx('swap'); render(); U.musicTick();
     } else if (b.dataset.tw === 'mong') mongHint();
     else if (b.dataset.sec) { const [k, id] = b.dataset.sec.split(':'); findSecret(k, id, b); }
     else if (b.dataset.deco) {
@@ -428,5 +434,5 @@
     if (view().canAfford) U.restartAnim($('btn-town'), 'wig1');
   }
 
-  window.MergeTown = { open, close, resume, render, doTask, show: (i) => { browse = i; render(); } };
+  window.MergeTown = { open, close, resume, render, doTask, show: (i) => { browse = i; render(); U.musicTick(); }, get index() { return view().index; } };
 })();

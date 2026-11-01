@@ -146,15 +146,16 @@ test('동전으로 기운 채우기: 하루 3번 · 가격 오름 · 다음 날 
 });
 
 console.log('주문');
-test('새 판에 주문 3장 · 1지역 규칙(1개 · 2~4단계 · A/B/D) · 서로 다른 체인', () => {
+test('새 판에 주문 3장 · 1지역 규칙(1개 · 첫 2장은 1단계, 그다음 2~4단계 · A/B/D) · 서로 다른 체인', () => {
   for (let s = 1; s < 40; s++) {
     const st = C.newState(T0, seeded(s));
     assert.strictEqual(st.orders.length, 3);
     const chains = st.orders.map((o) => o.need[0].c).sort().join('');
     assert.strictEqual(chains, 'abd');
-    st.orders.forEach((o) => {
+    st.orders.forEach((o, k) => {
       assert.strictEqual(o.need.length, 1);
-      assert.ok(o.need[0].t >= 2 && o.need[0].t <= 4);
+      if (k < D.BAL.firstEasyOrders) assert.strictEqual(o.need[0].t, 1, '첫 부탁은 1단계');
+      else assert.ok(o.need[0].t >= 2 && o.need[0].t <= 4);
       assert.ok(D.VILLAGERS[o.who].chains.indexOf(o.need[0].c) >= 0, '체인 맞는 마을 사람');
       assert.strictEqual(o.coins, Math.ceil(Math.pow(2, o.need[0].t - 1) * 1.5));
       assert.strictEqual(o.stars, 1 + Math.floor(o.need[0].t / 4));
@@ -175,7 +176,7 @@ test('물건이 없으면 건네기 실패, 있으면 물건 빠지고 동전·�
   assert.ok(r.ok);
   assert.strictEqual(st.board[12], null);
   assert.deepStrictEqual(st.board[13], item(need.c, need.t), '하나만 가져가요');
-  assert.strictEqual(st.coins, o.coins); assert.strictEqual(st.stars, o.stars); assert.strictEqual(st.starsEarned, o.stars);
+  assert.strictEqual(st.coins, o.coins); assert.strictEqual(st.stars, D.START.stars + o.stars); assert.strictEqual(st.starsEarned, o.stars);
   assert.strictEqual(st.orders.length, 3);
   assert.ok(!st.orders.some((x) => x.id === o.id));
   assert.strictEqual(st.stats.delivered, 1);
@@ -322,7 +323,7 @@ test('저장 → 불러오기 하면 판·동전·별·주문·도감·설정이
   assert.strictEqual(back.coins, 77); assert.strictEqual(back.stars, 5); assert.strictEqual(back.starsEarned, 9);
   assert.deepStrictEqual(back.orders, st.orders);
   assert.strictEqual(back.found.d6, true); assert.strictEqual(back.settings.sfx, false);
-  assert.ok(ls.m[D.SAVE_KEY].indexOf('"v":2') >= 0);
+  assert.ok(ls.m[D.SAVE_KEY].indexOf('"v":' + D.VERSION) >= 0);
 });
 test('저장이 없거나 깨졌거나 저장소가 막혀도 새 판으로 시작', () => {
   const ls = memStore(); const ad = S.localAdapter(ls);
@@ -379,7 +380,7 @@ test('발생기만으로 주문 하나를 끝까지 (뽑기 → 합치기 → �
   }
   const before = st.energy;
   assert.ok(C.deliver(st, o.id, now, rng).ok);
-  assert.ok(before < 100 && st.coins === o.coins && st.stars === o.stars);
+  assert.ok(before < 100 && st.coins === o.coins && st.stars === D.START.stars + o.stars);
 });
 
 console.log('2단계 · 데이터');
@@ -401,6 +402,7 @@ test('지역 데이터: 작업 별 합계(15·28·40·45·63·100 = 291) · 장�
 console.log('2단계 · 복원 작업');
 test('작업은 별을 써서 순서대로 · 별 모자라면 안 됨', () => {
   const st = emptyState(seeded(3));
+  st.stars = 0;
   const a = D.AREAS[0];
   let info = C.areaInfo(st);
   assert.strictEqual(info.next.id, a.tasks[0].id); assert.strictEqual(info.canAfford, false); assert.strictEqual(info.doneN, 0);
@@ -549,13 +551,14 @@ test('충전식 발생기(찻잎 선반): 12번 뒤 10분 쉼', () => {
   assert.ok(C.tapGen(st, 30, T0 + 10 * 60000, seeded(1)).ok);
   assert.strictEqual(C.chargeInfo(st, 'gen_c', T0 + 10 * 60000).left, 11);
 });
-test('처음 발견하면 소라별 1 · 소라별 가게', () => {
+test('처음 발견하면 소라별 1 · 가방 속 소라별 가게는 없어지고 상점에서 소라별로 무지개 소라', () => {
   const st = emptyState();
   st.board[0] = item('a', 1); st.board[1] = item('a', 1);
   C.move(st, 0, 1, T0); assert.strictEqual(st.gems, 1);
-  assert.strictEqual(C.buyShop(st, 'wild', T0, seeded(1)).reason, 'gems');
+  assert.strictEqual(C.buyShop, undefined); assert.strictEqual(D.BAL.shop, undefined);
+  assert.strictEqual(C.shopBuy(st, { id: 'wild', pay: 'gems' }, T0, seeded(1)).reason, 'gems');
   st.gems = 6;
-  const r = C.buyShop(st, 'wild', T0, seeded(1));
+  const r = C.shopBuy(st, { id: 'wild', pay: 'gems' }, T0, seeded(1));
   assert.ok(r.ok); assert.strictEqual(st.gems, 0); assert.deepStrictEqual(st.board[r.at], { k: 'wild' });
 });
 
@@ -567,7 +570,7 @@ test('v1 저장 → v2: 판·동전·별 그대로 · 복원/가방/모래더미
   delete v1.stats.sold;
   const ls = memStore(); ls.setItem(D.SAVE_KEY, JSON.stringify(v1));
   const st = S.load(S.localAdapter(ls), T0 + 5000, seeded(1));
-  assert.strictEqual(st.v, 2);
+  assert.strictEqual(st.v, D.VERSION);
   assert.strictEqual(st.coins, 33); assert.strictEqual(st.stars, 7); assert.deepStrictEqual(st.board[3], item('b', 5));
   assert.strictEqual(st.area, 0); assert.deepStrictEqual(st.tasks, {}); assert.strictEqual(st.gems, 0);
   assert.strictEqual(st.bag.length, D.BAL.bagStart); assert.ok(st.cover.every((v) => v === 0)); assert.deepStrictEqual(st.gifts, []);
@@ -877,5 +880,190 @@ test('마을 그림 표시: 끝낸 작업 ✓ 은 그림에 남지 않고 다음
   D.AREAS[0].tasks.forEach((t) => C.doTask(st, t.id, T0, seeded(1)));
   const past = { tasks: D.AREAS[0].tasks.map((t) => ({ task: t, done: true, next: false })) };
   assert.deepStrictEqual(C.mapPins(past), []);
+});
+console.log('마을 개편 1단계 · 첫 건물 · 배경음악 · 상점 · 자동 합치기 · 저장 v3');
+const M = require(path.join(base, 'music.js'));
+test('첫 건물 빨리: 시작 별 1 · 1지역 첫 두 작업 별 1·1 · 첫 부탁 2장은 1단계 (총 291별 그대로)', () => {
+  const st = C.newState(T0, seeded(4));
+  assert.strictEqual(st.stars, 1);
+  assert.deepStrictEqual(D.AREAS[0].tasks.slice(0, 2).map((t) => t.cost), [1, 1]);
+  const easy = st.orders.filter((o) => !o.story).slice(0, 2);
+  easy.forEach((o, k) => { st.board[10 + k] = item(o.need[0].c, 1); assert.ok(C.deliver(st, o.id, T0, seeded(k)).ok); });
+  assert.ok(C.doTask(st, 'r1_gate', T0).ok); assert.ok(C.doTask(st, 'r1_paper', T0).ok, '부탁 2장으로 두 번째 작업까지');
+  assert.ok(st.orders.filter((o) => !o.story).every((o) => o.need[0].t >= 2), '그다음부터는 원래 난이도');
+});
+test('배경음악 악보: 곡마다 칸 수·음·화음·악기가 맞고, 한 바퀴 45초 넘게 · 낮/밤·지역 1~6·이야기·이벤트 · 징글 4개', () => {
+  ['board_day', 'board_night', 'title', 'story', 'event', 'town_r1', 'town_r2', 'town_r3', 'town_r4', 'town_r5', 'town_r6'].forEach((id) => {
+    assert.deepStrictEqual(M.check(id), [], id);
+    assert.ok(M.lengthSec(id) >= 45, id + ' 길이');
+    assert.ok(M.compile(id).scale.length >= 5, id + ' 음');
+  });
+  assert.strictEqual(M.midi('C4'), 60); assert.strictEqual(M.midi('F#3'), 54); assert.ok(isNaN(M.midi('H2')));
+  ['build', 'area', 'ending', 'attend'].forEach((j) => assert.ok(D.MUSIC.jingles[j].notes.every((x) => !isNaN(M.midi(x[0]))), j));
+  // 오음 음계: 곡에 쓰인 음 이름(옥타브 빼고)이 5개
+  Object.keys(D.MUSIC.songs).forEach((id) => {
+    const pcs = {}; M.compile(id).scale.forEach((m) => { pcs[m % 12] = 1; });
+    assert.ok(Object.keys(pcs).length <= 5, id + ' 오음');
+  });
+});
+test('상점: 매일 0시 새로 · 특가 3칸(한 칸은 지금 지역 체인 3~4단계) · 무료 1칸 한 번 · 다시 섞기 하루 1번(10×m)', () => {
+  const st = emptyState(seeded(3)); st.coins = 1000;
+  assert.ok(C.shopTouch(st, T0)); assert.ok(!C.shopTouch(st, T0 + 1000));
+  assert.strictEqual(st.shop.deals.length, 3);
+  const d0 = st.shop.deals[0];
+  assert.strictEqual(d0.id, 'tier'); assert.ok(D.AREAS[0].chains.indexOf(d0.c) >= 0 && (d0.t === 3 || d0.t === 4));
+  st.shop.deals.forEach((d) => assert.ok(D.SHOP.dealOff.indexOf(d.off) >= 0));
+  const again = emptyState(seeded(9)); C.shopTouch(again, T0);
+  assert.deepStrictEqual(again.shop.deals, st.shop.deals, '같은 날은 같은 특가');
+  const f = C.shopFree(st, T0, seeded(1)); assert.ok(f.ok); assert.strictEqual(C.shopFree(st, T0, seeded(1)).reason, 'done');
+  const r = C.shopBuy(st, { id: 'deal', slot: 0 }, T0, seeded(1));
+  assert.ok(r.ok); assert.strictEqual(r.price, Math.round(D.SHOP.tierPrice[d0.t] * (1 - d0.off)));
+  assert.deepStrictEqual(r.cell, item(d0.c, d0.t));
+  assert.strictEqual(C.shopBuy(st, { id: 'deal', slot: 0 }, T0, seeded(1)).reason, 'limit');
+  const c0 = st.coins;
+  assert.ok(C.shopReroll(st, T0).ok); assert.strictEqual(st.coins, c0 - 10);
+  assert.ok(C.shopBuy(st, { id: 'deal', slot: 0 }, T0, seeded(1)).ok, '섞으면 특가 칸 다시 살 수 있음');
+  assert.strictEqual(C.shopReroll(st, T0).reason, 'done');
+  C.shopTouch(st, T0 + 864e5);
+  assert.ok(!st.shop.freeTaken && !st.shop.rerolled && !Object.keys(st.shop.bought).length, '다음 날 초기화');
+  const tok = emptyState(); tok.shop.free = 0; C.shopTouch(tok, T0); tok.shop.free = D.SHOP.free.findIndex((x) => x.token);
+  assert.ok(C.shopFree(tok, T0, seeded(1)).ok); assert.strictEqual(tok.boost.autoTok, 1, '무료 자동 합치기 1번');
+});
+test('상점 가격: 편의 물건은 × 지역 배수(1·2·4·7·11·16) · 낱개 물건은 고정 · 3단계 하루 5개 · 무지개 소라는 동전 하루 1 / 소라별 6', () => {
+  const st = emptyState(seeded(3)); st.coins = 99999; st.area = 3; st.unlocked = ['a', 'b', 'c', 'd', 'e', 'f'];
+  assert.strictEqual(C.shopMult(st), 7);
+  assert.strictEqual(C.shopBuy(st, { id: 'bj1' }, T0, seeded(1)).price, 25 * 7);
+  assert.strictEqual(C.shopBuy(st, { id: 'bj2', pay: 'gems' }, T0, seeded(1)).reason, 'gems');
+  st.gems = 7; assert.strictEqual(C.shopBuy(st, { id: 'bj2', pay: 'gems' }, T0, seeded(1)).price, 7); assert.strictEqual(st.gems, 0);
+  assert.strictEqual(C.shopBuy(st, { id: 'tier', c: 'c', t: 2 }, T0, seeded(1)).price, 14);
+  assert.strictEqual(C.shopBuy(st, { id: 'tier', c: 'h', t: 1 }, T0, seeded(1)).reason, 'gone', '안 열린 체인');
+  for (let i = 0; i < 5; i++) assert.ok(C.shopBuy(st, { id: 'tier', c: 'a', t: 3 }, T0, seeded(i)).ok);
+  assert.strictEqual(C.shopBuy(st, { id: 'tier', c: 'a', t: 3 }, T0, seeded(1)).reason, 'limit');
+  assert.ok(C.shopBuy(st, { id: 'wild' }, T0, seeded(1)).ok); assert.strictEqual(C.shopBuy(st, { id: 'wild' }, T0, seeded(1)).reason, 'limit');
+  st.gems = 12; assert.ok(C.shopBuy(st, { id: 'wild', pay: 'gems' }, T0, seeded(1)).ok); assert.ok(C.shopBuy(st, { id: 'wild', pay: 'gems' }, T0, seeded(1)).ok);
+  st.energy = 0; const e = C.shopBuy(st, { id: 'refill' }, T0, seeded(1)); assert.ok(e.ok); assert.strictEqual(e.price, 15 * 7);
+  const poor = emptyState(); poor.coins = 3;
+  const no = C.shopBuy(poor, { id: 'en1' }, T0, seeded(1)); assert.strictEqual(no.reason, 'coins'); assert.strictEqual(no.short, 3);
+});
+test('도우미: 바쁜 손(10분 기운 0) · 발생기 바로 충전 · 다른 부탁 바로 · 가방 칸 · 남은 시간은 앱을 연 동안만 줄어요', () => {
+  const st = emptyState(seeded(3)); st.coins = 9999;
+  st.board[30] = { k: 'gen', g: 'gen_c' };
+  assert.strictEqual(C.shopBuy(st, { id: 'recharge' }, T0, seeded(1)).reason, 'norest');
+  for (let i = 0; i < 12; i++) C.tapGen(st, 30, T0, seeded(i));
+  assert.strictEqual(C.tapGen(st, 30, T0, seeded(1)).reason, 'rest');
+  assert.ok(C.shopBuy(st, { id: 'recharge' }, T0, seeded(1)).ok);
+  assert.ok(C.tapGen(st, 30, T0, seeded(1)).ok, '바로 다시 톡');
+  assert.ok(C.shopBuy(st, { id: 'hands' }, T0, seeded(1)).ok);
+  st.energy = 0; assert.ok(C.tapGen(st, 30, T0, seeded(2)).ok, '기운 0이어도'); assert.strictEqual(st.energy, 0);
+  C.boostTick(st, D.SHOP.handsMs); assert.strictEqual(st.boost.handsMs, 0);
+  assert.strictEqual(C.tapGen(st, 30, T0, seeded(2)).reason, 'energy');
+  assert.strictEqual(C.shopBuy(st, { id: 'skipnow' }, T0, seeded(1)).reason, 'nocool');
+  const o = st.orders.find((x) => !x.story); assert.ok(C.skipOrder(st, o.id, T0, seeded(1)).ok);
+  assert.ok(C.shopBuy(st, { id: 'skipnow' }, T0 + 1000, seeded(1)).ok); assert.ok(C.skipOrder(st, st.orders[0].id, T0 + 2000, seeded(1)).ok);
+  const b = C.shopBuy(st, { id: 'bag' }, T0, seeded(1)); assert.ok(b.ok); assert.strictEqual(st.bag.length, D.BAL.bagStart + 1);
+});
+test('자동 합치기: 같은 단계 2개씩 · 연쇄 · 결과는 아래쪽/왼쪽 칸 · 값 = m × (3 + 횟수) · 미리 계산은 판을 안 바꿔요', () => {
+  const st = emptyState(seeded(3)); st.orders = []; st.coins = 100;
+  st.board[0] = item('a', 1); st.board[1] = item('a', 1); st.board[7] = item('a', 1); st.board[8] = item('a', 1);
+  st.board[20] = item('b', 2); st.board[2] = item('b', 2);
+  const before = JSON.stringify(st.board);
+  const plan = C.autoMergePlan(st, T0);
+  assert.strictEqual(plan.n, 4, 'a1 둘 둘 → a2 둘 → a3 하나 · b2 둘'); assert.strictEqual(plan.price, 3 + 4);
+  assert.strictEqual(JSON.stringify(st.board), before);
+  const r = C.autoMerge(st, T0);
+  assert.ok(r.ok); assert.strictEqual(st.coins, 100 - 7);
+  assert.strictEqual(st.board.filter(Boolean).length, 2);
+  const at3 = st.board.findIndex((c) => c && c.c === 'a'); assert.deepStrictEqual(st.board[at3], item('a', 3)); assert.strictEqual(C.rc(at3).r, 1, '아래 줄로');
+  assert.strictEqual(C.rc(at3).c, 0, '같은 줄이면 왼쪽');
+  assert.deepStrictEqual(st.board[20], item('b', 3), 'b 는 아래 칸(20)에'); assert.strictEqual(st.board[2], null);
+  assert.strictEqual(st.stats.merges, 4); assert.ok(st.found.a3);
+  assert.strictEqual(C.autoMerge(st, T0).reason, 'none');
+  const big = emptyState(); big.orders = []; big.area = 4; big.unlocked = ['a'];
+  for (let i = 0; i < 40; i++) big.board[i] = item('a', 1);
+  const p = C.autoMergePlan(big, T0); assert.ok(p.n > 22); assert.strictEqual(p.price, 11 * 25, '최대 m × 25');
+});
+test('자동 합치기는 부탁에 필요한 물건(단계·개수)·발생기·최고 단계·모래더미·보조 물건·무지개 소라·고정한 물건을 안 건드려요', () => {
+  const st = emptyState(seeded(3)); st.coins = 100;
+  st.orders = [{ id: 'x', who: 'juni', need: [{ c: 'a', t: 2 }, { c: 'a', t: 2 }], coins: 1, stars: 1, at: T0 }];
+  st.board[0] = item('a', 2); st.board[1] = item('a', 2); st.board[2] = item('a', 2);   // 2개는 부탁에 · 남는 1개뿐이라 못 합침
+  st.board[3] = { k: 'gen', g: 'gen_a' }; st.board[4] = { k: 'gen', g: 'gen_a' };
+  st.board[5] = item('a', 8); st.board[6] = item('a', 8);
+  st.board[9] = item('en', 1); st.board[10] = item('en', 1);
+  st.board[11] = { k: 'wild' }; st.board[12] = item('d', 1);
+  st.board[13] = item('d', 1); C.setPin(st, 13, true);
+  st.board[14] = item('b', 1); st.cover[15] = 1;
+  assert.strictEqual(C.autoMergePlan(st, T0).n, 0);
+  st.board[17] = item('a', 2);   // 4개 중 2개는 남기고 2개는 합침
+  const r = C.autoMerge(st, T0);
+  assert.strictEqual(r.n, 1); assert.ok(C.orderStatus(st, st.orders[0]).ready, '부탁 물건은 그대로');
+  st.settings.autoKeep = false;
+  st.board[18] = item('d', 1);
+  assert.strictEqual(C.autoMergePlan(st, T0).n, 3, '끄면 부탁 물건도 합쳐요: a2+a2 → a3, a3+a3 → a4, d1+d1 (고정한 d1 은 그대로)');
+  const bag = emptyState(seeded(3)); bag.orders = [{ id: 'y', who: 'juni', need: [{ c: 'a', t: 1 }], coins: 1, stars: 1, at: T0 }];
+  bag.bag[0] = item('a', 1); bag.board[0] = item('a', 1); bag.board[1] = item('a', 1);
+  assert.strictEqual(C.autoMergePlan(bag, T0).n, 1, '가방에 있으면 판의 것은 합쳐도 돼요');
+});
+test('자동 합치기: 무료 1번(오늘의 무료)은 동전 대신 · 되돌리기는 동전도 돌려줘요 · 동전이 모자라면 안 돼요', () => {
+  const st = emptyState(seeded(3)); st.orders = []; st.coins = 2;
+  st.board[0] = item('a', 1); st.board[1] = item('a', 1);
+  assert.strictEqual(C.autoMerge(st, T0).reason, 'coins');
+  st.coins = 10;
+  const snap = C.snapshot(st);
+  assert.ok(C.autoMerge(st, T0).ok); assert.strictEqual(st.coins, 6);
+  C.restore(st, snap); assert.strictEqual(st.coins, 10); assert.deepStrictEqual(st.board[0], item('a', 1));
+  st.boost.autoTok = 1;
+  const r = C.autoMerge(st, T0); assert.ok(r.ok && r.token); assert.strictEqual(st.coins, 10); assert.strictEqual(st.boost.autoTok, 0);
+});
+test('자동 합치기 1분: 새로 놓인 물건이 짝을 만나면 바로 합쳐지고 연쇄 · 끝나면 안 해요', () => {
+  const st = emptyState(seeded(3)); st.orders = []; st.coins = 100;
+  st.board[0] = item('a', 2); st.board[8] = item('a', 1); st.board[2] = { k: 'gen', g: 'gen_a' };
+  st.board[9] = item('a', 1);
+  assert.deepStrictEqual(C.autoChain(st, 9, T0), [], '켜기 전엔 그대로');
+  assert.ok(C.shopBuy(st, { id: 'auto1m' }, T0, seeded(1)).ok); assert.strictEqual(st.coins, 70); assert.strictEqual(st.boost.autoMs, 60000);
+  const steps = C.autoChain(st, 9, T0);
+  assert.strictEqual(steps.length, 2, 'a1+a1 → a2, a2+a2 → a3');
+  assert.deepStrictEqual(st.board.filter((c) => c && c.k === 'item'), [item('a', 3)]);
+  C.boostTick(st, 61000); assert.strictEqual(st.boost.autoMs, 0);
+  st.board[20] = item('b', 1); st.board[21] = item('b', 1);
+  assert.deepStrictEqual(C.autoChain(st, 21, T0), []);
+});
+test('v2 저장 → v3: 소리 크기 1~3 → 0~100 · 배경음은 한 번만 켜요 · 상점·도우미 기본값 · v3 에서 끈 배경음은 그대로', () => {
+  const v2 = C.newState(T0, seeded(5));
+  v2.v = 2; v2.settings = { sfx: true, vib: true, easy: false, nums: true, hint: true, bgm: false, vol: 2, bgmVol: 3, big: false, calm: false };
+  delete v2.shop; delete v2.boost; v2.coins = 42; v2.gems = 9;
+  const st = C.deserialize(JSON.stringify(v2), T0, seeded(1));
+  assert.strictEqual(st.v, 3); assert.strictEqual(st.settings.bgm, true); assert.strictEqual(st.settings.bgmAsked, true);
+  assert.strictEqual(st.settings.vol, 65); assert.strictEqual(st.settings.bgmVol, 90); assert.strictEqual(st.settings.autoKeep, true);
+  assert.strictEqual(st.coins, 42); assert.strictEqual(st.gems, 9, '소라별은 그대로 (상점에서 써요)');
+  assert.deepStrictEqual(st.boost, { autoMs: 0, handsMs: 0, autoTok: 0 }); assert.ok(C.shopTouch(st, T0));
+  st.settings.bgm = false; st.settings.vol = 3;
+  const back = C.deserialize(C.serialize(st), T0, seeded(1));
+  assert.strictEqual(back.settings.bgm, false, '끈 건 존중'); assert.strictEqual(back.settings.vol, 3, 'v3 의 3 은 그냥 3');
+  st.shop.deals.push({ id: 'nope', off: 0.3 }); st.boost.autoMs = -5;
+  const fixed = C.deserialize(C.serialize(st), T0, seeded(1));
+  assert.ok(fixed.shop.deals.every((d) => d.id !== 'nope')); assert.strictEqual(fixed.boost.autoMs, 0);
+});
+test('버그: 이벤트 부탁(별 0)을 건넨 뒤 위 칸 동전이 멈춰 실제와 달라지던 것 — 붙잡기는 날아간 묶음 수만큼 풀리고 늦어도 2.5초 뒤엔 진짜 값', () => {
+  const st = emptyState(seeded(3)); st.coins = 1593;
+  const h = C.hudShown(st);
+  // 이벤트 부탁: 별 0 → 동전 묶음 하나만 날아가요
+  h.begin(T0, 0); st.coins += 4;
+  assert.strictEqual(h.read(st, T0 + 100).coins, 1593, '날아가는 동안은 옛 숫자');
+  h.land('coins', st); h.done();
+  assert.strictEqual(h.read(st, T0 + 700).holding, false, '동전이 도착하면 풀려요');
+  st.coins = 353;   // 강화·가방에 씀
+  assert.strictEqual(h.read(st, T0 + 800).coins, 353, '위 칸 = 진짜 동전');
+  // 도착 알림이 하나도 안 와도(숨긴 탭 등) 2.5초 뒤엔 진짜 값
+  h.begin(T0 + 1000, 2); st.coins = 999;
+  assert.strictEqual(h.read(st, T0 + 2000).coins, 353);
+  assert.strictEqual(h.read(st, T0 + 4000).coins, 999);
+  // 일반 부탁(별 있음): 동전·별 둘 다 도착해야 풀려요
+  h.begin(T0 + 5000, 2); h.land('coins', st); h.done();
+  assert.ok(h.read(st, T0 + 5100).holding); h.land('stars', st); h.done();
+  assert.ok(!h.read(st, T0 + 5200).holding);
+  h.begin(T0, 1); h.reset(st); assert.ok(!h.read(st, T0).holding, '다른 기록을 불러오면 바로 풀려요');
+  // 화면 코드: 별 0 이면 별을 날리지 않고(도착 알림 없음) 동전 하나만 센다
+  const ui = require('fs').readFileSync(path.join(base, 'ui.js'), 'utf8');
+  assert.ok(/shown\.begin\(now\(\), r\.stars > 0 \? 2 : 1\)/.test(ui) && !/shown\.hold/.test(ui));
 });
 console.log(`\n모두 통과 (${n}개)`);

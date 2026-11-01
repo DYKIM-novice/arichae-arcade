@@ -102,11 +102,11 @@
       chains: ['a', 'b', 'd'], orders: { items: [1, 1], tiers: [2, 4] },
       tasks: [
         { id: 'r1_gate', name: '대문 잔해 치우기', cost: 1, x: 16, y: 74, r: 20, scene: 'r1_gate' },
-        { id: 'r1_paper', name: '찢어진 창호지 바르기', cost: 2, x: 44, y: 61, r: 19, scene: 'r1_paper' },
+        { id: 'r1_paper', name: '찢어진 창호지 바르기', cost: 1, x: 44, y: 61, r: 19, scene: 'r1_paper' },
         { id: 'r1_sign', name: '현판 다시 달기', cost: 2, x: 52, y: 52, r: 20, scene: 'r1_sign' },
         { id: 'r1_maru', name: '대청마루 닦기', cost: 3, x: 36, y: 68, r: 21, scene: 'r1_maru', req: 'so_r1' },
         { id: 'r1_lamp', name: '마당 석등 켜기', cost: 3, x: 9, y: 68, r: 18, scene: 'r1_lamp' },
-        { id: 'r1_room', name: '첫 손님방(온돌방) 꾸미기', cost: 4, x: 76, y: 62, r: 22 }
+        { id: 'r1_room', name: '첫 손님방(온돌방) 꾸미기', cost: 5, x: 76, y: 62, r: 22 }
       ],
       open: { scene: null, gens: [], chains: [] },
       done: { scene: 'r1_done', uncover: true },
@@ -271,7 +271,7 @@
     energyCap: 999,            // 식혜로는 최대를 넘겨 채울 수 있어요
     spawnCost: 1,
     spawnTier2: 0.10,          // 발생기에서 2단계가 나올 확률
-    refillPrices: [15, 30, 60], // 동전으로 기운 채우기 (하루 3번 · 가격 오름)
+    refillPrices: [15, 30, 60], // 동전으로 기운 채우기 (하루 3번 · 가격 오름 · × 지역 배수 SHOP.mult)
     refillAmount: 100,
     ordersShown: 3,
     orderCoinMult: 1.5,        // 동전 = 판매값 합 × 1.5 (판매값 = 2^(단계-1))
@@ -284,11 +284,160 @@
     firstFindGems: 1,          // 처음 발견하면 소라별 1
     // 발생기 강화 (동전 · 3번): 2단계 확률 10 → 20 → 30% · 마지막 강화는 가끔(8%) 3단계
     genUp: { prices: [80, 240, 600], tier2: [0.10, 0.20, 0.30, 0.30], tier3: [0, 0, 0, 0.08] },
-    shop: [                    // 소라별 가게 (가방 화면)
-      { id: 'wild', cell: { k: 'wild' }, gems: 6 },
-      { id: 'bj1', cell: { k: 'item', c: 'bj', t: 1 }, gems: 3 },
-      { id: 'en2', cell: { k: 'item', c: 'en', t: 2 }, gems: 4 }
-    ]
+    firstEasyOrders: 2,        // 새 판 첫 부탁 2장은 1단계 물건 (첫 '고치기'까지 1~2분)
+    // 자동 합치기 (merge_town.md §G): 값 = 배수 × (base + 합치는 횟수), 최대 배수 × cap
+    autoMerge: { base: 3, cap: 25 }
+  };
+
+  // 상점 (merge_town.md §F · 판 화면 [상점] · 가방 속 소라별 가게는 없앴어요 → 소라별은 여기서 무지개 소라·보자기·자동 합치기 1분에)
+  //  mult: 지금 지역(1~6)의 가격 배수 m · mult:true 인 것만 × m · 체인 물건 낱개·가방 칸은 고정값
+  //  items: 탭별 물건 (coins = 동전 값, gems = 소라별로도 살 때 값, day = 하루 몇 번까지)
+  //  deals: 오늘의 특가 3칸 (매일 0시 · 날짜로 고정 무작위 · 한 칸은 늘 지금 지역 체인 3~4단계) + 무료 1칸
+  const SHOP = {
+    tabs: [
+      { id: 'deal', name: '오늘의 특가', ic: '🎁' },
+      { id: 'item', name: '물건', ic: '🧺' },
+      { id: 'energy', name: '기운', ic: '⚡' },
+      { id: 'help', name: '도우미', ic: '🔨' },
+      { id: 'deco', name: '꾸미기', ic: '🎀' }
+    ],
+    mult: [1, 2, 4, 7, 11, 16],
+    tierPrice: { 1: 6, 2: 14, 3: 32, 4: 70 },   // 열린 체인 물건 낱개 (4단계는 특가에만)
+    tierDay: { 3: 5 },                           // 3단계는 하루 5개까지
+    items: {
+      wild: { tab: 'item', name: '무지개 소라', give: { k: 'wild' }, coins: 40, mult: true, day: 1, gems: 6, sub: '아무 물건이나 한 단계 위로' },
+      bj1: { tab: 'item', name: '작은 보자기', give: { k: 'item', c: 'bj', t: 1 }, coins: 25, mult: true, gems: 3, sub: '열면 물건 3개' },
+      bj2: { tab: 'item', name: '중간 보자기', give: { k: 'item', c: 'bj', t: 2 }, coins: 70, mult: true, gems: 7, sub: '열면 물건 5개' },
+      bj3: { tab: 'item', name: '큰 보자기', give: { k: 'item', c: 'bj', t: 3 }, coins: 200, mult: true, gems: 15, sub: '열면 물건 8개' },
+      en1: { tab: 'energy', name: '식혜 한 잔', give: { k: 'item', c: 'en', t: 1 }, coins: 6, mult: true, sub: '기운 +5' },
+      en2: { tab: 'energy', name: '식혜 사발', give: { k: 'item', c: 'en', t: 2 }, coins: 15, mult: true, sub: '기운 +15' },
+      en3: { tab: 'energy', name: '식혜 항아리', give: { k: 'item', c: 'en', t: 3 }, coins: 35, mult: true, sub: '기운 +40' },
+      refill: { tab: 'energy', name: '기운 가득 채우기', kind: 'refill', sub: '+100 · 하루 3번' },
+      auto: { tab: 'help', name: '자동 합치기', kind: 'auto', sub: '판 전체를 한 번에' },
+      auto1m: { tab: 'help', name: '자동 합치기 1분', kind: 'auto1m', coins: 30, mult: true, gems: 3, sub: '1분 동안 새 물건이 짝을 만나면 저절로' },
+      recharge: { tab: 'help', name: '발생기 바로 충전', kind: 'recharge', coins: 10, mult: true, sub: '쉬고 있는 발생기 하나' },
+      hands: { tab: 'help', name: '바쁜 손 10분', kind: 'hands', coins: 40, mult: true, sub: '10분 동안 발생기 톡에 기운 0' },
+      skipnow: { tab: 'help', name: '다른 부탁 바로', kind: 'skip', coins: 5, mult: true, sub: '[다른 부탁] 기다림 없애기' },
+      bag: { tab: 'help', name: '가방 한 칸', kind: 'bag', sub: '최대 20칸' }
+    },
+    // 꾸미기 탭: 그림이 들어오면 열려요 (지금은 '곧 나와요')
+    deco: [
+      { name: '건물 다른 모양', ic: '🏠', note: '각 30×m' },
+      { name: '마을 장식', ic: '🌲', note: '20×m' },
+      { name: '하윤 옷', ic: '👘', note: '300~500' },
+      { name: '몽돌 소품', ic: '🕶️', note: '120' }
+    ],
+    dealPool: ['wild', 'bj1', 'bj2', 'en2', 'en3', 'auto1m', 'hands'],
+    dealOff: [0.3, 0.4, 0.5],
+    free: [
+      { label: '식혜 한 잔', give: { k: 'item', c: 'en', t: 1 } },
+      { label: '엽전 몇 닢', give: { k: 'item', c: 'cn', t: 1 } },
+      { label: '작은 보자기', give: { k: 'item', c: 'bj', t: 1 } },
+      { label: '자동 합치기 1번', token: 'auto' }
+    ],
+    rerollCoins: 10,           // [다시 섞기] 하루 1번 · × m
+    handsMs: 10 * 60000,
+    auto1mMs: 60000
+  };
+
+  // 배경음악 악보 (merge_town.md ★BGM · 재생기는 js/merge/music.js · 파일·내려받기 없음, 직접 작곡)
+  //  한 칸 = 8분음 · '.' 쉼 · '-' 앞 음 늘임 · '|' 는 마디 표시(읽을 때 무시) · 음 이름은 C4 = 가운데 도
+  //  spb = 마디 칸 수 (8 = 4/4 · 6 = 6/8 뱃노래) · bpm = 4분음 기준 (6/8 은 8분음 하나 = 60/bpm/2 초)
+  //  form: 구간 차례 (반복할 때마다 '변주': 가끔 이웃 음 · 꾸밈음 · 북 무늬 A/B 교대 · 씨앗 고정)
+  //  inst: 구간마다 선율 악기 (flute 피리 · pluck 가야금 · haegeum 해금) · counter: 가야금 펼친화음 켜기
+  //  drums: 마디 무늬들 (k 장구 쿵 · t 딱 · m 목탁 · c 작은 꽹과리 · b 작은 종) · arp: 펼친화음 무늬 (화음 음 번호 0~7)
+  //  모두 오음 음계 (궁조 도레미솔라 · 우조/계면조 느낌의 라도레미솔)
+  const MUSIC = {
+    chords: {
+      C: ['C3', 'G3', 'C4', 'E4'], Am: ['A2', 'E3', 'A3', 'C4'], Dm: ['D3', 'A3', 'C4', 'D4'], Gs: ['G2', 'D3', 'G3', 'A3'],
+      G: ['G2', 'D3', 'G3', 'B3'], Em: ['E2', 'B2', 'E3', 'G3'], Es: ['E2', 'D3', 'E3', 'G3'], D: ['D2', 'A2', 'D3', 'E3'],
+      As: ['A2', 'E3', 'A3', 'B3'], Bm: ['B2', 'F#3', 'B3', 'D4'], F: ['F2', 'C3', 'F3', 'A3'], Cs: ['C3', 'G3', 'C4', 'D4'], Dmf: ['D2', 'A2', 'D3', 'F3']
+    },
+    songs: {
+      // 판 화면 낮: 피리 선율 + 가야금 반주 + 작은 북 · 음역 좁게 (집중 방해 안 되게)
+      board_day: { bpm: 88, spb: 8, tr: -12, form: 'AABA', inst: { A: 'flute', B: 'flute' }, counter: true, vel: 0.9,
+        drums: ['k . . t . . t .', 'k . t . k . t .', 'k . . t k . t t'],
+        arp: ['. 2 3 . 4 . 3 .', '. . 2 . 3 . 2 .', '. 2 . 3 . 4 . 3'],
+        A: { chords: 'C C Am Am Dm Gs C C',
+          mel: 'E5 - G5 - A5 G5 E5 - | D5 - C5 - D5 E5 - - | G5 - A5 - C6 - A5 G5 | E5 - - - . . D5 E5 | G5 - E5 D5 C5 - D5 - | E5 - G5 - D5 - - - | C5 - D5 E5 G5 - E5 D5 | C5 - - - . . . .' },
+        B: { chords: 'Am Am C C C Dm Gs Gs',
+          mel: 'A5 - - G5 E5 - G5 A5 | C6 - A5 - G5 - - - | G5 - E5 G5 D5 - E5 - | D5 - - - . . E5 G5 | A5 - G5 - E5 - D5 C5 | D5 - E5 - G5 - - - | A5 G5 E5 D5 E5 - D5 - | D5 - - - . . . .' } },
+      // 판 화면 밤: 같은 화성 · 북 없이 해금 긴 음 · 느리게
+      board_night: { bpm: 72, spb: 8, tr: 0, form: 'AB', inst: { A: 'haegeum', B: 'flute' }, counter: true, vel: 0.85,
+        drums: [], arp: ['. . 2 . 3 . . .', '. . . 2 . . 3 .', '. 2 . . 3 . . .'],
+        A: { chords: 'C C Am Am Dm Gs C C',
+          mel: 'E4 - - - G4 - - - | D4 - - - C4 - - - | G4 - - - A4 - G4 - | E4 - - - - - - - | G4 - - - E4 - D4 - | E4 - - - D4 - - - | C4 - - - D4 - E4 - | C4 - - - - - - -' },
+        B: { chords: 'Am Am C C C Dm Gs Gs',
+          mel: 'A4 - - - G4 - E4 - | C5 - - - A4 - - - | G4 - - - E4 - D4 - | D4 - - - - - - - | A4 - - - G4 - E4 - | D4 - - - E4 - - - | G4 - - - E4 - D4 - | D4 - - - - - - -' } },
+      // 첫 화면(시작 이야기): 가야금 독주 · 펼친화음
+      title: { bpm: 76, spb: 8, tr: 0, form: 'AA', inst: { A: 'pluck' }, counter: true, vel: 0.9, drums: [],
+        arp: ['0 . 1 . 2 . 1 .', '0 . 2 . 1 . 3 .'],
+        A: { chords: 'C Am Gs C C Am Dm Gs',
+          mel: 'C5 . E5 . G5 . E5 . | A5 . G5 . E5 . C5 . | D5 . G5 . A5 G5 D5 . | E5 - - - . . . . | C5 . E5 G5 A5 . C6 . | A5 . G5 . E5 . . . | D5 . E5 . G5 . D5 . | C5 - - - . . . .' } },
+      // 이야기 장면: 가야금 + 피리 느린 곡 (계면조 느낌)
+      story: { bpm: 66, spb: 8, tr: 0, form: 'AB', inst: { A: 'flute', B: 'pluck' }, counter: true, vel: 0.8, drums: [],
+        arp: ['0 . 2 . 3 . 2 .', '. . 2 . 3 . . .'],
+        A: { chords: 'Am Am C Es Dm Dm C Am',
+          mel: 'A4 - - C5 E5 - - - | D5 - C5 - A4 - - - | G4 - A4 - C5 - D5 - | E5 - - - - - . . | G5 - E5 - D5 - C5 - | D5 - - - A4 - - - | C5 - D5 - C5 - A4 G4 | A4 - - - - - . .' },
+        B: { chords: 'C Es Am Gs C Gs Es Am',
+          mel: 'E5 - G5 - A5 - - - | G5 - E5 - D5 - - - | C5 - D5 - E5 - G5 E5 | D5 - - - - - . . | E5 - - G5 A5 - G5 - | E5 - D5 - C5 - - - | D5 - C5 - A4 - G4 - | A4 - - - - - . .' } },
+      // 마을 1 바다별채 (한옥 · 가야금 중심)
+      town_r1: { bpm: 84, spb: 8, tr: 0, form: 'AABA', inst: { A: 'pluck', B: 'flute' }, counter: true, vel: 0.9,
+        drums: ['k . . . t . . .', 'k . . m t . . .'], arp: ['. 2 . 3 . 2 . .', '. . 2 3 . . 2 .'],
+        A: { chords: 'G G Em Em D D D G',
+          mel: 'D5 . B4 . D5 E5 D5 . | B4 - A4 . G4 . . . | E5 . D5 . E5 G5 E5 . | D5 - - - . . B4 A4 | A4 . B4 . D5 . E5 . | D5 - B4 . A4 . . . | B4 . A4 . G4 . A4 B4 | G4 - - - . . . .' },
+        B: { chords: 'Em Em G G As As D D',
+          mel: 'E5 - - D5 E5 - G5 - | A5 - G5 - E5 - - - | D5 - E5 - G5 - B4 - | D5 - - - - - . . | A4 - B4 - D5 - E5 D5 | B4 - A4 - B4 - - - | D5 - - - E5 - D5 B4 | A4 - - - - - . .' } },
+      // 마을 2 몽돌 선착장 (뱃노래 같은 6/8)
+      town_r2: { bpm: 100, spb: 6, tr: 0, form: 'AABA', inst: { A: 'flute', B: 'flute' }, counter: true, vel: 0.85,
+        drums: ['k . t k . t', 'k . . k . t'], arp: ['0 . 2 . 3 .', '. 2 . 3 . 2'],
+        A: { chords: 'D As D D Bm Bm As D',
+          mel: 'A4 - B4 A4 - F#4 | E4 - - D4 . . | F#4 - A4 B4 - A4 | A4 - - - . . | B4 - D5 B4 - A4 | F#4 - E4 D4 - E4 | F#4 - A4 E4 - F#4 | D4 - - - . .' },
+        B: { chords: 'Bm Bm D D As Bm D As',
+          mel: 'D5 - - B4 - A4 | B4 - A4 F#4 - . | A4 - B4 D5 - E5 | D5 - - - . . | E5 - D5 B4 - A4 | B4 - A4 F#4 - E4 | D4 - E4 F#4 - A4 | A4 - - - . .' } },
+      // 마을 3 바람골목 (통통 튀는 목탁)
+      town_r3: { bpm: 104, spb: 8, tr: 0, form: 'AABA', inst: { A: 'pluck', B: 'flute' }, counter: true, vel: 0.85,
+        drums: ['m . m t m . m t', 'm . . t m m . t'], arp: ['0 . 2 . 1 . 2 .', '. 2 . 3 . 2 . 1'],
+        A: { chords: 'C Am Dm Gs C Am Gs C',
+          mel: 'C5 . E5 . G5 . E5 G5 | A5 . G5 . E5 . . . | D5 . E5 . D5 . C5 A4 | G4 . A4 . C5 . D5 . | E5 . G5 E5 D5 . C5 . | A4 . C5 . E5 . . . | D5 E5 D5 C5 A4 . G4 . | C5 . . . C5 . . .' },
+        B: { chords: 'Am Am C C Dm Dm Gs Gs',
+          mel: 'A5 . . G5 A5 . C6 . | A5 . G5 . E5 . . . | G5 . E5 . G5 . A5 . | G5 - - - . . . . | D5 . E5 . G5 . E5 . | D5 . C5 . A4 . . . | G4 . A4 . C5 . D5 . | E5 - D5 - . . . .' } },
+      // 마을 4 매화언덕 정원 (피리 길게)
+      town_r4: { bpm: 76, spb: 8, tr: 0, form: 'AB', inst: { A: 'flute', B: 'flute' }, counter: true, vel: 0.85,
+        drums: ['k . . . . . m .', '. . . . k . . .'], arp: ['0 . 2 . 3 . . .', '. . 1 . 2 . 3 .'],
+        A: { chords: 'F F Dmf Dmf Gs Cs F F',
+          mel: 'C5 - - - D5 - F5 - | A4 - - - - - G4 - | G4 - A4 - C5 - D5 - | C5 - - - - - . . | F5 - - - D5 - C5 - | D5 - - - A4 - - - | G4 - A4 - C5 - A4 G4 | F4 - - - - - . .' },
+        B: { chords: 'Dmf Dmf F F Gs Gs Cs Cs',
+          mel: 'D5 - - - F5 - G5 - | F5 - D5 - C5 - - - | A4 - C5 - D5 - F5 - | G5 - - - - - . . | F5 - D5 - C5 - A4 - | C5 - - - D5 - - - | A4 - G4 - F4 - G4 - | G4 - - - - - . .' } },
+      // 마을 5 반짝 해변 축제 (북·작은 꽹과리 · 빠르게)
+      town_r5: { bpm: 116, spb: 8, tr: 0, form: 'AABA', inst: { A: 'flute', B: 'pluck' }, counter: true, vel: 0.85,
+        drums: ['k c t c k k t c', 'k c t k t k t c', 'k . t c k c t t'], arp: ['0 2 . 2 1 2 . 2', '0 . 2 3 . 2 . 3'],
+        A: { chords: 'G G Em Em G G D G',
+          mel: 'G4 . B4 D5 E5 . D5 . | B4 . D5 . B4 A4 G4 . | E5 . G5 . E5 D5 B4 . | D5 . . . D5 E5 D5 B4 | G4 . B4 D5 E5 . G5 . | E5 . D5 . B4 . A4 . | B4 . A4 . G4 . A4 B4 | G4 . . . G4 . . .' },
+        B: { chords: 'Em Em D D G G As D',
+          mel: 'E5 . E5 G5 A5 . G5 E5 | D5 . B4 . D5 . . . | A4 . A4 B4 D5 . B4 A4 | G4 . A4 . B4 . . . | D5 . E5 . G5 . A5 . | G5 . E5 . D5 . . . | E5 . D5 B4 A4 . B4 . | A4 . . . . . . .' } },
+      // 마을 6 등대곶 (해금 · 잔잔)
+      town_r6: { bpm: 66, spb: 8, tr: 0, form: 'AB', inst: { A: 'haegeum', B: 'flute' }, counter: true, vel: 0.8,
+        drums: ['. . . . . . . .', 'b . . . . . . .'], arp: ['0 . . 2 . 3 . .', '. . 2 . . 3 . .'],
+        A: { chords: 'Am Am C C Gs Gs Am Am',
+          mel: 'E4 - - - A4 - - - | G4 - - - E4 - - - | C5 - - - D5 - E5 - | D5 - - - - - - - | C5 - - - A4 - G4 - | A4 - - - E4 - - - | G4 - - - A4 - C5 - | A4 - - - - - - -' },
+        B: { chords: 'Dm Dm Am Am C C Gs Gs',
+          mel: 'D5 - - - E5 - G5 - | E5 - - - D5 - - - | C5 - - - E5 - A5 - | G5 - - - - - - - | E5 - - - D5 - C5 - | A4 - - - C5 - - - | D5 - - - C5 - A4 - | G4 - - - - - - -' } },
+      // 주간 이벤트 (밝은 축제 변주)
+      event: { bpm: 112, spb: 8, tr: 0, form: 'AABA', inst: { A: 'flute', B: 'pluck' }, counter: true, vel: 0.85,
+        drums: ['k c t c k . t c', 'k c t k t c t .'], arp: ['0 2 . 2 1 2 . 2', '. 2 . 3 . 2 . 3'],
+        A: { chords: 'C C Am Am Dm Gs C C',
+          mel: 'G4 . C5 . E5 . G5 . | E5 . D5 . C5 . . . | A4 . C5 . E5 . A5 . | G5 . E5 . . . . . | D5 . E5 . D5 . C5 . | A4 . G4 . A4 . C5 . | D5 . . . E5 . D5 . | C5 . . . . . . .' },
+        B: { chords: 'Am Am C C Dm Dm Gs Gs',
+          mel: 'C6 . A5 . G5 . E5 . | G5 . A5 . . . . . | E5 . G5 . E5 . D5 . | C5 . D5 . . . . . | D5 . E5 . G5 . A5 . | G5 . E5 . D5 . . . | E5 . D5 . C5 . A4 . | D5 . . . . . . .' } }
+    },
+    // 짧은 징글 (2~4초 · 효과음 쪽 · 그동안 배경음은 낮아져요): [음, 박(8분음 칸), 악기]
+    jingles: {
+      build: { bpm: 120, notes: [['C5', 0, 'pluck'], ['E5', 1, 'pluck'], ['G5', 2, 'pluck'], ['C6', 3, 'pluck'], ['G5', 3, 'flute', 3]], bell: 3 },
+      area: { bpm: 104, notes: [['G4', 0, 'pluck'], ['C5', 1, 'pluck'], ['E5', 2, 'pluck'], ['G5', 3, 'pluck'], ['A5', 4, 'flute', 2], ['G5', 6, 'flute', 1], ['E5', 7, 'flute', 1], ['G5', 8, 'flute', 2], ['C6', 10, 'flute', 4], ['C4', 10, 'pluck'], ['G4', 10, 'pluck']], gong: 0, bell: 10 },
+      ending: { bpm: 80, notes: [['A4', 0, 'pluck'], ['C5', 1, 'pluck'], ['E5', 2, 'pluck'], ['A5', 3, 'flute', 3], ['G5', 6, 'flute', 2], ['E5', 8, 'flute', 2], ['D5', 10, 'flute', 2], ['C5', 12, 'flute', 2], ['E5', 14, 'flute', 4], ['A4', 14, 'pluck'], ['C4', 14, 'pluck']], gong: 0, bell: 14 },
+      attend: { bpm: 132, notes: [['E5', 0, 'pluck'], ['G5', 1, 'pluck'], ['C6', 2, 'pluck'], ['D6', 3, 'pluck']], bell: 3 }
+    }
   };
 
   // 처음 판: 발생기 3개(가운데 아래) + 1단계 물건 몇 개 · 위쪽은 모래더미(옆에서 합치면 한 겹씩 벗겨짐)
@@ -297,7 +446,7 @@
     items: [{ c: 'a', t: 1, at: 43 }, { c: 'a', t: 1, at: 47 }, { c: 'b', t: 1, at: 45 }, { c: 'b', t: 1, at: 52 }, { c: 'd', t: 1, at: 54 }],
     cover: [{ rows: [0, 1], n: 2 }, { rows: [2], n: 1 }],
     chains: ['a', 'b', 'd'],
-    energy: 100, coins: 0, stars: 0, gems: 0
+    energy: 100, coins: 0, stars: 1, gems: 0
   };
 
   // 이야기 장면 (톡해서 넘김 · 한 장면 3~6줄) · who = VILLAGERS id · face = 표정
@@ -526,10 +675,12 @@
     '물건을 [가방] 버튼으로 끌어다 놓으면 가방에 들어가요.',
     '[마을]에서 반짝이는 곳을 톡 하면 할머니의 편지 조각이 숨어 있어요.',
     '☰ 메뉴에서 매일 출석 선물과 오늘의 부탁을 받아요.',
-    '발생기를 고르고 [강화]하면 더 좋은 물건이 나와요.'
+    '발생기를 고르고 [강화]하면 더 좋은 물건이 나와요.',
+    '[상점]에서 매일 무료 선물을 받아요. 특가는 날마다 바뀌어요.',
+    '판이 복잡하면 오른쪽 아래 🔨 자동 합치기! 부탁에 쓸 물건은 남겨 둬요.'
   ];
 
-  const API = { CHAINS, GENS, VILLAGERS, AREAS, STORY_ORDERS, LETTERS, SECRETS, DAILY, EVENTS, EVENT_REF_MONDAY, EVENT_FROM_AREA, BOARD, BAL, START, STORY, TIPS, SAVE_KEY: 'arichae_merge_v1', SYNC_KEY: 'arichae_merge_sync', VERSION: 2 };
+  const API = { CHAINS, GENS, VILLAGERS, AREAS, STORY_ORDERS, LETTERS, SECRETS, DAILY, EVENTS, EVENT_REF_MONDAY, EVENT_FROM_AREA, BOARD, BAL, SHOP, MUSIC, START, STORY, TIPS, SAVE_KEY: 'arichae_merge_v1', SYNC_KEY: 'arichae_merge_sync', VERSION: 3 };
   if (typeof module === 'object' && module.exports) module.exports = API;
   else root.MergeData = API;
 })(typeof window !== 'undefined' ? window : globalThis);
