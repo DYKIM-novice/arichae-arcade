@@ -12,7 +12,8 @@
     python tools/merge_art.py town      # 마을 그림만 (map_r3 처럼 이름 일부만 줘도 돼요)
   · 건물·장식·공용(b_ c_ d_): 밑에 남은 모래 받침을 지워요 (변형 3장이 같게) · 옅은 길 자국도
   · 걷는 인물(w_ h_): 발밑 그림자 지우기 · 미나 다리 다시 그리기 · 하윤 옷마다 얼굴 칸 그림(h_*_face)도
-  · 바탕(map_r*): 바다 색을 6장 모두 같게 + 가장자리를 같은 바다색으로 → 2×3 으로 붙여도 이음매가 안 보여요
+    python tools/merge_art.py map       # 이어진 섬 지도(town2/town_map_v3.jpg)만 → map_lo · map_<열>_<행> 조각 · map_land
+  · (옛) 바탕(map_r*): 바다 색을 6장 모두 같게 + 가장자리를 같은 바다색으로 → 2×3 으로 붙여도 이음매가 안 보여요
                   r2~r6 의 엉뚱한 건물·평상·표시는 둘레 색으로 메워요 (확산 메우기 · 무료)
 """
 import sys
@@ -421,6 +422,60 @@ def town_map(name, im):
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
 
 
+TOWN_MAP_SRC = SRC / "town2" / "town_map_v3.jpg"     # 하나로 이어진 섬 지도 3072² (town_map.json 좌표 = 이 그림 px)
+TOWN_MAP_SEA = np.array([95, 160, 149], np.float32)  # 지도 밖 바다색 (data.js TOWN.sea '#5fa095' 와 같게)
+TOWN_TILE = 512
+
+
+def town_map_tiles():
+    """이어진 섬 지도 → 폰용 조각 그림
+    · town/map_lo.webp : 전체 1024² (멀리 볼 때 · 조각이 오기 전 바로 보이는 바탕)
+    · town/map_<열>_<행>.webp : 3072² 를 512² 조각 6×6 (가까이 볼 때 화면에 보이는 조각만 받아요 → 폰 메모리·데이터 절약)
+    · town/map_land.webp : 땅 지도 192² (알파 = 땅 · 안개를 섬 위에만 덮는 데 써요)
+    가장자리 280px 는 바다색 하나로 살살 → 지도 밖을 같은 색으로 칠해도 이음매가 안 보여요"""
+    im = Image.open(TOWN_MAP_SRC).convert("RGB")
+    a = np.asarray(im).astype(np.float32)
+    h, w, _ = a.shape
+    yy, xx = np.mgrid[0:h, 0:w]
+    e = np.minimum(np.minimum(xx, w - 1 - xx), np.minimum(yy, h - 1 - yy)).astype(np.float32)
+    k = np.clip(1 - e / 280, 0, 1)[..., None]
+    k = k * k * (3 - 2 * k)                                   # 가장자리 280px 를 부드럽게 바다색 하나로 (멀리서 봐도 지도 테두리 단이 안 보이게)
+    r_, g_, b_ = a[..., 0], a[..., 1], a[..., 2]               # 바다(청록)만 · 섬 바닷가 거품·모래는 그대로
+    seaish = ((g_ - r_ > 14) & (b_ - r_ > 4) & (b_ > g_ - 48) & (r_ < 150)).astype(np.float32)
+    k = k * ndimage.gaussian_filter(seaish, 6)[..., None]
+    a = a * (1 - k) + TOWN_MAP_SEA * k
+    full = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
+    TOWN_OUT.mkdir(parents=True, exist_ok=True)
+    total = 0
+    lo = full.resize((1024, 1024), Image.LANCZOS)
+    lo.save(TOWN_OUT / "map_lo.webp", "WEBP", quality=80, method=6)
+    total += (TOWN_OUT / "map_lo.webp").stat().st_size
+    n = w // TOWN_TILE
+    for r in range(n):
+        for c in range(n):
+            t = full.crop((c * TOWN_TILE, r * TOWN_TILE, (c + 1) * TOWN_TILE, (r + 1) * TOWN_TILE))
+            dst = TOWN_OUT / f"map_{c}_{r}.webp"
+            t.save(dst, "WEBP", quality=80, method=6)
+            total += dst.stat().st_size
+    # 땅: 바다(청록)가 아닌 곳 · 작은 구멍 메우고 살짝 넓혀 부드럽게
+    small = np.asarray(im.resize((384, 384), Image.BILINEAR)).astype(np.float32)
+    r_, g_, b_ = small[..., 0], small[..., 1], small[..., 2]
+    sea = (g_ - r_ > 14) & (b_ - r_ > 4) & (b_ > g_ - 48)
+    land = ndimage.binary_opening(~sea, iterations=2)
+    lab, cnt = ndimage.label(land)
+    if cnt:
+        sizes = ndimage.sum(land, lab, range(1, cnt + 1))
+        land = ndimage.binary_fill_holes(lab == (int(np.argmax(sizes)) + 1))
+    land = ndimage.binary_dilation(land, iterations=3)
+    al = ndimage.gaussian_filter(land.astype(np.float32), 2.0)
+    al = Image.fromarray(np.clip(al * 255, 0, 255).astype(np.uint8)).resize((192, 192), Image.LANCZOS)
+    m = Image.new("RGBA", al.size, (255, 255, 255, 0))
+    m.putalpha(al)
+    m.save(TOWN_OUT / "map_land.webp", "WEBP", lossless=True)
+    total += (TOWN_OUT / "map_land.webp").stat().st_size
+    print(f"town/map_lo + 조각 {n}×{n} + map_land · {total // 1024}KB")
+
+
 def town_face(im):
     """옷 입은 하윤 전신 → 대사창·말하는 칸 얼굴 (위쪽 머리 부분 정사각 256)"""
     im = trim(im, 0)
@@ -436,8 +491,8 @@ def town(only=""):
     total = 0
     for src in sorted(TOWN_SRC.glob("*")):
         name = src.stem
-        if name.endswith("_src") or (only and only != "town" and only not in name):
-            continue
+        if name.endswith("_src") or name.startswith("map_r") or (only and only != "town" and only not in name):
+            continue   # map_r1~6(지역별 섬 6장)은 옛 지도 · 지금은 이어진 지도 town_map_tiles()
         im = Image.open(src)
         q = 82
         if name.startswith("map_"):
@@ -463,11 +518,17 @@ def town(only=""):
         out.save(dst, "WEBP", quality=q, method=6)
         total += dst.stat().st_size
         print(f"town/{name:22s} {out.width}x{out.height} {dst.stat().st_size // 1024}KB")
+    if not only or only in ("town", "map", "map_"):
+        town_map_tiles()
     print(f"마을 합계 {total // 1024}KB → {TOWN_OUT}")
 
 
 def main():
     only = sys.argv[1] if len(sys.argv) > 1 else ""
+    if only == "map":           # 이어진 섬 지도 조각만
+        town_map_tiles()
+        write_list()
+        return
     if only == "town" or only.startswith(("b_", "c_", "d_", "w_", "h_", "m_", "map_")):
         town(only)
         write_list()

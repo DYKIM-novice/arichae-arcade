@@ -1012,7 +1012,7 @@
   function placeDeco(st, id, wx, wy, now) {
     if (st.decos.indexOf(id) < 0 || id === 'mongdol_hat') return { ok: false, reason: 'none' };
     if (wx == null) { delete st.placed[id]; st.updatedAt = now; return { ok: true, removed: true }; }
-    const W = TOWN.cols * TOWN.tw, H = TOWN.rows * TOWN.th;
+    const W = TOWN.map.w, H = TOWN.map.h;
     st.placed[id] = { wx: Math.round(Math.max(20, Math.min(W - 20, +wx))), wy: Math.round(Math.max(20, Math.min(H - 20, +wy))) };
     st.updatedAt = now;
     return { ok: true };
@@ -1056,7 +1056,33 @@
 
   /* ---------- 마을 짓기 (merge_town.md §A · 지도 화면은 town.js) ---------- */
   // 지역 칸의 세계 좌표 원점 · 작업이 속한 지역 번호
-  function areaOrigin(i) { const a = AREAS[i], t = a && TOWN.areas[a.id]; return t ? { x: t.col * TOWN.tw, y: t.row * TOWN.th } : { x: 0, y: 0 }; }
+  // 마을 좌표는 v5 부터 모두 '지도 px' (지역마다 따로 쓰던 원점은 없어요 · 옛 화면 코드와 맞추려고 0 을 돌려줘요)
+  function areaOrigin() { return { x: 0, y: 0 }; }
+  // 지도 칸의 주인 지역 (지역 box 들이 겹쳐서 · box 반폭·반높이로 나눈 '가운데까지 거리'가 가장 가까운 지역) → AREAS 번호
+  //   town.js 의 안개·장식 놓기·제목, 시험(작업 자리가 제 지역에 있는지)이 같이 써요
+  function zoneAt(x, y) {
+    let best = 0, bd = Infinity;
+    for (let i = 0; i < AREAS.length; i++) {
+      const t = TOWN.areas[AREAS[i].id]; if (!t) continue;
+      const b = t.box, c = t.center || [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
+      const d = Math.hypot((x - c[0]) / ((b[2] - b[0]) / 2), (y - c[1]) / ((b[3] - b[1]) / 2));
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }
+  // v4 마을(지역 그림 1536×1024 를 2열×3행) · 저장 변환에만 써요
+  const V4_TOWN = { tw: 1536, th: 1024, areas: {
+    r1: { col: 0, row: 2, box: [300, 90, 1235, 860] }, r2: { col: 1, row: 2, box: [250, 200, 1295, 880] }, r3: { col: 0, row: 1, box: [325, 130, 1215, 855] },
+    r4: { col: 1, row: 1, box: [330, 145, 1220, 835] }, r5: { col: 1, row: 0, box: [355, 205, 1220, 810] }, r6: { col: 0, row: 0, box: [340, -70, 1180, 855] } } };
+  function v4ToMap(wx, wy) {
+    const col = Math.max(0, Math.min(1, Math.floor(wx / V4_TOWN.tw))), row = Math.max(0, Math.min(2, Math.floor(wy / V4_TOWN.th)));
+    const id = Object.keys(V4_TOWN.areas).find((k) => V4_TOWN.areas[k].col === col && V4_TOWN.areas[k].row === row);
+    const o = V4_TOWN.areas[id], nb = TOWN.areas[id] && TOWN.areas[id].box;
+    if (!o || !nb) return null;
+    const b = o.box, lx = wx - col * V4_TOWN.tw, ly = wy - row * V4_TOWN.th;
+    const fx = Math.max(0, Math.min(1, (lx - b[0]) / (b[2] - b[0]))), fy = Math.max(0, Math.min(1, (ly - b[1]) / (b[3] - b[1])));
+    return { wx: Math.round(nb[0] + (nb[2] - nb[0]) * (0.15 + 0.7 * fx)), wy: Math.round(nb[1] + (nb[3] - nb[1]) * (0.15 + 0.7 * fy)) };
+  }
   function taskArea(taskId) { return AREAS.findIndex((a) => a.tasks.some((t) => t.id === taskId)); }
   const isB3 = (taskId) => !!(TOWN.build[taskId] && TOWN.build[taskId].kind === 'B3');
   // 건물 모양: 지금 모양 번호 · 가진 모양 · 다른 모양 값 (30 × 그 지역 배수)
@@ -1277,14 +1303,29 @@
       Object.keys(placed).forEach((id) => {
         const p = placed[id];
         if (!p || typeof p !== 'object') return;
-        const o = areaOrigin(Math.max(0, Math.min(AREAS.length - 1, p.a | 0)));
-        // 옛 % 는 옛 그림 기준이라 섬 안쪽(지역 그림 가운데 60%)으로 옮겨요 → 바다에 빠지지 않게
-        st.placed[id] = { wx: Math.round(o.x + TOWN.tw * (0.25 + 0.5 * Math.max(0, Math.min(100, +p.x || 50)) / 100)),
-          wy: Math.round(o.y + TOWN.th * (0.3 + 0.45 * Math.max(0, Math.min(100, +p.y || 50)) / 100)) };
+        const o = V4_TOWN.areas[AREAS[Math.max(0, Math.min(AREAS.length - 1, p.a | 0))].id];
+        // 옛 % 는 옛 그림 기준이라 섬 안쪽(지역 그림 가운데 60%)으로 옮겨요 → 바다에 빠지지 않게 (v4 세계 px · 아래 v4 → v5 가 새 지도로 옮겨요)
+        st.placed[id] = { wx: Math.round(o.col * V4_TOWN.tw + V4_TOWN.tw * (0.25 + 0.5 * Math.max(0, Math.min(100, +p.x || 50)) / 100)),
+          wy: Math.round(o.row * V4_TOWN.th + V4_TOWN.th * (0.3 + 0.45 * Math.max(0, Math.min(100, +p.y || 50)) / 100)) };
       });
       st.seen = st.seen && typeof st.seen === 'object' ? st.seen : {};
       if (Object.keys(st.tasks).length) st.seen.townNew = 1;   // '마을이 새 모습이 됐어요!' 한 번
       st.v = 4;
+      return st;
+    },
+    // v4 → v5: 마을 지도가 지역 섬 6장(2열×3행) → 하나로 이어진 섬 지도로 · 놓은 장식 자리(옛 세계 px)를 같은 지역의 새 자리로 옮겨요
+    //   옛 지역 칸 안 섬 테두리(box)에서의 비율 → 새 지역 box 의 안쪽 70% 에서 같은 비율 (바다에 빠지지 않게)
+    4: (st) => {
+      const placed = st.placed && typeof st.placed === 'object' ? st.placed : {};
+      st.placed = {};
+      Object.keys(placed).forEach((id) => {
+        const p = placed[id];
+        if (!p || typeof p.wx !== 'number' || typeof p.wy !== 'number') return;
+        const q = v4ToMap(p.wx, p.wy);
+        if (q) st.placed[id] = q;
+      });
+      st.cam = null;                                          // 옛 지도의 카메라 자리는 버려요
+      st.v = 5;
       return st;
     }
   };
@@ -1361,7 +1402,7 @@
     autoReserve, autoPairs, autoPrice, autoFreeLeft, autoMergePlan, autoMergeBuy, autoMerge, autoChain, boostTick, setPin,
     orderLevel, makeOrder, fillOrders, orderStatus, orderGuide, deliver, skipOrder,
     areaInfo, mapPins, doTask, completeArea,
-    areaOrigin, taskArea, isB3, lookOf, looksOwned, lookPrice, setLook, firstLook, looksPending, fillerPrice, buyFiller, decoKind,
+    areaOrigin, v4ToMap, zoneAt, taskArea, isB3, lookOf, looksOwned, lookPrice, setLook, firstLook, looksPending, fillerPrice, buyFiller, decoKind,
     inSeason, buyOutfit, wearOutfit, mongHas, buyMong, wearMong, tapToy,
     FRIENDS, friendOf, giftScore, friendInfo, addFriend, giveGift, giftChoices,
     isEvent, genLevel, genUpInfo, upgradeGen, storyOrderActive, syncStoryOrders,

@@ -637,17 +637,25 @@ test('지역 1~6 전/후 배경 · 시작/엔딩 그림 · 이벤트 그림이 �
 });
 
 console.log('4단계 · 지역 4~6 · 작업 자리');
-test('마을 지도: 작업마다 짓기 자리(지역 그림 안) · 잔해·비밀도 그림 안 · 지은 것끼리 겹치지 않음 · 그림이 다 있음', () => {
+test('마을 지도: 작업마다 짓기 자리(그 지역 box 안) · 잔해·비밀도 · 지은 것끼리 겹치지 않음 · 그림·지도 조각이 다 있음', () => {
   const fs = require('fs');
   const IMG = path.join(__dirname, '..', 'static', 'img', 'merge', 'town');
-  const T = D.TOWN, inT = (x, y) => x >= 40 && x <= T.tw - 40 && y >= 40 && y <= T.th - 30;
+  const T = D.TOWN, isl = T.island;
+  const inMap = (x, y) => x >= 40 && x <= T.map.w - 40 && y >= 40 && y <= T.map.h - 40;
+  let inT = null;
   const has = (id) => fs.existsSync(path.join(IMG, id + '.webp'));
   D.AREAS.forEach((a) => {
     assert.ok(T.areas[a.id] && T.areas[a.id].paths.length, a.id + ' 지역 칸·걷는 길');
-    const pts = [];
+    const bx = T.areas[a.id].box;
+    inT = (x, y) => x >= bx[0] && x <= bx[2] && y >= bx[1] && y <= bx[3] && x >= isl[0] && x <= isl[2] && y >= isl[1] && y <= isl[3];
+    T.areas[a.id].paths.forEach((p) => p.forEach((q) => assert.ok(inT(q[0], q[1]), a.id + ' 걷는 길 ' + q)));
+    const pts = [], ai = D.AREAS.indexOf(a);
+    assert.strictEqual(C.zoneAt(T.areas[a.id].center[0], T.areas[a.id].center[1]), ai, a.id + ' 가운데는 제 지역');
     a.tasks.forEach((t) => {
       const b = T.build[t.id];
       assert.ok(b && ['B3', 'D1', 'G'].indexOf(b.kind) >= 0, '짓기 ' + t.id);
+      // 안개는 지역 칸(zoneAt)마다 걷혀요 → 짓기 자리·잔해가 제 지역 칸에 있어야 지역이 열릴 때 같이 보여요
+      [b.at].concat(b.rep || [], (b.clears || []).map((c) => [c[1], c[2]])).forEach((p) => { if (p) assert.strictEqual(C.zoneAt(p[0], p[1]), ai, '제 지역 칸 ' + t.id + ' ' + p); });
       if (b.kind === 'B3') { ['a', 'b', 'c'].forEach((v) => assert.ok(has(b.art + '_' + v), b.art + '_' + v)); assert.strictEqual(b.looks.length, 3); }
       if (b.kind === 'D1') assert.ok(has(b.art), b.art);
       if (b.at) { assert.ok(inT(b.at[0], b.at[1]), '자리 ' + t.id); if (!b.z && !b.fx) pts.push([b.at[0], b.at[1], t.id]); }
@@ -659,13 +667,30 @@ test('마을 지도: 작업마다 짓기 자리(지역 그림 안) · 잔해·�
     }
     const s = a.secrets;
     s.letters.forEach((l) => { assert.ok(inT(l.x, l.y), '편지 자리 ' + l.id); if (l.after) assert.ok(a.tasks.some((t) => t.id === l.after)); });
-    s.gulls.concat(s.bottle).forEach((g) => assert.ok(inT(g[0], g[1]), a.id + ' 비밀 자리 ' + g));
-    assert.ok(has('map_' + a.id), '바탕 ' + a.id);
+    s.gulls.forEach((g) => assert.ok(inT(g[0], g[1]) && C.zoneAt(g[0], g[1]) === ai, a.id + ' 갈매기 자리 ' + g));
+    s.letters.forEach((l) => assert.strictEqual(C.zoneAt(l.x, l.y), ai, a.id + ' 편지 자리(제 지역 칸) ' + l.id));
+    s.bottle.forEach((g) => assert.ok(inMap(g[0], g[1]), a.id + ' 병 자리 ' + g));
     assert.ok(has('w_' + T.areas[a.id].who), '걷는 ' + T.areas[a.id].who);
   });
   Object.keys(D.OUTFITS).forEach((k) => { assert.ok(has(D.OUTFITS[k].art)); if (D.OUTFITS[k].face) assert.ok(has(D.OUTFITS[k].face)); });
   Object.keys(T.fillers).forEach((k) => assert.ok(has(T.fillers[k].art), k));
   ['w_mongdol', 'c_scaffold', T.ruin.art, 'm_sunglasses', 'm_tube'].forEach((id) => assert.ok(has(id), id));
+  // 이어진 섬 지도: 멀리 볼 바탕 1장 + 조각 (지도 폭 / tile)² + 땅 지도(안개용)
+  const n = T.map.w / T.map.tile;
+  assert.ok(Number.isInteger(n) && T.map.w === T.map.h, '조각 수');
+  ['map_lo', 'map_land'].forEach((id) => assert.ok(has(id), id));
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) assert.ok(has(`map_${c}_${r}`), `map_${c}_${r}`);
+  T.boats.forEach((b) => { assert.ok(has(b[0])); assert.ok(inMap(b[1], b[2]), '배 ' + b); });
+  assert.ok(inMap(T.ruin.at[0], T.ruin.at[1]) && inMap(T.pond.at[0], T.pond.at[1]));
+});
+test('마을 화면 코드: 이어진 지도(조각·안개·섬 끌기 한계)만 쓰고 옛 2×3 지역 칸 좌표는 안 써요', () => {
+  const tw = require('fs').readFileSync(path.join(base, 'town.js'), 'utf8');
+  assert.ok(!/T\.tw|T\.th|T\.cols|T\.rows|'map_' \+ D\.AREAS/.test(tw), '옛 지역 칸 좌표');
+  assert.ok(/map_\$\{c\}_\$\{r\}/.test(tw) && /img\('map_lo'\)/.test(tw) && /img\('map_land'\)/.test(tw), '조각 지도 · 땅 지도');
+  assert.ok(/C\.zoneAt/.test(tw) && /T\.island/.test(tw), '지역 칸 · 섬 한계');
+  // 모든 지역 가운데와 섬 테두리
+  const isl = D.TOWN.island;
+  D.AREAS.forEach((a) => { const c = D.TOWN.areas[a.id].center; assert.ok(c[0] > isl[0] && c[0] < isl[2] && c[1] > isl[1] && c[1] < isl[3]); });
 });
 test('마을 지도: 섬 테두리(box) 안에 모든 짓기 자리 · 현판은 본채 앞벽에 걸어요(모양 3가지마다 자리)', () => {
   const T = D.TOWN;
@@ -1125,12 +1150,12 @@ test('v3 저장 → v4: 끝낸 작업은 지은 건물(첫 모양 무료) · 별
   v3.tasks.r3_road = T0; v3.story = { r1_gate: true, r2_open: 'skip' };
   v3.decos = ['kite_deco']; v3.placed = { kite_deco: { a: 1, x: 40, y: 70 } };
   const st = C.deserialize(JSON.stringify(v3), T0, seeded(1));
-  assert.strictEqual(st.v, 4); assert.strictEqual(st.area, 2); assert.strictEqual(st.stars, 5); assert.strictEqual(st.coins, 77);
+  assert.strictEqual(st.v, D.VERSION); assert.strictEqual(st.area, 2); assert.strictEqual(st.stars, 5); assert.strictEqual(st.coins, 77);
   assert.strictEqual(Object.keys(st.tasks).length, 14, '작업 id 그대로'); assert.deepStrictEqual(st.story, v3.story);
   ['r1_gate', 'r1_paper', 'r1_room', 'r2_pier', 'r2_awning', 'r2_ice'].forEach((id) => { assert.strictEqual(C.lookOf(st, id), 0); assert.deepStrictEqual(C.looksOwned(st, id), [0]); });
   assert.strictEqual(st.look.r3_road, undefined, '땅 고치기(G)는 모양 없음'); assert.strictEqual(st.look.r1_sign, undefined, '장식은 모양 없음');
-  const o = C.areaOrigin(1), p = st.placed.kite_deco;
-  assert.ok(p.wx > o.x + 300 && p.wx < o.x + 1236 && p.wy > o.y + 250 && p.wy < o.y + 800, '2지역 섬 안쪽');
+  const bx = D.TOWN.areas.r2.box, p = st.placed.kite_deco;
+  assert.ok(p.wx > bx[0] && p.wx < bx[2] && p.wy > bx[1] && p.wy < bx[3], '2지역 섬 안쪽 (v4 → v5 로 새 지도 자리)');
   assert.strictEqual(st.seen.townNew, 1); assert.strictEqual(st.outfit, 'base'); assert.deepStrictEqual(st.owned.outfits, ['base']);
   const back = C.deserialize(C.serialize(st), T0, seeded(1));
   assert.deepStrictEqual(back.look, st.look); assert.deepStrictEqual(back.placed, st.placed);
@@ -1220,6 +1245,28 @@ test('v3 → v4 바꾸기: 지역·별·작업 그대로 + 바꾸기 전 저장 
   assert.strictEqual(bk[0].sum.area, 1); assert.strictEqual(bk[0].sum.v, 3);
   S.open(ad, T0 + 2000, seeded(1)); assert.strictEqual(S.backups(ad).length, 1, '같은 기록은 한 번만');
   assert.strictEqual(C.deserialize(bk[0].data, T0, seeded(1)).area, 1, '보관본으로 되살릴 수 있어요');
+});
+test('v4 → v5 (이어진 섬 지도): 옛 코드로 만든 저장 · 작업·모양·별 그대로 · 놓은 장식은 같은 지역 새 자리 · 바꾸기 전 글 보관', () => {
+  const raw = require('fs').readFileSync(path.join(__dirname, 'fixtures', 'merge_save_v4.json'), 'utf8');   // HEAD(v4) core.js 로 만든 저장
+  const old = JSON.parse(raw);
+  assert.strictEqual(old.v, 4);
+  const ls = memStore(); const ad = S.localAdapter(ls);
+  ls.setItem(D.SAVE_KEY, raw);
+  const o = S.open(ad, T0 + 1000, seeded(1));
+  assert.ok(o.migrated && !o.broken && !o.fresh);
+  const st = o.st;
+  assert.strictEqual(st.v, D.VERSION); assert.strictEqual(st.area, old.area); assert.strictEqual(st.stars, old.stars); assert.strictEqual(st.coins, old.coins);
+  assert.deepStrictEqual(st.tasks, old.tasks, '작업 id·시각 그대로'); assert.deepStrictEqual(st.look, old.look); assert.deepStrictEqual(st.owned.looks, old.owned.looks);
+  assert.strictEqual(st.cam, null, '옛 지도 카메라는 버려요');
+  const inBox = (p, id) => { const b = D.TOWN.areas[id].box; return p.wx > b[0] && p.wx < b[2] && p.wy > b[1] && p.wy < b[3]; };
+  assert.ok(inBox(st.placed.kite_deco, 'r2'), '옛 2지역(오른쪽 아래 칸) 장식 → 새 2지역');
+  assert.ok(inBox(st.placed.f_pine_1, 'r1'), '옛 1지역(왼쪽 아래 칸) 장식 → 새 1지역');
+  const bk = S.backups(ad); assert.strictEqual(bk.length, 1); assert.strictEqual(bk[0].why, 'migrate'); assert.strictEqual(bk[0].data, raw);
+  const back = C.deserialize(C.serialize(st), T0, seeded(1));
+  assert.deepStrictEqual(back.placed, st.placed, '한 번만 옮겨요 (다시 열어도 그대로)');
+  assert.strictEqual(C.v4ToMap(99999, -5) !== undefined, true);
+  // 새 지도 범위 밖으로는 못 놓아요
+  assert.ok(C.placeDeco(st, 'kite_deco', 99999, -50, T0).ok); assert.deepStrictEqual(st.placed.kite_deco, { wx: D.TOWN.map.w - 20, wy: 20 });
 });
 test('읽지 못하는 저장(망가짐·더 새 버전): 새 판으로 시작하되 지우기 전에 보관 · 처음으로 쳐서 서버 기록이 이겨요', () => {
   const ls = memStore(); const ad = S.localAdapter(ls);

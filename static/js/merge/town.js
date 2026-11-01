@@ -1,5 +1,7 @@
 /* 머지관 · 「소라섬 등불 이야기」 마을 지도 (merge_town.md §A·§H·§I · 2단계)
-   - [마을] → 섬 6개(지역 그림 2열×3행)가 이어진 큰 지도 1장 · 한 손가락 끌기 = 이동 · 두 손가락/휠 = 확대 · 관성 · 가장자리 탄성
+   - [마을] → 하나로 이어진 섬 지도 1장 (3072² · 멀리는 map_lo 1장, 가까이는 보이는 512² 조각만 받아요)
+     · 한 손가락 끌기 = 이동 · 두 손가락/휠 = 확대 · 관성 · 섬 밖으로는 탄성 · 지역은 이야기 순서로 열리고 잠긴 곳은 움직이는 안개
+     · 지역이 열리면 안개가 가운데부터 걷히며 구름이 흩어져요
    - 작업 = 짓기: 별이 날아감 → 잔해 흔들·먼지 → 비계가 솟고 망치 딱딱딱 → 번쩍 → 건물 뿅 (톡하면 건너뛰기)
      · 건물(B3)은 모양 3가지 중 하나 무료로 고르기 · 나머지 2개는 동전 · 언제든 [꾸미기]에서 바꾸기 (core.js setLook)
      · 땅 고치기(G)는 잔해만 치워요 · 6지역: 무너진 등대 → 비계 → 등대 → 렌즈 반짝 → 밤마다 빛줄기
@@ -7,14 +9,14 @@
    - 숨은 비밀(편지 조각·갈매기·병 속 편지) · 장식 놓기 · 마을 사람 톡 → 우정(선물하기) · 지은 건물 톡 → 통통 + 하루 한 번 엽전
    - 성능: 정지 층(바탕·건물)은 화면 크기 캔버스에 모아 두고 카메라·건물이 바뀔 때만 다시 그려요 · 움직이는 것만 매 프레임
            · 초당 30장까지 · 보이는 지역 그림만 · 화면 배율 최대 2 · '움직임 줄이기'면 걷기·출렁 멈춤
-   - 좌표는 data.js TOWN (지역 그림 px) · ?edit=1 이면 끌어서 옮기고 [좌표 복사]
+   - 좌표는 data.js TOWN (지도 px) · ?edit=1 이면 모든 지역·건물을 펼쳐 보이고 끌어서 옮기고 [좌표 복사]
    - 규칙(별·작업·지역 완성·이야기·비밀)은 MergeCore 그대로 · 화면 손잡이는 window.MergeUI */
 (function () {
   'use strict';
 
   const D = window.MergeData, C = window.MergeCore, A = window.MergeArt, F = window.MergeFx, U = window.MergeUI;
   if (!U) return;
-  const T = D.TOWN, TW = T.tw, TH = T.th, WW = TW * T.cols, WH = TH * T.rows;
+  const T = D.TOWN, MW = T.map.w, MH = T.map.h, TILE = T.map.tile, NT = Math.round(MW / TILE);
   const $ = (id) => document.getElementById(id);
   const esc = U.esc;
   const st = () => U.state;
@@ -57,15 +59,28 @@
   }
 
   /* ---------- 지역 · 좌표 ---------- */
-  const origin = (i) => C.areaOrigin(i);
-  const W = (i, p) => { const o = origin(i); return { x: o.x + p[0], y: o.y + p[1] }; };
+  const origin = (i) => C.areaOrigin(i);                        // 지도 px 라 언제나 0 (옛 코드와 같은 모양으로 두어요)
+  const W = (i, p) => ({ x: p[0], y: p[1] });
   const taskOf = (id) => { for (let i = 0; i < NA; i++) { const t = D.AREAS[i].tasks.find((x) => x.id === id); if (t) return { t, i }; } return null; };
   const openN = () => Math.min(st().area, NA - 1);            // 지금 지역 번호 (다 고쳤으면 마지막)
   let fogHold = -1;                                           // 방금 열린 지역 (다음 지역으로 넘어가기 전까지 안개)
-  const isOpen = (i) => i <= st().area && i !== fogHold;
-  function areaAt(wx, wy) {
-    const c = clamp(Math.floor(wx / TW), 0, T.cols - 1), r = clamp(Math.floor(wy / TH), 0, T.rows - 1);
-    return D.AREAS.findIndex((a) => T.areas[a.id].col === c && T.areas[a.id].row === r);
+  const isOpen = (i) => EDIT || (i >= 0 && i <= st().area && i !== fogHold);
+  const areaAt = (wx, wy) => C.zoneAt(wx, wy);                // 지도 칸의 주인 지역 (core.js · 지역 box 가운데에 가까운 쪽)
+  // 땅 지도 (map_land 192² 알파) · 장식은 땅 위에만 · 안개도 땅 위에만
+  let land = null;
+  function landAt(wx, wy) {
+    if (!land) {
+      const o = img('map_land'); if (!o) return 1;
+      try {
+        const c = document.createElement('canvas'); c.width = o.w; c.height = o.h;
+        const g = c.getContext('2d'); g.drawImage(o.im, 0, 0);
+        const d = g.getImageData(0, 0, o.w, o.h).data, a = new Float32Array(o.w * o.h);
+        for (let k = 0; k < a.length; k++) a[k] = d[k * 4 + 3] / 255;
+        land = { w: o.w, h: o.h, a };
+      } catch (e) { land = { w: 1, h: 1, a: new Float32Array([1]) }; }
+    }
+    const x = clamp(Math.floor(wx / MW * land.w), 0, land.w - 1), y = clamp(Math.floor(wy / MH * land.h), 0, land.h - 1);
+    return land.a[y * land.w + x];
   }
   // 작업 자리 (말풍선·카메라·연출 기준)
   function sitePos(id) {
@@ -98,7 +113,7 @@
   // 벽에 거는 것(현판): 걸 집이 지어졌으면 그 집 그림 위 비율 자리에 · 벽 기울기만큼 비스듬히 · 집 바로 앞 깊이
   function mountObj(id, i) {
     const b = T.build[id], m = b.mount, s = st(), host = T.build[m.on];
-    if (s.tasks[m.on] && !(anim && anim.id === m.on)) {
+    if ((EDIT || s.tasks[m.on]) && !(anim && anim.id === m.on)) {
       const hi = img(lookArt(m.on));
       if (!hi) return null;                                   // 집 그림을 읽으면 다시 그려요 (dirty)
       const k = preview[m.on] != null ? preview[m.on] : C.lookOf(s, m.on);
@@ -118,11 +133,9 @@
       const a = D.AREAS[i];
       a.tasks.forEach((t) => {
         if (anim && anim.id === t.id) return;               // 짓는 중인 자리는 연출이 그려요
-        const b = T.build[t.id], done = !!s.tasks[t.id];
-        if (!done) {
-          (b.clears || []).forEach((c) => { const p = W(i, [c[1], c[2]]); push({ art: c[0], wx: p.x, wy: p.y, w: c[3], kind: 'debris', task: t.id }); });
-          return;
-        }
+        const b = T.build[t.id], done = EDIT || !!s.tasks[t.id];     // 자리 잡기(?edit=1): 다 지은 모습 + 잔해 자리도 같이
+        if (!done || EDIT) (b.clears || []).forEach((c) => { const p = W(i, [c[1], c[2]]); push({ art: c[0], wx: p.x, wy: p.y, w: c[3], kind: 'debris', task: t.id }); });
+        if (!done) return;
         if (b.kind === 'G') return;
         if (b.mount) { const m = mountObj(t.id, i); if (m) push(m); return; }
         const art = b.kind === 'B3' ? lookArt(t.id) : b.art;
@@ -134,7 +147,7 @@
         (b.rep || []).forEach((r) => { const q = W(i, r); push({ art, wx: q.x, wy: q.y, w: b.w, kind: 'build', task: t.id, rep: true }); });
       });
       // 6지역 등대 자리: 무너진 등대 → (나선 계단) 비계 → (외벽) 등대
-      if (a.id === 'r6' && !s.tasks.r6_wall && !(anim && (anim.id === 'r6_wall' || anim.id === 'r6_stairs'))) {
+      if (a.id === 'r6' && !EDIT && !s.tasks.r6_wall && !(anim && (anim.id === 'r6_wall' || anim.id === 'r6_stairs'))) {
         const p = W(i, T.ruin.at);
         if (s.tasks.r6_stairs) push({ art: T.ruin.scaffold, wx: p.x, wy: p.y + 10, w: T.ruin.sw, kind: 'scaf' });
         else push({ art: T.ruin.art, wx: p.x, wy: p.y, w: T.ruin.w, kind: 'ruin' });
@@ -157,34 +170,24 @@
   let vel = { x: 0, y: 0 }, fly = null, shake = 0;
   // 위 칸·아래 버튼이 가리는 화면 높이 (resize 때 실제 크기로) · 섬은 그 사이 칸에 맞춰요
   let UI_T = 70, UI_B = 90;
-  // 섬 테두리 (세계 px · data.js TOWN.areas.box) · 열린 지역들을 합친 테두리 = 끌기 한계
-  function boxOf(i) {
-    const o = origin(i), b = T.areas[D.AREAS[i].id].box || [0, 0, TW, TH];
-    return { x0: o.x + b[0], y0: o.y + b[1], x1: o.x + b[2], y1: o.y + b[3] };
-  }
-  function openBox() {
-    let r = null;
-    for (let i = 0; i <= Math.min(st().area, NA - 1); i++) {
-      const b = boxOf(i);
-      r = r ? { x0: Math.min(r.x0, b.x0), y0: Math.min(r.y0, b.y0), x1: Math.max(r.x1, b.x1), y1: Math.max(r.y1, b.y1) } : b;
-    }
-    return r || boxOf(0);
-  }
+  // 지역 테두리 (지도 px · data.js TOWN.areas.box) · 끌기·확대 한계는 섬 전체(TOWN.island · 잠긴 지역도 안개 너머로 구경해요)
+  function boxOf(i) { const b = T.areas[D.AREAS[i].id].box; return { x0: b[0], y0: b[1], x1: b[2], y1: b[3] }; }
+  function islandBox() { const b = T.island; return { x0: b[0], y0: b[1], x1: b[2], y1: b[3] }; }
   const availH = () => Math.max(160, VH - UI_T - UI_B);
-  // 가장 작게: 열린 섬이 다 보일 만큼 (그보다 멀리는 바다뿐) · 가장 크게: 화면 폭에 380px
+  // 가장 작게: 섬 전체가 위·아래 칸 사이에 다 보일 만큼 · 가장 크게: 화면 폭에 380px
   const sMax = () => VW / 380;
-  const sMin = () => { const b = openBox(); return Math.min(sMax() * 0.9, Math.min((VW - 16) / (b.x1 - b.x0 + 80), availH() / (b.y1 - b.y0 + 80))); };
-  // 지역 하나를 화면에 맞춰 보기: 섬이 화면 폭을 거의 채우게(세로 폰은 가장자리 바닷가만 살짝 잘림 · 끌어서 봐요) · 높이는 위·아래 칸 사이 안
+  const sMin = () => { const b = islandBox(); return Math.min(sMax() * 0.9, Math.min((VW - 16) / (b.x1 - b.x0 + 80), availH() / (b.y1 - b.y0 + 80))); };
+  // 지역 하나를 화면에 맞춰 보기: 지역이 화면 폭을 거의 채우게(세로 폰은 가장자리만 살짝 잘림 · 끌어서 봐요) · 높이는 위·아래 칸 사이 안
   function frameOf(i) {
-    const b = boxOf(i), bw = b.x1 - b.x0, bh = b.y1 - b.y0;
+    const b = boxOf(i), bw = b.x1 - b.x0, bh = b.y1 - b.y0, c = T.areas[D.AREAS[i].id].center || [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
     const s = clamp(Math.min(availH() / (bh + 30), (VW - 16) / (VW > VH ? bw + 40 : bw * 0.78)), sMin(), sMax());
-    return { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 - (UI_T - UI_B) / 2 / s, s };
+    return { x: c[0], y: c[1] - (UI_T - UI_B) / 2 / s, s };
   }
   const sDef = () => frameOf(openN()).s;
-  // 끌기 한계: 열린 섬 테두리 밖으로는 화면 여유(가로 40px · 위아래는 칸 아래로 20px)까지만 · 화면보다 작으면 가운데
+  // 끌기 한계: 섬 테두리 밖으로는 화면 여유(가로 40px · 위아래는 칸 아래로 20px)까지만 · 화면보다 작으면 가운데
   function clampCam(soft) {
     cam.s = clamp(cam.s, sMin(), sMax());
-    const b = openBox(), s = cam.s, hw = VW / 2 / s, sl = (soft ? 60 : 0) / s;
+    const b = islandBox(), s = cam.s, hw = VW / 2 / s, sl = (soft ? 60 : 0) / s;
     const xlo = b.x0 - 40 / s + hw - sl, xhi = b.x1 + 40 / s - hw + sl;
     const ylo = b.y0 + (VH / 2 - UI_T - 20) / s - sl, yhi = b.y1 - (VH / 2 - UI_B - 20) / s + sl;
     cam.x = xlo <= xhi ? clamp(cam.x, xlo, xhi) : (xlo + xhi) / 2;
@@ -199,7 +202,7 @@
     fly = { x0: cam.x, y0: cam.y, s0: cam.s, x: to.x, y: to.y, s: to.s, t0: performance.now(), ms: F.reduced ? 1 : (ms || 650), done };
     vel = { x: 0, y: 0 };
   }
-  function areaCenter(i) { const o = origin(i); return { x: o.x + TW / 2, y: o.y + TH * 0.55 }; }
+  function areaCenter(i) { const c = T.areas[D.AREAS[i].id].center; return { x: c[0], y: c[1] }; }
   function resize() {
     if (!cv) return;
     VW = cv.clientWidth || innerWidth; VH = cv.clientHeight || innerHeight;
@@ -237,6 +240,26 @@
     g.font = `${fs}px Jua, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillStyle = '#5b3416'; g.fillText(text, 0, h * 0.02);
   }
+  // 접지 그림자: 발밑에 넓고 옅은 그림자 + 바로 밑 진한 그림자 (건물이 땅에 붙어 보이게) · 미리 그린 둥근 그라데이션을 납작하게
+  let shadowSpr = null, shadowDone = false;
+  const hasShadow = (o) => !o.noShadow && !o.center && o.fx !== 'bob' && o.fx !== 'pond';
+  function groundShadow(g, o, sc) {
+    if (!hasShadow(o)) return;
+    if (!shadowSpr) {
+      shadowSpr = document.createElement('canvas'); shadowSpr.width = shadowSpr.height = 64;
+      const q = shadowSpr.getContext('2d'), gr = q.createRadialGradient(32, 32, 0, 32, 32, 32);
+      gr.addColorStop(0, 'rgba(48,34,24,1)'); gr.addColorStop(0.55, 'rgba(48,34,24,.55)'); gr.addColorStop(1, 'rgba(48,34,24,0)');
+      q.fillStyle = gr; q.fillRect(0, 0, 64, 64);
+    }
+    const s = cam.s, k = typeof sc === 'object' && sc ? sc.x : (sc || 1);
+    const fx = (o.wx - cam.x) * s + VW / 2, fy = (o.wy - cam.y) * s + VH / 2;
+    const w = o.w * s * k, light = o.kind === 'debris' || o.kind === 'deco';
+    g.globalAlpha = light ? 0.22 : 0.3;
+    g.drawImage(shadowSpr, fx - w * 0.55, fy - w * 0.13, w * 1.1, w * 0.24);
+    g.globalAlpha = light ? 0.3 : 0.42;
+    g.drawImage(shadowSpr, fx - w * 0.36, fy - w * 0.06, w * 0.72, w * 0.11);
+    g.globalAlpha = 1;
+  }
   function drawSprite(g, o, sc, dy, alpha) {
     const r = spriteRect(o);
     if (!r) return;
@@ -256,10 +279,7 @@
     }
     const x = (r.x - cam.x) * s + VW / 2, y = (r.y - cam.y) * s + VH / 2 + (dy || 0) * s;
     if (x > VW + 40 || y > VH + 40 || x + r.w * s < -40 || y + r.h * s < -40) return;
-    if (o.kind !== 'debris' && o.kind !== 'deco' && !o.noShadow && o.fx !== 'bob' && o.fx !== 'pond') {
-      g.fillStyle = 'rgba(60,40,30,.16)';
-      g.beginPath(); g.ellipse((o.wx - cam.x) * s + VW / 2, (o.wy - cam.y) * s + VH / 2 - 2 * s, r.w * 0.4 * s, r.w * 0.09 * s, 0, 0, 6.283); g.fill();
-    }
+    if (!o.noShadow && !shadowDone) groundShadow(g, o, sc);
     if (alpha != null) g.globalAlpha = alpha;
     if (sc && sc !== 1) {
       const fx = (o.wx - cam.x) * s + VW / 2, fy = (o.wy - cam.y) * s + VH / 2;
@@ -271,29 +291,41 @@
     if (o.label && !(sc && sc !== 1)) { g.save(); g.translate(x + r.w * s / 2, y + r.h * s / 2); drawLabel(g, o.label, r.w * s, r.h * s); g.restore(); }
     if (alpha != null) g.globalAlpha = 1;
   }
+  // 지도: 멀리서는 map_lo(1024²) 1장 · 화면 1px 에 지도 픽셀이 1/3 보다 많이 들어갈 만큼 가까우면 보이는 512² 조각만 받아서 위에 (조각이 오기 전엔 map_lo 가 보여요)
+  function drawMap(g) {
+    const s = cam.s, x0 = (0 - cam.x) * s + VW / 2, y0 = (0 - cam.y) * s + VH / 2;
+    const lo = img('map_lo');
+    if (lo) g.drawImage(lo.im, x0, y0, MW * s, MH * s);
+    if (s * DPR <= 1024 / MW * 1.1) return;
+    const w0 = toWorld(0, 0), w1 = toWorld(VW, VH);
+    const c0 = clamp(Math.floor(w0.x / TILE), 0, NT - 1), c1 = clamp(Math.floor(w1.x / TILE), 0, NT - 1);
+    const r0 = clamp(Math.floor(w0.y / TILE), 0, NT - 1), r1 = clamp(Math.floor(w1.y / TILE), 0, NT - 1);
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+      const t = img(`map_${c}_${r}`); if (!t) continue;
+      const ax = Math.floor(x0 + c * TILE * s), ay = Math.floor(y0 + r * TILE * s);
+      const bx = Math.ceil(x0 + (c + 1) * TILE * s), by = Math.ceil(y0 + (r + 1) * TILE * s);   // 정수 px 로 붙여 이음매 실선이 안 보이게
+      g.drawImage(t.im, ax, ay, bx - ax, by - ay);
+    }
+  }
   function drawStatic(g) {
     g.setTransform(DPR, 0, 0, DPR, 0, 0);
     g.fillStyle = SEA; g.fillRect(0, 0, VW, VH);
     const s = cam.s;
-    for (let i = 0; i < NA; i++) {
-      if (i > st().area + 1) continue;                     // 두 칸 앞 지역은 바다 + 안개만 (그림도 안 받아요)
-      const t = T.areas[D.AREAS[i].id], im = img('map_' + D.AREAS[i].id);
-      const x = (t.col * TW - cam.x) * s + VW / 2, y = (t.row * TH - cam.y) * s + VH / 2;
-      if (im && x < VW && y < VH && x + TW * s > 0 && y + TH * s > 0) g.drawImage(im.im, x, y, TW * s, TH * s);
-    }
+    drawMap(g);
     // 4지역 연못: 맑게 하기 전엔 탁한 물
     const i4 = 3;
-    if (isOpen(i4) && !st().tasks.r4_pond) {
+    if (isOpen(i4) && !st().tasks.r4_pond && !EDIT) {
       const p = W(i4, T.pond.at), q = toScr(p.x, p.y);
       g.fillStyle = 'rgba(120,104,70,.55)';
       g.beginPath(); g.ellipse(q.x, q.y, T.pond.rx * s, T.pond.ry * s, -0.15, 0, 6.283); g.fill();
     }
     const sc = getScene();
-    for (let k = 0; k < sc.length; k++) {
-      const o = sc[k];
-      if (o.dyn || (bounce[o.task] && o.task) || o.task === tapBounce.id) continue;
-      drawSprite(g, o);
-    }
+    const skip = (o) => o.dyn || (bounce[o.task] && o.task) || o.task === tapBounce.id;
+    // 그림자를 먼저 다 깔고 → 발밑 y 순서로 그림 (앞 건물 그림자가 뒤 건물 위에 얹히지 않게)
+    for (let k = 0; k < sc.length; k++) if (!skip(sc[k]) && spriteRect(sc[k])) groundShadow(g, sc[k]);
+    shadowDone = true;
+    for (let k = 0; k < sc.length; k++) if (!skip(sc[k])) drawSprite(g, sc[k]);
+    shadowDone = false;
   }
   // 반짝 별 (편지 조각 · 완성 연출)
   function glint(g, x, y, r, a) {
@@ -305,48 +337,132 @@
     g.globalAlpha = a * 0.5; g.fillStyle = '#ffd25a'; g.beginPath(); g.arc(0, 0, r * 0.35, 0, 6.283); g.fill();
     g.restore();
   }
-  let cloud = null;
-  function cloudSprite() {
-    if (cloud) return cloud;
-    cloud = document.createElement('canvas'); cloud.width = cloud.height = 256;
-    const g = cloud.getContext('2d');
+  // ---------- 안개 (잠긴 지역) ----------
+  //  안개 틀 = 잠긴 지역 칸(core.zoneAt) × 땅(map_land) 을 192² 로 만들어 경계를 부드럽게 → 지도 위에 늘여서 '여기만 안개'로 오려요
+  //  안개 모양: 반 해상도 캔버스에 옅은 바탕 + 지도에 붙어 천천히 흐르는 구름 (밝은 구름 · 푸른 그늘 구름)
+  //  지역이 열리면: 그 지역 가운데부터 구멍이 넓어지며 걷히고 구름 덩이가 바깥으로 흩어져요 (fogLift)
+  const FM = 192;
+  let zoneGrid = null, fogMask = null, revealMask = null, fogKey = '', fc = null, fcx = null;
+  let cloud = null, cloudShade = null;
+  function puff(rgb, a0) {
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const g = c.getContext('2d');
     [[128, 140, 90], [80, 150, 60], [176, 150, 64], [110, 105, 58], [160, 110, 50]].forEach(([x, y, r]) => {
-      const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(255,255,255,.95)'); gr.addColorStop(0.7, 'rgba(255,255,255,.75)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(${rgb},${a0})`); gr.addColorStop(0.7, `rgba(${rgb},${a0 * 0.75})`); gr.addColorStop(1, `rgba(${rgb},0)`);
       g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, 6.283); g.fill();
     });
-    return cloud;
+    return c;
   }
+  function cloudSprite() { if (!cloud) { cloud = puff('255,255,255', 0.95); cloudShade = puff('150,172,182', 0.55); } return cloud; }
+  function makeMask(want) {
+    if (!zoneGrid) {
+      zoneGrid = new Int8Array(FM * FM);
+      for (let y = 0; y < FM; y++) for (let x = 0; x < FM; x++) zoneGrid[y * FM + x] = areaAt((x + 0.5) / FM * MW, (y + 0.5) / FM * MH);
+    }
+    const a = new Float32Array(FM * FM);
+    let any = false;
+    for (let y = 0; y < FM; y++) for (let x = 0; x < FM; x++) {
+      const k = y * FM + x;
+      if (!want(zoneGrid[k])) continue;
+      a[k] = Math.min(1, landAt((x + 0.5) / FM * MW, (y + 0.5) / FM * MH) * 1.15);
+      if (a[k] > 0) any = true;
+    }
+    if (!any) return null;
+    // 지역 경계를 부드럽게 (가로·세로 상자 흐림 2번 · 반지름 3칸 ≈ 48px)
+    const tmp = new Float32Array(FM * FM), R = 3;
+    for (let pass = 0; pass < 2; pass++) {
+      for (let y = 0; y < FM; y++) for (let x = 0; x < FM; x++) { let acc = 0; for (let d = -R; d <= R; d++) acc += a[y * FM + clamp(x + d, 0, FM - 1)]; tmp[y * FM + x] = acc / (2 * R + 1); }
+      for (let y = 0; y < FM; y++) for (let x = 0; x < FM; x++) { let acc = 0; for (let d = -R; d <= R; d++) acc += tmp[clamp(y + d, 0, FM - 1) * FM + x]; a[y * FM + x] = acc / (2 * R + 1); }
+    }
+    const c = document.createElement('canvas'); c.width = c.height = FM;
+    const g = c.getContext('2d'), im = g.createImageData(FM, FM);
+    for (let k = 0; k < a.length; k++) { im.data[k * 4] = im.data[k * 4 + 1] = im.data[k * 4 + 2] = 255; im.data[k * 4 + 3] = Math.round(clamp(a[k], 0, 1) * 255); }
+    g.putImageData(im, 0, 0);
+    return c;
+  }
+  // 구름 바탕 한 장 (반 해상도) → mask 로 오려요 · hole = 걷히는 구멍 크기 (0~1.35 · holeI 지역 가운데부터)
+  function fogLayer(t, mask, hole, holeI) {
+    const w = Math.ceil(VW / 2), h = Math.ceil(VH / 2);
+    if (!fc) { fc = document.createElement('canvas'); fcx = fc.getContext('2d'); }
+    if (fc.width !== w || fc.height !== h) { fc.width = w; fc.height = h; }
+    const q = fcx, s = cam.s, cs = cloudSprite(), isl = T.island, iw = isl[2] - isl[0] + 800, ih = isl[3] - isl[1] + 800;
+    q.setTransform(1, 0, 0, 1, 0, 0); q.globalCompositeOperation = 'source-over'; q.globalAlpha = 1; q.clearRect(0, 0, w, h);
+    q.setTransform(0.5, 0, 0, 0.5, 0, 0);
+    q.fillStyle = 'rgba(230,240,238,.86)'; q.fillRect(0, 0, VW, VH);
+    const go = F.reduced ? 0 : 1;
+    for (let k = 0; k < 26; k++) {
+      const sz = (520 + (k % 4) * 170) * s, sp = 0.000012 * (1 + (k % 3) * 0.4) * go;
+      const wx = isl[0] - 400 + ((k * 0.383 + t * sp) % 1) * iw, wy = isl[1] - 400 + ((k * 0.617 + (k % 5) * 0.09) % 1) * ih;
+      const p = toScr(wx, wy);
+      if (p.x < -sz || p.x > VW + sz || p.y < -sz || p.y > VH + sz) continue;
+      const shade = k % 3 === 0;
+      q.globalAlpha = shade ? 0.7 : 0.85;
+      q.drawImage(shade ? cloudShade : cs, p.x - sz / 2, p.y - sz * 0.36 + (shade ? sz * 0.12 : 0), sz, sz * 0.72);
+    }
+    q.globalAlpha = 1;
+    q.globalCompositeOperation = 'destination-in';
+    q.imageSmoothingEnabled = true;
+    const o = toScr(0, 0);
+    q.drawImage(mask, o.x, o.y, MW * s, MH * s);
+    if (hole > 0) {
+      const b = boxOf(holeI), c = T.areas[D.AREAS[holeI].id].center, cp = toScr(c[0], c[1]);
+      const rx = (b.x1 - b.x0) * 0.62 * s, ry = (b.y1 - b.y0) * 0.62 * s, m = Math.max(rx, ry), r = Math.max(1, hole * m);
+      q.globalCompositeOperation = 'destination-out';
+      q.save(); q.translate(cp.x, cp.y); q.scale(rx / m, ry / m);
+      const gr = q.createRadialGradient(0, 0, 0, 0, 0, r);
+      gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(0.7, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      q.fillStyle = gr; q.beginPath(); q.arc(0, 0, r, 0, 6.283); q.fill(); q.restore();
+    }
+    q.globalCompositeOperation = 'source-over';
+    return fc;
+  }
+  const REVEAL_MS = 2000;
   function drawFog(g, t) {
-    const s = cam.s, cs = cloudSprite();
-    for (let i = 0; i < NA; i++) {
-      if (isOpen(i) && !(fogLift && fogLift.i === i)) continue;
-      let a = 1;
-      if (fogLift && fogLift.i === i) { a = 1 - clamp((t - fogLift.t0) / 1500, 0, 1); if (a <= 0) continue; }
-      // 안개는 섬 위에만 (바다는 그대로 보여요 · 예전엔 지역 칸 전체를 하얗게 덮어 화면 위가 텅 빈 띠처럼 보였어요)
-      const bx = boxOf(i), pad = 60;
-      const x = (bx.x0 - pad - cam.x) * s + VW / 2, y = (bx.y0 - pad - cam.y) * s + VH / 2, w = (bx.x1 - bx.x0 + pad * 2) * s, h = (bx.y1 - bx.y0 + pad * 2) * s;
-      if (x > VW || y > VH || x + w < 0 || y + h < 0) continue;
-      const fcx = x + w / 2, fcy = y + h / 2, fr = Math.max(w, h) / 2;
-      g.save(); g.translate(fcx, fcy); g.scale(w / 2 / fr, h / 2 / fr);
-      const fg = g.createRadialGradient(0, 0, 0, 0, 0, fr);
-      const fa = i > st().area + 1 ? 0.92 : 0.8;
-      fg.addColorStop(0, `rgba(226,240,236,${fa})`); fg.addColorStop(0.7, `rgba(226,240,236,${fa * 0.8})`); fg.addColorStop(1, 'rgba(226,240,236,0)');
-      g.globalAlpha = a; g.fillStyle = fg; g.beginPath(); g.arc(0, 0, fr, 0, 6.283); g.fill();
-      g.restore();
-      g.globalAlpha = a * 0.9;
-      for (let k = 0; k < 7; k++) {
-        const ph = (t / 26000 + k * 0.17) % 1;
-        const cxp = x + ((k * 0.29 + ph) % 1.2 - 0.1) * w, cyp = y + (0.1 + (k * 0.37) % 0.85) * h, sz = (0.35 + (k % 3) * 0.12) * w;
-        g.drawImage(cs, cxp - sz / 2, cyp - sz / 2, sz, sz * 0.75);
+    if (EDIT) return;
+    const lift = fogLift ? fogLift.i : -1;
+    if (!land) landAt(0, 0);                                  // 땅 지도가 오면 읽어 둬요 (오기 전엔 지역 칸 전체 → 오면 안개 틀을 다시)
+    const key = D.AREAS.map((a, i) => (isOpen(i) && i !== lift ? 1 : 0)).join('') + '|' + lift + '|' + (land ? 1 : 0);
+    if (key !== fogKey) {
+      fogKey = key;
+      fogMask = makeMask((i) => !isOpen(i) && i !== lift);
+      revealMask = lift >= 0 ? makeMask((i) => i === lift) : null;
+    }
+    if (fogMask) g.drawImage(fogLayer(t, fogMask, 0), 0, 0, VW, VH);
+    // 걷히기: 지역 가운데부터 구멍이 넓어지고 · 구름 덩이가 바깥으로 흩어지며 옅어져요 (카메라가 도착한 뒤 t0 부터)
+    if (revealMask && fogLift) {
+      const e = t - fogLift.t0, k = clamp(e / REVEAL_MS, 0, 1), ek = easeOut(k);
+      if (k < 1) g.drawImage(fogLayer(t, revealMask, e > 0 ? ek * 1.35 : 0, lift), 0, 0, VW, VH);
+      if (e > 0 && k < 1) {
+        const c = T.areas[D.AREAS[lift].id].center, cp = toScr(c[0], c[1]), b = boxOf(lift), s = cam.s, cs = cloudSprite();
+        for (let n = 0; n < 12; n++) {
+          const an = n / 12 * 6.283 + 0.3, dist = (0.15 + 0.85 * ek) * (b.x1 - b.x0) * 0.55 * s, sz = (300 + (n % 3) * 90) * s * (1 + ek * 0.6);
+          g.globalAlpha = (1 - k) * 0.85;
+          g.drawImage(cs, cp.x + Math.cos(an) * dist - sz / 2, cp.y + Math.sin(an) * dist * 0.7 - sz * 0.36, sz, sz * 0.72);
+        }
+        g.globalAlpha = 1;
+        if (k < 0.5) glint(g, cp.x, cp.y - 20, 30 + 40 * ek, 1 - k * 2);
       }
-      g.globalAlpha = a;
-      g.fillStyle = 'rgba(90,70,60,.85)'; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.font = `${Math.max(14, Math.min(26, 30 * s * 2.2))}px Jua, sans-serif`;
-      const name = i === st().area + 1 || (i === fogHold) ? D.AREAS[i].name : '???';
-      g.fillText('🔒 ' + name, x + w / 2, y + h / 2 - 12);
-      g.font = `${Math.max(11, Math.min(18, 22 * s * 2.2))}px Jua, sans-serif`;
-      g.fillText(i === fogHold ? '곧 열려요!' : `${i}번째 지역을 다 고치면 열려요`, x + w / 2, y + h / 2 + 16);
-      g.globalAlpha = 1;
+    }
+    // 잠긴 지역 이름표 (다음 지역은 이름 · 그 너머는 ???) · 다음 작업 말풍선과 겹치면 숨겨요
+    let bub = null;
+    const be = $('tw-bub');
+    if (be && !be.classList.contains('hide')) { const r = be.getBoundingClientRect(), c = cv.getBoundingClientRect(); bub = { x0: r.left - c.left, y0: r.top - c.top, x1: r.right - c.left, y1: r.bottom - c.top }; }
+    for (let i = 0; i < NA; i++) {
+      if (isOpen(i) || i === lift) continue;
+      const c = T.areas[D.AREAS[i].id].center, p = toScr(c[0], c[1]);
+      if (p.x < -120 || p.x > VW + 120 || p.y < -60 || p.y > VH + 60) continue;
+      const name = i === st().area + 1 || i === fogHold ? D.AREAS[i].name : '???';
+      const sub = i === fogHold ? '곧 열려요!' : `${i}번째 지역을 다 고치면 열려요`;
+      const f1 = Math.max(15, Math.min(24, 60 * cam.s)), f2 = Math.max(11, Math.min(16, 40 * cam.s));
+      g.font = `${f1}px Jua, sans-serif`; const w1 = g.measureText('🔒 ' + name).width;
+      g.font = `${f2}px Jua, sans-serif`; const w2 = g.measureText(sub).width;
+      const bw = Math.max(w1, w2) + 28, bh = f1 + f2 + 22;
+      if (bub && p.x + bw / 2 > bub.x0 && p.x - bw / 2 < bub.x1 && p.y + bh / 2 > bub.y0 && p.y - bh / 2 < bub.y1) continue;
+      g.fillStyle = 'rgba(255,250,242,.82)';
+      g.beginPath(); if (g.roundRect) g.roundRect(p.x - bw / 2, p.y - bh / 2, bw, bh, 14); else g.rect(p.x - bw / 2, p.y - bh / 2, bw, bh); g.fill();
+      g.fillStyle = 'rgba(90,70,60,.92)'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = `${f1}px Jua, sans-serif`; g.fillText('🔒 ' + name, p.x, p.y - f2 / 2 - 2);
+      g.font = `${f2}px Jua, sans-serif`; g.fillText(sub, p.x, p.y + f1 / 2 + 2);
     }
   }
   // 걷는 사람 · 몽돌
@@ -746,6 +862,8 @@
       return;
     }
     U.clearUndo(); U.changed();
+    // 지역을 다 고쳤으면 다음 지역은 [다음 지역] 을 누를 때까지 안개 그대로 (짓는 연출 중에 미리 걷히지 않게)
+    if (r.areaDone) { fogHold = r.nextArea ? D.AREAS.indexOf(r.doneArea) + 1 : -1; makeWalkers(); }
     closeDrawer();
     const b = T.build[id];
     const G = b.kind === 'G';
@@ -856,7 +974,7 @@
     fogHold = r.nextArea ? ai + 1 : -1;
     dirty(); statKey = '';
     const c = areaCenter(ai);
-    flyTo(c.x, c.y, Math.min(VW / (TW * 0.95), VH / (TH * 1.4)), 900, () => {
+    flyTo(c.x, c.y, frameOf(ai).s * 0.92, 900, () => {
       const list = getScene().filter((o) => o.kind === 'build' && areaAt(o.wx, o.wy) === ai);
       list.forEach((o, k) => setTimeout(() => {
         if (!cv) return;
@@ -893,11 +1011,13 @@
     const ni = fogHold;
     U.setBg();
     if (ni < 0) { bubFor = ''; U.toast('소라섬에 등불이 다시 켜졌어요! 부탁과 이벤트는 계속돼요'); return; }
-    fogLift = { i: ni, t0: performance.now() };
+    fogLift = { i: ni, t0: Infinity };                        // 날아가는 동안은 안개 그대로 → 도착하면 걷히기 시작
     fogHold = -1; dirty(); makeWalkers();
     const c = frameOf(ni);
     flyTo(c.x, c.y, c.s, 1100, () => {
-      setTimeout(() => { fogLift = null; }, 1500);
+      if (fogLift && fogLift.i === ni) fogLift.t0 = performance.now();
+      F.sfx('discover'); F.vibrate([10, 30, 10]);
+      setTimeout(() => { if (fogLift && fogLift.i === ni) fogLift = null; }, REVEAL_MS + 100);
       U.musicTick();
       const next = D.AREAS[ni];
       if (next.open.scene && !st().story[next.open.scene]) setTimeout(() => scene(next.open.scene), 600);
@@ -1037,7 +1157,7 @@
     if (pick || hold) return;
     if (drawer) { closeDrawer(); return; }
     const w = toWorld(x, y);
-    if (placing) { if (isOpen(areaAt(w.x, w.y))) placeAtWorld(w); else U.toast('열린 지역에 놓아요'); return; }
+    if (placing) { if (!isOpen(areaAt(w.x, w.y))) U.toast('열린 지역에 놓아요'); else if (landAt(w.x, w.y) < 0.5) U.toast('땅 위에 놓아요'); else placeAtWorld(w); return; }
     const sec = secretSpots.find((p) => Math.hypot(p.x - x, p.y - y) < 26);
     if (sec && !deco) { findSecret(sec.kind, sec.id, x, y); return; }
     const wk = walkers.slice().reverse().find((v) => v.box && x >= v.box.x && x <= v.box.x + v.box.w && y >= v.box.y && y <= v.box.y + v.box.h);
