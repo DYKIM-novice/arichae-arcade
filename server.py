@@ -39,7 +39,7 @@ from urllib.parse import unquote, urlsplit
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))   # 같은 폴더의 records.py
-from records import RecordStore, ComboHall, MergeSaves, MERGE_BODY_MAX  # noqa: E402
+from records import RecordStore, ComboHall, MergeSaves, MERGE_BODY_MAX, merge_areas_from_js  # noqa: E402
 import boards as BG  # noqa: E402
 import cards as CG  # noqa: E402
 import olympic as OL  # noqa: E402
@@ -99,7 +99,7 @@ RANK_POINTS = [100, 80, 65, 50, 40, 30, 20, 10]
 log = logging.getLogger("arichae")
 STORE = RecordStore(DATA_DIR)
 COMBO = ComboHall(DATA_DIR)   # 별나침반 콤보 명예의 전당 (rpg_combo.json + rpg_combo/*.jpg)
-MERGE = MergeSaves(DATA_DIR)  # 머지관 「소라섬 등불 이야기」 서버 저장 (merge/<이어하기 코드>.json)
+MERGE = MergeSaves(DATA_DIR, merge_areas_from_js(STATIC_DIR / "js" / "merge" / "data.js"))  # 머지관 「소라섬 등불 이야기」 서버 저장 (merge/<이어하기 코드>.json)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
 
 mimetypes.add_type("text/javascript", ".js")
@@ -1874,6 +1874,19 @@ async def handle_http(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
         elif path == "/api/merge/load":
             qs = dict(x.split("=", 1) for x in (urlsplit(target).query or "").split("&") if "=" in x)
             status, out = await asyncio.get_running_loop().run_in_executor(None, MERGE.load, unquote(qs.get("id", "")))
+            await send_response(writer, status, json.dumps(out, ensure_ascii=False).encode("utf-8"),
+                                "application/json; charset=utf-8", head_only, {"Cache-Control": "no-store"})
+        elif path in ("/api/merge/backups", "/api/merge/backup"):
+            # 서버 백업 되살리기: 목록(요약만) · 하나 받기 — 이어하기 코드를 아는 기기만 · 주소(IP)당 횟수 제한
+            qs = dict(x.split("=", 1) for x in (urlsplit(target).query or "").split("&") if "=" in x)
+            fwd = headers.get("x-forwarded-for", "").split(",")[0].strip()
+            peer = writer.get_extra_info("peername")
+            ip = fwd or (peer[0] if peer else "?")
+            sid = unquote(qs.get("id", ""))
+            if path == "/api/merge/backups":
+                status, out = await asyncio.get_running_loop().run_in_executor(None, MERGE.backups, sid, ip)
+            else:
+                status, out = await asyncio.get_running_loop().run_in_executor(None, MERGE.backup, sid, unquote(qs.get("i", "")), ip)
             await send_response(writer, status, json.dumps(out, ensure_ascii=False).encode("utf-8"),
                                 "application/json; charset=utf-8", head_only, {"Cache-Control": "no-store"})
         elif path == "/api/info":

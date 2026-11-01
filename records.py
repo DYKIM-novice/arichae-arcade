@@ -363,7 +363,9 @@ class ComboHall:
 #  - 이어하기 코드(무작위 12~32자) 하나당 파일 하나: DATA_DIR/merge/<id>.json
 #    {id, updatedAt, savedAt, data(저장 문자열), backups:[최근 5개 · 10분 넘게 차이 날 때만]}
 #  - 더 새것(updatedAt)이 이미 있으면 덮지 않고 409 newer (force 면 덮음 · 덮인 쪽은 백업에 남음)
-#  - 주소(IP)당 10분에 120번 · 저장 칸은 최대 MERGE_MAX_IDS 개 · 본문 MERGE_BODY_MAX
+#  - 주소(IP)당 10분에 120번 (저장 · 백업 목록 · 백업 하나 받기 합쳐서) · 저장 칸은 최대 MERGE_MAX_IDS 개 · 본문 MERGE_BODY_MAX
+#  - 백업 되살리기: GET /api/merge/backups?id= (요약만) · GET /api/merge/backup?id=&i= (그 기록 하나)
+#    이어하기 코드를 아는 기기만 (불러오기와 같은 방식 · 코드 없이 남의 기록 목록을 보는 길은 없어요)
 # =====================================================================
 MERGE_BODY_MAX = 400 * 1024
 MERGE_MAX_IDS = 300
@@ -374,11 +376,116 @@ MERGE_IP_MAX = 120
 _MERGE_ID_RE = re.compile(r"^[a-z0-9]{12,32}$")
 
 
+def merge_areas_from_js(js_path: Path) -> List[Tuple[str, List[str]]]:
+    """static/js/merge/data.js 의 AREAS 에서 [(지역 이름, [작업 id…])] 를 꺼내요 (기록 요약용 · 못 읽으면 [])"""
+    try:
+        txt = Path(js_path).read_text("utf-8")
+    except OSError:
+        return []
+    heads = list(re.finditer(r"\{\s*id:\s*'(r\d+)',\s*name:\s*'([^']*)'", txt))
+    out = []
+    for k, m in enumerate(heads):
+        seg = txt[m.end(): heads[k + 1].start() if k + 1 < len(heads) else len(txt)]
+        rid = m.group(1)
+        tids = re.findall(r"\{\s*id:\s*'(" + re.escape(rid) + r"_[A-Za-z0-9_]+)'", seg)
+        out.append((m.group(2), list(dict.fromkeys(tids))))
+    return out
+
+
+def _merge_progress(data: str) -> int:
+    try:
+        o = json.loads(data)
+    except (TypeError, ValueError):
+        return -1
+    if not isinstance(o, dict):
+        return -1
+    try:
+        tasks = len(o["tasks"]) if isinstance(o.get("tasks"), dict) else 0
+        dlv = int((o.get("stats") or {}).get("delivered") or 0) if isinstance(o.get("stats"), dict) else 0
+        return int(o.get("area") or 0) * 1000000 + tasks * 1000 + min(999, dlv)
+    except (TypeError, ValueError):
+        return -1
+
+
 class MergeSaves:
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path, areas: Optional[List[Tuple[str, List[str]]]] = None):
         self.dir = Path(data_dir) / "merge"
         self.lock = threading.Lock()
         self.ip_hits: Dict[str, List[float]] = {}
+        self.areas = list(areas or [])   # [(지역 이름, [작업 id…])] · 백업 목록 요약에 써요
+
+    # 저장 글 → 짧은 요약 (전체 기록은 안 보내요)
+    def summary(self, data: str) -> dict:
+        try:
+            o = json.loads(data) if isinstance(data, str) else None
+        except ValueError:
+            o = None
+        if not isinstance(o, dict):
+            return {"ok": False}
+
+        def num(v) -> int:
+            try:
+                return int(v or 0)
+            except (TypeError, ValueError):
+                return 0
+        tasks = o.get("tasks") if isinstance(o.get("tasks"), dict) else {}
+        stats = o.get("stats") if isinstance(o.get("stats"), dict) else {}
+        area = max(0, num(o.get("area")))
+        out = {"ok": True, "v": num(o.get("v")), "area": area, "tasks": len(tasks), "stars": num(o.get("stars")),
+               "coins": num(o.get("coins")), "delivered": num(stats.get("delivered")), "updatedAt": num(o.get("updatedAt")),
+               "finished": bool(self.areas) and area >= len(self.areas), "areaName": "", "areaDone": 0, "areaTotal": 0}
+        if self.areas:
+            name, tids = self.areas[min(area, len(self.areas) - 1)]
+            out["areaName"] = name
+            out["areaDone"] = sum(1 for t in tids if t in tasks)
+            out["areaTotal"] = len(tids)
+        return out
+
+    # 이 코드의 서버 백업 목록 (최신 먼저 · 요약만) — 코드를 아는 기기만 (불러오기와 같은 방식)
+    def backups(self, sid: str, ip: str, now: Optional[float] = None) -> Tuple[int, dict]:
+        now = time.time() if now is None else now
+        p = self._path(sid)
+        if not p:
+            return 400, {"ok": False, "err": "id"}
+        with self.lock:
+            if not self._rate_ok(ip or "?", now):
+                return 429, {"ok": False, "err": "rate"}
+            rec = self._read(p) if p.is_file() else None
+        if not rec:
+            return 200, {"ok": False, "err": "none"}
+        items = []
+        for i, b in enumerate(rec.get("backups") or []):
+            if not isinstance(b, dict) or not isinstance(b.get("data"), str):
+                continue
+            s = self.summary(b["data"])
+            s.update({"i": i, "savedAt": int(b.get("savedAt") or 0), "updatedAt": int(b.get("updatedAt") or s.get("updatedAt") or 0)})
+            items.append(s)
+        items.sort(key=lambda s: s["savedAt"], reverse=True)
+        cur = self.summary(rec.get("data", ""))
+        cur["savedAt"] = int(rec.get("savedAt") or 0)
+        return 200, {"ok": True, "current": cur, "backups": items}
+
+    # 백업 하나 (i = 목록의 i)
+    def backup(self, sid: str, idx, ip: str, now: Optional[float] = None) -> Tuple[int, dict]:
+        now = time.time() if now is None else now
+        p = self._path(sid)
+        if not p:
+            return 400, {"ok": False, "err": "id"}
+        try:
+            i = int(idx)
+        except (TypeError, ValueError):
+            return 400, {"ok": False, "err": "i"}
+        with self.lock:
+            if not self._rate_ok(ip or "?", now):
+                return 429, {"ok": False, "err": "rate"}
+            rec = self._read(p) if p.is_file() else None
+        if not rec:
+            return 200, {"ok": False, "err": "none"}
+        bl = rec.get("backups") or []
+        if i < 0 or i >= len(bl) or not isinstance(bl[i], dict) or not isinstance(bl[i].get("data"), str):
+            return 200, {"ok": False, "err": "nobk"}
+        b = bl[i]
+        return 200, {"ok": True, "i": i, "savedAt": int(b.get("savedAt") or 0), "updatedAt": int(b.get("updatedAt") or 0), "data": b["data"]}
 
     def _path(self, sid: str) -> Optional[Path]:
         return self.dir / (sid + ".json") if _MERGE_ID_RE.match(str(sid or "")) else None
@@ -444,7 +551,13 @@ class MergeSaves:
                 last_b = int(backups[0].get("savedAt") or 0) if backups else 0
                 if int(now * 1000) - last_b >= MERGE_BACKUP_GAP_MS or body.get("force") is True:
                     backups.insert(0, {"savedAt": old.get("savedAt", 0), "updatedAt": old.get("updatedAt", 0), "data": old["data"]})
-            rec = {"id": body["id"], "updatedAt": upd, "savedAt": int(now * 1000), "data": data, "backups": backups[:MERGE_BACKUPS]}
+            # 최근 MERGE_BACKUPS 개 · 넘치면 오래된 것부터 빼되, 가장 많이 한 기록 하나는 오래돼도 남겨요
+            # (되살리기를 여러 번 해도 진짜 기록이 밀려 나가지 않게)
+            while len(backups) > MERGE_BACKUPS:
+                prog = [_merge_progress(b.get("data") if isinstance(b, dict) else None) for b in backups]
+                best = max(range(len(backups)), key=lambda k: (prog[k], -k))
+                backups.pop(len(backups) - 2 if best == len(backups) - 1 else len(backups) - 1)
+            rec = {"id": body["id"], "updatedAt": upd, "savedAt": int(now * 1000), "data": data, "backups": backups}
             try:
                 self.dir.mkdir(parents=True, exist_ok=True)
                 tmp = p.with_suffix(".tmp")

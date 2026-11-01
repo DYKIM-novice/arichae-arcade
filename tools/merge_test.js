@@ -1261,4 +1261,50 @@ test('예전 load() 는 그대로 상태를 돌려줘요 (깨진 저장 → 새 
   assert.strictEqual(S.load(ad, T0, seeded(1)).board.length, 63);
   assert.strictEqual(S.backups(ad)[0].data, '{망가진');
 });
-console.log(`\n모두 통과 (${n}개)`);
+console.log('서버 기록 되살리기');
+test('시각 글: "11월 1일 오후 3:20" · 자정은 오전 12 · 정오는 오후 12', () => {
+  assert.strictEqual(S.koTime(new Date(2026, 10, 1, 15, 20).getTime()), '11월 1일 오후 3:20');
+  assert.strictEqual(S.koTime(new Date(2026, 10, 1, 0, 5).getTime()), '11월 1일 오전 12:05');
+  assert.strictEqual(S.koTime(new Date(2026, 10, 1, 12, 0).getTime()), '11월 1일 오후 12:00');
+});
+test('서버 요약 한 줄: 지역 번호·이름 · 그 지역 작업 · 별 · 시각', () => {
+  const at = new Date(2026, 10, 1, 15, 20).getTime();
+  assert.strictEqual(S.serverBkLine({ ok: true, area: 1, areaDone: 0, areaTotal: 7, tasks: 6, stars: 10, coins: 340, savedAt: at }),
+    '2지역 몽돌 선착장 · 작업 0/7 · 별 10 · 동전 340 · 11월 1일 오후 3:20');
+  // 서버가 작업 수를 못 줘도 지역 데이터로 채워요
+  assert.ok(S.serverBkLine({ ok: true, area: 0, stars: 3, savedAt: at }).startsWith('1지역 바다별채 · 작업 0/6 · 별 3'));
+  assert.ok(S.serverBkLine({ ok: true, area: D.AREAS.length, tasks: 41, savedAt: at }).startsWith('모든 지역 완성 · 작업 41곳'));
+  assert.ok(S.serverBkLine({ ok: false, savedAt: at }).startsWith('읽지 못한 기록'));
+});
+test('되살리기: 지금 기록은 이 폰 보관함에 · 고른 기록이 새 시각으로 · 못 읽으면 그대로', () => {
+  const ad = S.localAdapter(memStore());
+  const cur = C.newState(T0, seeded(3)); cur.stats.delivered = 5; cur.coins = 77;
+  const old = v3Area2(); old.v = D.VERSION;
+  const out = S.restoreServerBackup(ad, cur, C.serialize(old), T0 + 5000, seeded(1));
+  assert.ok(out.ok);
+  assert.strictEqual(out.st.area, 1); assert.strictEqual(out.st.stars, 10);
+  assert.strictEqual(out.st.updatedAt, T0 + 5000, '서버에 더 새것으로 올라가게');
+  const bk = S.backups(ad);
+  assert.strictEqual(bk.length, 1); assert.strictEqual(bk[0].why, 'serverbk'); assert.strictEqual(bk[0].sum.coins, 77);
+  const bad = S.restoreServerBackup(ad, cur, '{망가진', T0, seeded(1));
+  assert.strictEqual(bad.ok, false); assert.strictEqual(S.backups(ad).length, 1, '못 읽으면 보관도 안 해요');
+  const nv = S.restoreServerBackup(ad, cur, JSON.stringify({ v: D.VERSION + 1, board: [] }), T0, seeded(1));
+  assert.strictEqual(nv.ok, false); assert.strictEqual(nv.newer, true);
+});
+// 서버와 주고받기 (가짜 fetch · 비동기)
+const asyncTests = [];
+function testAsync(name, fn) { asyncTests.push([name, fn]); }
+testAsync('Server.backups / backup: 이 기기 코드로 주소를 만들고 · 오프라인이면 offline', async () => {
+  const calls = [];
+  const fake = async (url) => { calls.push(url); return { status: 200, json: async () => ({ ok: true, backups: [] }) }; };
+  const sv = S.Server(fake, '');
+  assert.deepStrictEqual(await sv.backups('abcdefghjkmn'), { ok: true, backups: [] });
+  await sv.backup('abcdefghjkmn', 2);
+  assert.deepStrictEqual(calls, ['/api/merge/backups?id=abcdefghjkmn', '/api/merge/backup?id=abcdefghjkmn&i=2']);
+  const off = S.Server(async () => { throw new Error('x'); }, '');
+  assert.strictEqual((await off.backups('abcdefghjkmn')).err, 'offline');
+});
+(async () => {
+  for (const [name, fn] of asyncTests) { await fn(); n++; console.log('  ok', name); }
+  console.log(`\n모두 통과 (${n}개)`);
+})().catch((e) => { console.error(e); process.exit(1); });

@@ -1209,12 +1209,13 @@
       <button type="button" class="btn" data-sync="code">다른 폰의 코드로 불러오기</button>
       <div class="two"><button type="button" class="btn" data-sync="export">내보내기(복사)</button><button type="button" class="btn" data-sync="import">불러오기(붙여넣기)</button></div>
       ${bkList().length ? '<button type="button" class="btn" data-backups="1">이전 기록 되살리기</button>' : ''}
+      <button type="button" class="btn" data-sbackups="1">서버 기록 되살리기</button>
       <button type="button" class="btn warn" data-reset="1">${confirmReset ? '정말 처음부터 할까요? 한 번 더 누르면 지워져요' : '처음부터 하기'}</button>
       <button type="button" class="btn" data-close="1">닫기</button>`;
   }
   // 이전 기록 되살리기: 덮어쓰기 전에 보관해 둔 기록 (save.js backupRaw)
   const WHY = { migrate: '새 버전으로 바꾸기 전', broken: '읽지 못한 기록', newer: '더 새 버전의 기록', reset: '처음부터 하기 전',
-    remote: '서버 기록으로 바꾸기 전', code: '다른 폰 코드로 바꾸기 전', import: '붙여넣기 전', restore: '되살리기 전' };
+    remote: '서버 기록으로 바꾸기 전', code: '다른 폰 코드로 바꾸기 전', import: '붙여넣기 전', restore: '되살리기 전', serverbk: '서버 기록 되살리기 전' };
   function bkLine(b) {
     const m = b.sum || {}; const t = new Date(m.updatedAt || b.at);
     const area = D.AREAS[Math.min(D.AREAS.length - 1, m.area | 0)];
@@ -1240,6 +1241,49 @@
       syncPush(true);
     });
   }
+  // 서버 기록 되살리기: 서버가 이 이어하기 코드로 보관해 둔 예전 기록 (records.py MergeSaves.backups)
+  // 고르면 → 한 번 더 물어보고 → 지금 기록은 이 폰 보관함에 → 고른 기록으로 바꾸고 서버에도 저장
+  const SBK_ERR = { none: '이 코드로 서버에 저장된 기록이 아직 없어요', rate: '잠시 뒤에 다시 해 주세요', id: '이어하기 코드가 이상해요',
+    nobk: '그 기록이 서버에서 사라졌어요 · 목록을 다시 열어 주세요' };
+  const sbkErr = (r) => SBK_ERR[r && r.err] || '서버에 닿지 않아요 · 인터넷을 확인해 주세요';
+  async function openServerBackups() {
+    openSheet(`<h2>서버 기록 되살리기</h2><p class="center muted" data-sbkwait="1">서버에서 기록을 찾는 중이에요…</p>
+      <button type="button" class="btn" data-close="1">닫기</button>`, () => {});
+    const r = await server.backups(sync.id);
+    if (!$('sheet').querySelector('[data-sbkwait]')) return;   // 기다리는 동안 닫거나 다른 창을 열었으면 그만
+    if (!r.ok) { closeSheet(); toast(sbkErr(r)); return; }
+    const list = Array.isArray(r.backups) ? r.backups : [];
+    openSheet(`<h2>서버 기록 되살리기</h2>
+      <p class="center muted">서버가 예전 기록을 몇 개 보관해 둬요 (최근 것부터)<br>고르면 한 번 더 물어봐요</p>
+      ${r.current && r.current.ok ? `<p class="center muted"><b>지금 서버 기록</b><br>${esc(S.serverBkLine(r.current))}</p>` : ''}
+      ${list.length ? list.map((b) => `<button type="button" class="btn pick" data-sbk="${b.i | 0}">${esc(S.serverBkLine(b))}</button>`).join('')
+        : '<p class="center muted">서버에 보관된 예전 기록이 아직 없어요</p>'}
+      <button type="button" class="btn" data-close="1">닫기</button>`,
+    (b) => {
+      if (b.dataset.sbk == null) return;
+      const pick = list.find((x) => (x.i | 0) === +b.dataset.sbk); if (!pick) return;
+      confirmServerBackup(pick);
+    });
+  }
+  function confirmServerBackup(pick) {
+    openSheet(`<h2>이 기록으로 되돌릴까요?</h2>
+      <p class="center"><b>${esc(S.serverBkLine(pick))}</b></p>
+      <p class="center muted">지금 하던 기록은 지워지지 않고<br>설정 › <b>이전 기록 되살리기</b>에 따로 보관해 둬요.<br>바꾼 뒤에는 서버에도 이 기록으로 저장돼요.</p>
+      <button type="button" class="btn main" data-sbkgo="1">네, 이 기록으로 되돌려요</button>
+      <button type="button" class="btn" data-close="1">그만두기</button>`,
+    async (b) => {
+      if (!b.dataset.sbkgo || b.disabled) return;
+      b.disabled = true; b.textContent = '서버에서 받는 중…';
+      const r = await server.backup(sync.id, pick.i);
+      if (!r.ok || typeof r.data !== 'string') { closeSheet(); toast(sbkErr(r)); return; }
+      const out = S.restoreServerBackup(store, st, r.data, now(), rng);
+      closeSheet();
+      if (!out.ok) { toast(out.newer ? '이 기록은 새 버전에서 열려요 · 화면을 새로 고쳐 주세요' : '이 기록을 읽지 못했어요'); return; }
+      adopt(out.st, '서버의 예전 기록을 되살렸어요 · 하던 기록은 이전 기록 되살리기에 보관했어요');
+      sync.sentAt = 0; S.setSyncInfo(store, sync);   // 지금 못 올려도 30초 뒤에 다시 올려요
+      syncPush(true);
+    });
+  }
   function openSettings() {
     let armed = false;
     const re = () => { $('sheet').querySelector('.sheet-box').innerHTML = settingsHTML(armed); };
@@ -1254,6 +1298,8 @@
         syncAction(b.dataset.sync, re);
       } else if (b.dataset.backups) {
         openBackups();
+      } else if (b.dataset.sbackups) {
+        openServerBackups();
       } else if (b.dataset.reset) {
         if (!armed) { armed = true; F.sfx('bad'); re(); return; }
         bkSave(st, 'reset');   // 처음부터 해도 설정 › 이전 기록 되살리기로 돌아갈 수 있게

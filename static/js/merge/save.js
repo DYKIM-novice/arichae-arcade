@@ -2,6 +2,7 @@
    - 1차: 기기 저장 localStorage['arichae_merge_v1'] (JSON 한 칸 · 막힌 브라우저에서도 게임은 그대로 · try/catch)
      행동 뒤 1초 묶어서 저장(schedule) · 화면을 숨기거나 닫을 때 바로 저장(flush)
    - 2차: 서버 저장 (server.py · POST /api/merge/save · GET /api/merge/load?id=…)
+     서버 백업 되살리기: GET /api/merge/backups?id=… (요약 목록) · GET /api/merge/backup?id=…&i=N (기록 하나)
      기기마다 '이어하기 코드'(무작위 id)가 있고, 30초마다 바뀐 게 있으면 올려요 · 화면을 숨기면 바로(sendBeacon)
      서버가 꺼져 있거나 오프라인이면 조용히 다음에 다시 · 다른 폰에서는 코드를 넣어 불러와요
    - pickSave: 기기 ↔ 서버 중 어느 쪽을 쓸지 (더 새로운 쪽 · 서로 크게 다르면 'ask' → 화면이 물어봐요) */
@@ -162,6 +163,9 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
         body: JSON.stringify({ id, updatedAt: st.updatedAt || 0, force: !!force, data: C.serialize(st) })
       }),
+      // 서버 백업 되살리기: 목록(요약만 · 최신 먼저) · 하나 받기 (이 기기의 이어하기 코드로만)
+      backups: (id) => call('/api/merge/backups?id=' + encodeURIComponent(id), { cache: 'no-store' }),
+      backup: (id, i) => call('/api/merge/backup?id=' + encodeURIComponent(id) + '&i=' + (i | 0), { cache: 'no-store' }),
       beacon(id, st) {
         try {
           if (!root.navigator || !root.navigator.sendBeacon) return false;
@@ -172,7 +176,32 @@
     };
   }
 
-  const API = { localAdapter, open, load, hasSave, backups, backupRaw, backupState, rawSummary, BACKUP_KEY, BACKUP_MAX, save, Saver, newId, syncInfo, setSyncInfo, prettyId, cleanId, ID_RE, pickSave, Server };
+  /* ---------- 서버 백업 되살리기 (설정 › 서버 기록 되살리기) ---------- */
+  // "11월 1일 오후 3:20"
+  function koTime(ms) {
+    const t = new Date(+ms || 0); const h = t.getHours();
+    return `${t.getMonth() + 1}월 ${t.getDate()}일 ${h < 12 ? '오전' : '오후'} ${h % 12 === 0 ? 12 : h % 12}:${String(t.getMinutes()).padStart(2, '0')}`;
+  }
+  // 서버 요약 하나 → "2지역 몽돌 선착장 · 작업 0/7 · 별 10 · 동전 340 · 11월 1일 오후 3:20"
+  function serverBkLine(s) {
+    if (!s || s.ok === false) return `읽지 못한 기록 · ${koTime(s && s.savedAt)}`;
+    const AR = D.AREAS, a = Math.max(0, s.area | 0);
+    const where = a >= AR.length ? '모든 지역 완성' : `${a + 1}지역 ${(AR[a] && AR[a].name) || s.areaName || ''}`.trim();
+    const total = s.areaTotal | 0 || (AR[Math.min(a, AR.length - 1)] || { tasks: [] }).tasks.length;
+    const work = a >= AR.length ? `작업 ${s.tasks | 0}곳` : `작업 ${s.areaDone | 0}/${total}`;
+    return `${where} · ${work} · 별 ${s.stars | 0} · 동전 ${s.coins | 0} · ${koTime(s.savedAt || s.updatedAt)}`;
+  }
+  // 고른 서버 기록 글 → 새 상태 (읽지 못하면 { ok:false, newer }) · 바꾸기 전 지금 기록은 이 폰 보관함에 (why 'serverbk')
+  function restoreServerBackup(adapter, cur, raw, now, rng) {
+    let next = null;
+    try { next = C.deserialize(raw, now, rng); } catch (e) { next = null; }
+    if (!next) { const m = rawSummary(raw); return { ok: false, newer: !!m && m.v > D.VERSION }; }
+    if (cur) backupState(adapter, cur, 'serverbk', now);
+    next.updatedAt = now;   // 서버에 '더 새것'으로 올라가게
+    return { ok: true, st: next };
+  }
+
+  const API = { koTime, serverBkLine, restoreServerBackup, localAdapter, open, load, hasSave, backups, backupRaw, backupState, rawSummary, BACKUP_KEY, BACKUP_MAX, save, Saver, newId, syncInfo, setSyncInfo, prettyId, cleanId, ID_RE, pickSave, Server };
   if (typeof module === 'object' && module.exports) module.exports = API;
   else root.MergeSave = API;
 })(typeof window !== 'undefined' ? window : globalThis);
