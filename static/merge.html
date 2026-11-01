@@ -10,7 +10,8 @@
      - 그림 경로: js/merge/art.js 한 곳 (static/img/merge/... · tools/merge_art.py)
      - 손맛(소리·진동·반짝이·악기 합성): js/merge/fx.js · 배경음악 재생기: js/merge/music.js (악보는 data.js MUSIC) · 화면·조작: js/merge/ui.js
      - 상점(5탭·매일 특가)·자동 합치기·도우미: core.js 규칙 + ui.js 화면 (기획: docs/handoff/specs/merge_town.md §F·§G)
-     - 마을 복원(전/후 배경·작업)·숨은 비밀·장식·이야기 장면: js/merge/town.js · 서버 저장: save.js + server.py /api/merge/*
+     - 마을 지도(섬 6개 2×3 · 짓기 연출 · 모양 고르기 · 꾸미기 · 걷는 사람 · 낮/밤 · 우정·선물)·숨은 비밀·이야기 장면: js/merge/town.js (merge_town.md 2단계 · ?edit=1 자리 잡기)
+     - 서버 저장: save.js + server.py /api/merge/*
      - 매일 출석·오늘의 부탁·도감·주간 이벤트·편지/앨범: ☰ 수첩 (ui.js) · 오프라인: /sw.js -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap">
 <link rel="stylesheet" href="css/merge.css">
@@ -36,6 +37,7 @@
     <nav id="nav">
       <button type="button" class="nav-b" id="btn-town" aria-label="마을 고치기"><span class="nav-ic">🏡</span><b>마을</b><i class="badge hide" id="town-badge">!</i></button>
       <button type="button" class="nav-b" id="btn-bag" aria-label="가방"><span class="nav-ic">👜</span><b id="bag-n">가방</b><i class="badge hide" id="bag-badge"></i></button>
+      <button type="button" class="nav-b" id="btn-folk" aria-label="마을 사람 · 선물·우정"><span class="nav-ic">💌</span><b>친구</b></button>
       <button type="button" class="nav-b shop" id="btn-shop" aria-label="상점"><img data-art="cn2" alt="" class="nav-img"><b>상점</b><i class="badge hide" id="shop-badge">!</i></button>
     </nav>
   </footer>

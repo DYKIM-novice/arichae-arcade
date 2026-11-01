@@ -90,12 +90,12 @@
 
   // 복원 지역 · 순서대로 열려요 (st.area = 지금 지역 번호)
   //  bg: 전/후 배경 그림 id (없으면 '전' 그림에 색 바꾸기, 그것도 없으면 그림 대신 색 풍경)
-  //  view: 배경 그림 중 마을 화면에 보여 줄 세로 구간 (0~1) · 작업 위치 x,y 는 그림 전체 기준 % (실제 그림 속 그 물건 자리)
+  //  view·x·y·r: 옛 전/후 그림 화면용 (지금 마을 지도는 TOWN.build 의 자리를 써요 · 판 배경은 bg 를 그대로 써요)
   //  chains: 이 지역 주문에 나오는 체인 · orders: 물건 수/단계 범위
   //  tasks: 순서대로 하나씩 (cost = 별) · scene = 끝낸 뒤 볼 이야기 · r = 드러나는 동그라미 반지름(그림 폭 %)
   //         req = 먼저 끝내야 하는 이야기 부탁 (STORY_ORDERS id)
   //  open: 이 지역이 열릴 때 (장면 · 새 발생기 · 새 체인) · done: 다 고쳤을 때 (장면 · 모래더미 걷기 · ending = 엔딩 장면)
-  //  secrets: 숨은 비밀 (그림 전체 기준 %) · letters: 할머니 편지 조각(after = 그 작업 뒤에 나타남) · gulls: 갈매기 · bottle: 병 속 편지가 떠오를 수 있는 곳
+  //  secrets: 숨은 비밀 (마을 지도의 지역 그림 1536×1024 기준 px · TOWN) · letters: 할머니 편지 조각(after = 그 작업 뒤에 나타남) · gulls: 갈매기 · bottle: 병 속 편지가 떠오를 수 있는 곳
   const AREAS = [
     { id: 'r1', name: '바다별채', sub: '할머니의 한옥 민박', bg: { before: 'r1_before', after: 'r1_after' }, view: [0.36, 0.98],
       sky: ['#ffe2cf', '#ffd2bd'], sea: '#8fd3c8',
@@ -110,8 +110,8 @@
       ],
       open: { scene: null, gens: [], chains: [] },
       done: { scene: 'r1_done', uncover: true },
-      secrets: { letters: [{ id: 'l1', x: 83, y: 86 }, { id: 'l2', x: 35, y: 73, after: 'r1_maru' }],
-        gulls: [[66, 48], [62, 79], [22, 42]], bottle: [[30, 92], [88, 93]] } },
+      secrets: { letters: [{ id: 'l1', x: 430, y: 330 }, { id: 'l2', x: 690, y: 560, after: 'r1_maru' }],
+        gulls: [[400, 205], [1060, 640], [785, 185]], bottle: [[470, 880], [1170, 790]] } },
     { id: 'r2', name: '몽돌 선착장', sub: '물빛포구 장터', bg: { before: 'r2_before', after: 'r2_after' }, view: [0.25, 0.98],
       sky: ['#ffe6d0', '#cfe7f0'], sea: '#7fc6d8',
       chains: ['a', 'b', 'd', 'e'], orders: { items: [1, 2], tiers: [3, 5] },
@@ -126,8 +126,8 @@
       ],
       open: { scene: 'r2_open', gens: ['gen_e'], chains: ['e'] },
       done: { scene: 'r2_done', uncover: true },
-      secrets: { letters: [{ id: 'l3', x: 8, y: 57 }, { id: 'l4', x: 57, y: 62, after: 'r2_stall' }],
-        gulls: [[35, 38], [22, 52], [72, 88]], bottle: [[62, 92], [12, 88]] } },
+      secrets: { letters: [{ id: 'l3', x: 400, y: 560 }, { id: 'l4', x: 870, y: 700, after: 'r2_stall' }],
+        gulls: [[560, 255], [1225, 400], [985, 195]], bottle: [[520, 860], [1270, 700]] } },
     { id: 'r3', name: '바람골목', sub: '떡집 · 찻집 골목', bg: { before: 'r3_before', after: 'r3_after' }, view: [0.16, 1.0],
       sky: ['#ffe9d6', '#f6dce8'], sea: '#a9d8c4',
       chains: ['a', 'b', 'c', 'd', 'e', 'f'], orders: { items: [1, 2], tiers: [4, 6] },
@@ -142,8 +142,8 @@
       ],
       open: { scene: 'r3_open', gens: ['gen_c', 'gen_f'], chains: ['c', 'f'] },
       done: { scene: 'r3_done', uncover: true },
-      secrets: { letters: [{ id: 'l5', x: 47, y: 47 }, { id: 'l6', x: 92, y: 80, after: 'r3_mural' }],
-        gulls: [[60, 24], [8, 30], [55, 66]], bottle: [] } },
+      secrets: { letters: [{ id: 'l5', x: 610, y: 330 }, { id: 'l6', x: 1070, y: 600, after: 'r3_mural' }],
+        gulls: [[770, 160], [470, 300], [1160, 335]], bottle: [] } },
     { id: 'r4', name: '매화언덕 정원', sub: '꽃님 할머니의 정원', bg: { before: 'r4_before', after: 'r4_after' }, view: [0.28, 1.0],
       sky: ['#ffe6d6', '#fbd9cf'], sea: '#9fd6cf',
       chains: ['a', 'b', 'c', 'd', 'e', 'f', 'g'], orders: { items: [2, 2], tiers: [4, 7] },
@@ -157,8 +157,8 @@
       ],
       open: { scene: 'r4_open', gens: ['gen_g'], chains: ['g'] },
       done: { scene: 'r4_done', uncover: true },
-      secrets: { letters: [{ id: 'l7', x: 9, y: 47 }, { id: 'l8', x: 66, y: 80, after: 'r4_pond' }],
-        gulls: [[30, 37], [88, 42], [62, 56]], bottle: [[50, 42]] } },
+      secrets: { letters: [{ id: 'l7', x: 520, y: 330 }, { id: 'l8', x: 1060, y: 560, after: 'r4_pond' }],
+        gulls: [[800, 140], [1110, 320], [1125, 470]], bottle: [[700, 880]] } },
     { id: 'r5', name: '반짝 해변', sub: '등불 축제 마당', bg: { before: 'r5_before', after: 'r5_after' }, view: [0.28, 0.98],
       sky: ['#ffe2d2', '#ffd9c2'], sea: '#7fd0c4',
       chains: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], orders: { items: [2, 3], tiers: [5, 8] },
@@ -173,8 +173,8 @@
       ],
       open: { scene: 'r5_open', gens: ['gen_h'], chains: ['h'] },
       done: { scene: 'r5_done', uncover: true },
-      secrets: { letters: [{ id: 'l9', x: 48, y: 44 }, { id: 'l10', x: 11, y: 66, after: 'r5_swing' }],
-        gulls: [[15, 31], [56, 36], [93, 62]], bottle: [[30, 31], [74, 29]] } },
+      secrets: { letters: [{ id: 'l9', x: 560, y: 330 }, { id: 'l10', x: 470, y: 690, after: 'r5_swing' }],
+        gulls: [[1130, 440], [510, 465], [850, 270]], bottle: [[360, 600], [1260, 500]] } },
     { id: 'r6', name: '등대곶', sub: '꺼진 등대가 있는 곶', bg: { before: 'r6_before', after: 'r6_after' }, view: [0.14, 1.0],
       sky: ['#ffe4d6', '#f9dccb'], sea: '#7fcfc6',
       chains: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], orders: { items: [2, 3], tiers: [6, 9] },
@@ -190,8 +190,8 @@
       ],
       open: { scene: 'r6_open', gens: [], chains: [] },
       done: { scene: 'r6_done', uncover: true, ending: 'ending' },
-      secrets: { letters: [{ id: 'l11', x: 20, y: 62 }, { id: 'l12', x: 84, y: 70, after: 'r6_light' }],
-        gulls: [[74, 16], [10, 86], [90, 78]], bottle: [[94, 93]] } }
+      secrets: { letters: [{ id: 'l11', x: 560, y: 280 }, { id: 'l12', x: 990, y: 570, after: 'r6_light' }],
+        gulls: [[1150, 420], [385, 420], [890, 860]], bottle: [[1240, 800]] } }
   ];
 
   // 이야기 부탁 (금색 카드 · [다른 부탁] 없음): area 지역에서 after 작업을 끝내면 나타나고, 건네야 다음 작업(req)을 할 수 있어요
@@ -285,8 +285,8 @@
     // 발생기 강화 (동전 · 3번): 2단계 확률 10 → 20 → 30% · 마지막 강화는 가끔(8%) 3단계
     genUp: { prices: [80, 240, 600], tier2: [0.10, 0.20, 0.30, 0.30], tier3: [0, 0, 0, 0.08] },
     firstEasyOrders: 2,        // 새 판 첫 부탁 2장은 1단계 물건 (첫 '고치기'까지 1~2분)
-    // 자동 합치기 (merge_town.md §G): 값 = 배수 × (base + 합치는 횟수), 최대 배수 × cap
-    autoMerge: { base: 3, cap: 25 }
+    // 자동 합치기 (merge_town.md §G · 2026-11 값 내림): 값 = 합치는 횟수 × 1 (최소 3) × 지역 배수(최대 ×2), 최대 20 · 하루 2번은 무료
+    autoMerge: { perMerge: 1, min: 3, multMax: 2, cap: 20, freeDay: 2 }
   };
 
   // 상점 (merge_town.md §F · 판 화면 [상점] · 가방 속 소라별 가게는 없앴어요 → 소라별은 여기서 무지개 소라·보자기·자동 합치기 1분에)
@@ -314,7 +314,7 @@
       en3: { tab: 'energy', name: '식혜 항아리', give: { k: 'item', c: 'en', t: 3 }, coins: 35, mult: true, sub: '기운 +40' },
       refill: { tab: 'energy', name: '기운 가득 채우기', kind: 'refill', sub: '+100 · 하루 3번' },
       auto: { tab: 'help', name: '자동 합치기', kind: 'auto', sub: '판 전체를 한 번에' },
-      auto1m: { tab: 'help', name: '자동 합치기 1분', kind: 'auto1m', coins: 30, mult: true, gems: 3, sub: '1분 동안 새 물건이 짝을 만나면 저절로' },
+      auto1m: { tab: 'help', name: '자동 합치기 1분', kind: 'auto1m', coins: 8, mult: true, multMax: 2, gems: 1, sub: '1분 동안 새 물건이 짝을 만나면 저절로' },
       recharge: { tab: 'help', name: '발생기 바로 충전', kind: 'recharge', coins: 10, mult: true, sub: '쉬고 있는 발생기 하나' },
       hands: { tab: 'help', name: '바쁜 손 10분', kind: 'hands', coins: 40, mult: true, sub: '10분 동안 발생기 톡에 기운 0' },
       skipnow: { tab: 'help', name: '다른 부탁 바로', kind: 'skip', coins: 5, mult: true, sub: '[다른 부탁] 기다림 없애기' },
@@ -437,6 +437,132 @@
       area: { bpm: 104, notes: [['G4', 0, 'pluck'], ['C5', 1, 'pluck'], ['E5', 2, 'pluck'], ['G5', 3, 'pluck'], ['A5', 4, 'flute', 2], ['G5', 6, 'flute', 1], ['E5', 7, 'flute', 1], ['G5', 8, 'flute', 2], ['C6', 10, 'flute', 4], ['C4', 10, 'pluck'], ['G4', 10, 'pluck']], gong: 0, bell: 10 },
       ending: { bpm: 80, notes: [['A4', 0, 'pluck'], ['C5', 1, 'pluck'], ['E5', 2, 'pluck'], ['A5', 3, 'flute', 3], ['G5', 6, 'flute', 2], ['E5', 8, 'flute', 2], ['D5', 10, 'flute', 2], ['C5', 12, 'flute', 2], ['E5', 14, 'flute', 4], ['A4', 14, 'pluck'], ['C4', 14, 'pluck']], gong: 0, bell: 14 },
       attend: { bpm: 132, notes: [['E5', 0, 'pluck'], ['G5', 1, 'pluck'], ['C6', 2, 'pluck'], ['D6', 3, 'pluck']], bell: 3 }
+    }
+  };
+
+  // 마을 지도 (merge_town.md §A · 화면은 js/merge/town.js) — 지역 그림 6장(각 1536×1024)을 2열 × 3행으로 붙인 큰 지도 하나
+  //   [r6 등대곶 ][r5 반짝 해변]   ← 위
+  //   [r3 바람골목][r4 매화언덕 ]
+  //   [r1 바다별채][r2 몽돌 선착장] ← 아래 (시작)
+  //  좌표는 모두 '지역 그림 px' (세계 px = col·1536 + x, row·1024 + y) · 그림은 발밑(아래 가운데)을 그 자리에 놓아요
+  //  areas: 지역 칸 · who = 그 지역에 사는 사람(걸어 다님) · paths = 걷는 길(꺾은선)
+  //  build: 작업 → 짓기 · kind B3 = 건물(모양 3가지 · 하나는 무료로 고르고 나머지는 동전) · D1 = 장식 · G = 땅 고치기(잔해만 치움)
+  //         art: 그림 id (B3 는 뒤에 _a/_b/_c) · at = 발밑 · w = 지도 위 폭 · clears = 짓기 전 잔해 [그림, x, y, 폭]
+  //         rep = 같은 그림을 더 놓을 자리 · z = 겹침 순서용 발밑 y (현판처럼 건물 앞에 얹을 때) · lights = 밤 불빛 (그림 안 비율)
+  //         looks = 모양 이름 3개 · fx = 코드 연출 (pond 탁한 물 → 맑은 연못 · ruin 무너진 등대 → 비계 · lens 렌즈 반짝 · beam 빛줄기)
+  //  ?edit=1 로 열면 지도에서 끌어서 옮기고 [복사] 로 이 좌표를 꺼낼 수 있어요
+  const TOWN = {
+    tw: 1536, th: 1024, cols: 2, rows: 3, sea: '#58aca0',
+    areas: {
+      r1: { col: 0, row: 2, who: 'juni', paths: [[[560, 560], [700, 600], [860, 640], [960, 690]], [[640, 330], [780, 300], [910, 360]]] },
+      r2: { col: 1, row: 2, who: 'dochi', paths: [[[600, 520], [760, 560], [930, 620]], [[420, 600], [480, 700], [580, 770]]] },
+      r3: { col: 0, row: 1, who: 'mina', paths: [[[560, 520], [700, 570], [860, 630], [990, 570]], [[690, 330], [820, 300], [930, 380]]] },
+      r4: { col: 1, row: 1, who: 'kkotnim', paths: [[[560, 650], [700, 710], [860, 720], [1000, 650]], [[600, 430], [690, 380], [820, 420]]] },
+      r5: { col: 1, row: 0, who: 'rua', paths: [[[500, 520], [640, 560], [800, 640], [960, 570], [1100, 520]], [[640, 740], [820, 770], [960, 730]]] },
+      r6: { col: 0, row: 0, who: 'kang', paths: [[[640, 330], [700, 430], [820, 500], [960, 560]], [[560, 400], [660, 470]]] }
+    },
+    build: {
+      r1_gate: { kind: 'B3', art: 'b_r1_gate', at: [585, 705], w: 230, clears: [['c_rubble_wood', 585, 705, 170]], lights: [[0.3, 0.6], [0.72, 0.6]], looks: ['쪽빛 기와 솟을대문', '나무 사립문', '단청 꽃 대문'] },
+      r1_paper: { kind: 'B3', art: 'b_r1_paper', at: [775, 455], w: 320, clears: [['c_rubble_stone', 775, 455, 190]], lights: [[0.4, 0.62], [0.68, 0.6]], looks: ['기와 본채', '초가 본채', '분홍 담장 본채'] },
+      r1_sign: { kind: 'D1', art: 'd_r1_sign', at: [770, 338], w: 92, z: 470 },
+      r1_maru: { kind: 'D1', art: 'd_r1_maru', at: [655, 545], w: 150, clears: [['c_weeds', 655, 545, 90]] },
+      r1_lamp: { kind: 'D1', art: 'd_r1_lamp', at: [548, 452], w: 78, lights: [[0.5, 0.36]] },
+      r1_room: { kind: 'B3', art: 'b_r1_room', at: [955, 595], w: 270, clears: [['c_rubble_wood', 955, 595, 170]], lights: [[0.5, 0.62]], looks: ['기와 별채', '초가 별채', '꽃 창살 별채'] },
+      r2_pier: { kind: 'B3', art: 'b_r2_pier', at: [1185, 770], w: 240, clears: [['c_rubble_wood', 1150, 720, 150]], lights: [[0.2, 0.3], [0.85, 0.3]], looks: ['원목 선착장', '하늘색 칠 선착장', '등불 단 선착장'] },
+      r2_net: { kind: 'D1', art: 'd_r2_net', at: [420, 630], w: 150, clears: [['c_beach_trash', 420, 630, 110]] },
+      r2_awning: { kind: 'B3', art: 'b_r2_awning', at: [690, 445], w: 220, clears: [['c_rubble_wood', 690, 445, 150]], lights: [[0.5, 0.5]], looks: ['줄무늬 천 가게', '짚 지붕 가게', '색동 천 가게'] },
+      r2_ice: { kind: 'B3', art: 'b_r2_ice', at: [1020, 500], w: 240, clears: [['c_rubble_stone', 1020, 500, 160]], lights: [[0.32, 0.72]], looks: ['돌 얼음 창고', '나무 얼음 창고', '하늘 기와 얼음 창고'] },
+      r2_boat: { kind: 'D1', art: 'd_r2_boat', at: [440, 840], w: 190, fx: 'bob' },
+      r2_stall: { kind: 'D1', art: 'd_r2_stall', at: [800, 680], w: 160, clears: [['c_rubble_wood', 800, 680, 110]] },
+      r2_sotdae: { kind: 'D1', art: 'd_r2_sotdae', at: [945, 330], w: 62 },
+      r3_road: { kind: 'G', clears: [['c_rubble_stone', 770, 520, 150], ['c_weeds', 640, 430, 100], ['c_weeds', 900, 620, 100]] },
+      r3_mill: { kind: 'B3', art: 'b_r3_mill', at: [630, 500], w: 240, clears: [['c_rubble_wood', 630, 500, 160]], lights: [[0.42, 0.62]], looks: ['기와 물레방아 방앗간', '초가 방앗간', '분홍 간판 방앗간'] },
+      r3_eave: { kind: 'B3', art: 'b_r3_eave', at: [800, 410], w: 235, clears: [['c_rubble_stone', 800, 410, 150]], lights: [[0.38, 0.62], [0.7, 0.62]], looks: ['대나무 처마 찻집', '기와 찻집', '꽃 처마 찻집'] },
+      r3_pyeong: { kind: 'D1', art: 'd_r3_pyeong', at: [945, 520], w: 135 },
+      r3_pots: { kind: 'D1', art: 'd_r3_pots', at: [610, 625], w: 140, clears: [['c_weeds', 610, 625, 90]] },
+      r3_mural: { kind: 'D1', art: 'd_r3_mural', at: [935, 668], w: 160 },
+      r3_bell: { kind: 'D1', art: 'd_r3_bell', at: [1040, 450], w: 56 },
+      r4_weed: { kind: 'G', clears: [['c_weeds', 560, 760, 130], ['c_weeds', 900, 715, 120], ['c_weeds', 700, 610, 100]] },
+      r4_steps: { kind: 'D1', art: 'd_r4_steps', at: [470, 575], w: 130 },
+      r4_pond: { kind: 'D1', art: 'd_r4_pond', at: [948, 565], w: 250, fx: 'pond' },
+      r4_bridge: { kind: 'B3', art: 'b_r4_bridge', at: [660, 690], w: 210, lights: [[0.5, 0.45]], looks: ['무지개 돌다리', '나무 다리', '붉은 난간 다리'] },
+      r4_pavilion: { kind: 'B3', art: 'b_r4_pavilion', at: [745, 535], w: 245, clears: [['c_rubble_wood', 745, 535, 160]], lights: [[0.5, 0.42]], looks: ['육각 기와 정자', '초가 정자', '단청 정자'] },
+      r4_path: { kind: 'D1', art: 'd_r4_path', at: [600, 790], w: 130, rep: [[750, 820], [900, 800], [1040, 740]] },
+      r5_clean: { kind: 'G', clears: [['c_beach_trash', 700, 700, 140], ['c_beach_trash', 1010, 640, 130], ['c_beach_trash', 520, 470, 110]] },
+      r5_hut: { kind: 'B3', art: 'b_r5_hut', at: [1000, 395], w: 210, clears: [['c_rubble_wood', 1000, 395, 150]], lights: [[0.5, 0.55]], looks: ['초가 쉼터', '천막 쉼터', '꽃 지붕 쉼터'] },
+      r5_stage: { kind: 'B3', art: 'b_r5_stage', at: [790, 540], w: 220, clears: [['c_rubble_wood', 790, 540, 150]], lights: [[0.3, 0.4], [0.7, 0.4]], looks: ['나무 무대', '색동 휘장 무대', '등불 무대'] },
+      r5_cloth: { kind: 'D1', art: 'd_r5_cloth', at: [615, 430], w: 165, fx: 'sway' },
+      r5_swing: { kind: 'D1', art: 'd_r5_swing', at: [560, 625], w: 140 },
+      r5_cart: { kind: 'D1', art: 'd_r5_cart', at: [905, 690], w: 150 },
+      r5_arch: { kind: 'B3', art: 'b_r5_arch', at: [760, 815], w: 175, lights: [[0.28, 0.42], [0.72, 0.42]], looks: ['청사초롱 아치', '연꽃 등 아치', '별 모양 등 아치'] },
+      r6_path: { kind: 'G', clears: [['c_weeds', 640, 420, 120], ['c_rubble_stone', 850, 560, 130], ['c_weeds', 960, 640, 100]] },
+      r6_fence: { kind: 'D1', art: 'd_r6_fence', at: [520, 520], w: 120, rep: [[620, 585], [720, 650]] },
+      r6_hut: { kind: 'B3', art: 'b_r6_hut', at: [955, 440], w: 205, clears: [['c_rubble_stone', 955, 440, 140]], lights: [[0.45, 0.62]], looks: ['돌 오두막', '나무 오두막', '파란 지붕 오두막'] },
+      r6_stairs: { kind: 'G', fx: 'ruin' },
+      r6_wall: { kind: 'B3', art: 'b_r6_wall', at: [770, 232], w: 150, lights: [[0.5, 0.12]], looks: ['흰·빨강 띠 등대', '흰·쪽빛 띠 등대', '크림·분홍 띠 등대'] },
+      r6_bell: { kind: 'D1', art: 'd_r6_bell', at: [600, 345], w: 120 },
+      r6_lens: { kind: 'G', fx: 'lens' },
+      r6_light: { kind: 'G', fx: 'beam' }
+    },
+    ruin: { art: 'c_ruin_lighthouse', at: [770, 215], w: 135, scaffold: 'c_scaffold', sw: 165 },
+    pond: { at: [948, 430], rx: 120, ry: 80 },            // 4지역 탁한 물 덮개 (연못 맑게 하기 전)
+    // 바다 위 작은 고깃배 (세계 px · 출렁 + 천천히 오감)
+    boats: [['c_boat_a', 3040, 2620, 120, 60], ['c_boat_b', 40, 1600, 110, 50], ['c_boat_a', 1560, 1050, 110, 40], ['c_boat_b', 3000, 600, 120, 70]],
+    // 상점 [꾸미기] 마을 장식 (몇 개든 · 20×m) · 꾸미기에서 지도 아무 곳에 놓아요
+    fillers: {
+      pine: { name: '소나무', art: 'c_pine', w: 140 }, blossom: { name: '벚나무', art: 'c_blossom_tree', w: 140 }, bamboo: { name: '대나무', art: 'c_bamboo', w: 70 },
+      rocks: { name: '바위', art: 'c_rocks', w: 100 }, flower: { name: '꽃덤불', art: 'c_flower_bush', w: 110 }, jang: { name: '장독대', art: 'c_jangdokdae', w: 130 },
+      wall: { name: '돌담 조각', art: 'c_wall', w: 130 }, boat: { name: '작은 고깃배', art: 'c_boat_a', w: 110 }
+    },
+    eventDecos: { kite_deco: { w: 90 }, dano_deco: { w: 110 } },
+    lookCoins: 30, fillerCoins: 20,                        // × 그 지역(장식은 지금 지역) 가격 배수 m
+    tapCoins: [1, 3]                                       // 지은 건물 처음 톡 (하루 한 번씩) 엽전
+  };
+
+  // 하윤 옷 (merge_town.md §H · 옷 한 벌 = 전신 그림 1장 · 얼굴 칸 = 그 그림 위쪽(face)) · 기본 옷은 기존 얼굴 그림(기쁨·놀람)
+  //  season: 이 달에만 상점에 진열 (여름 바캉스 6~8월)
+  const OUTFITS = {
+    base: { name: '연두 저고리 + 앞치마', art: 'h_hayun_base', face: null },
+    trench: { name: '트렌치코트 + 베레모', art: 'h_outfit_trench', face: 'h_trench_face', coins: 500, gems: 25, sub: '세련된 옷' },
+    vacation: { name: '밀짚모자 + 꽃무늬 휴양 원피스', art: 'h_outfit_vacation', face: 'h_vacation_face', coins: 400, gems: 20, season: [6, 7, 8], sub: '여름 바캉스 (6~8월)' }
+  };
+  // 몽돌 소품: 걷는 몽돌 그림(w_mongdol) 위에 겹쳐요 · at = [가운데 x, 가운데 y, 폭] (몽돌 그림 비율 · 왼쪽 보는 그림 기준)
+  const MONG_ACC = {
+    sunglasses: { name: '작은 선글라스', art: 'm_sunglasses', coins: 120, at: [0.25, 0.47, 0.34] },
+    tube: { name: '수영 튜브', art: 'm_tube', coins: 120, at: [0.58, 0.8, 0.62] },
+    hat: { name: '몽돌 모자', deco: 'mongdol_hat', at: [0.24, 0.2, 0.26] }     // 출석 7일 선물 (그림 없이 코드로 그려요)
+  };
+
+  // 마을 사람 선물·우정 (merge_town.md §I) · loves = 최애 물건 2개 · 선물 하루 한 사람당 3번
+  //  점수: 최애 = 단계×3+10 · 그 사람 체인 = 단계×2 · 그 밖 = 단계 · 부탁 건네기 +2
+  //  단계 보상: 1 동전 30×m · 2 소라별 3 + 편지 · 3 장식(그림 오기 전엔 소라별 5) · 4 이야기 장면 + 큰 보자기 · 5 칭호 + 하윤 옷(그림 오기 전엔 소라별 10)
+  const FRIEND = {
+    lv: [10, 35, 80, 150, 250], perDay: 3, deliverPts: 2, coins1: 30, gems2: 3, gems3: 5, gems5: 10, allWild: 3, allTitle: '소라섬 모두의 친구',
+    loves: { juni: ['a7', 'a8'], mina: ['b8', 'c7'], kkotnim: ['d8', 'd6'], dochi: ['e6', 'g7'], kang: ['f4', 'h7'], rua: ['h5', 'g6'] },
+    // 받았을 때 말 (최애 · 좋아함 · 보통)
+    react: {
+      juni: ['우와아! 이거 제가 제일 좋아하는 거예요!', '헤헤, 고마워요 누나!', '이것도 좋아요!'],
+      mina: ['꺄, 이거 어떻게 알았어?!', '고마워, 하윤아~', '마음만으로도 고마워!'],
+      kkotnim: ['아이고, 이걸 다…! 윤해 생각이 나는구나.', '참 곱다, 고맙구나.', '마음 씀씀이가 예쁘구먼.'],
+      dochi: ['…! 이건… 정말 좋소.', '…고맙소.', '…허, 잘 받겠소.'],
+      kang: ['허허! 이건 내 보물로 삼겠네.', '고맙네, 아주 좋아.', '마음이 고맙구먼.'],
+      rua: ['…이 색, 꼭 그리고 싶었어.', '고마워. 예쁘다.', '고마워, 잘 둘게.']
+    },
+    letters: {
+      juni: '하윤 누나에게. 누나가 오고부터 편지 배달이 재밌어졌어요! 이 편지는 제가 직접 배달해요. —준이',
+      mina: '하윤아, 떡집 다시 연 거 다 네 덕분이야. 우리 할머니도 하늘에서 웃고 계실걸? —미나',
+      kkotnim: '하윤아, 너를 보면 꼭 윤해 젊을 적 같단다. 밥 꼭 챙겨 먹어라. —꽃님',
+      dochi: '…하윤 씨. 배가 다시 바다에 나갈 수 있게 됐소. 고맙소. —도치',
+      kang: '하윤 군, 등대 일지를 다시 쓰기 시작했네. 첫 줄에 자네 이름을 적었지. —강',
+      rua: '하윤에게. 이 섬 그림에 너를 그려 넣었어. 보여 줄게, 언젠가. —루아'
+    },
+    scenes: {
+      juni: [{ who: 'juni', face: 'joy', text: '누나, 비밀 하나 알려 줄까요?' }, { who: 'juni', text: '윤해 할머니가 저한테 처음 편지 배달을 맡기셨어요.\n"이 섬에서 제일 빠른 발"이라고요!' }, { who: 'hayun', face: 'joy', text: '정말? 할머니다운 말씀이네.' }, { who: 'juni', face: 'joy', text: '이제 누나 편지도 제가 다 배달할게요!' }],
+      mina: [{ who: 'mina', text: '하윤아, 이 떡 틀 보여?\n우리 할머니랑 윤해 할머니가 같이 쓰던 거래.' }, { who: 'mina', text: '두 분이 잔칫날마다 밤새 떡을 빚으셨대.' }, { who: 'hayun', face: 'joy', text: '우리도 그렇게 하자. 잔칫날마다!' }, { who: 'mina', face: 'joy', text: '약속이다! 새끼손가락~' }],
+      kkotnim: [{ who: 'kkotnim', text: '이 매화나무는 윤해랑 내가 처음 만난 해에 심었단다.' }, { who: 'kkotnim', text: '폭풍에 다 쓰러질 줄 알았는데…\n네가 오니 다시 꽃을 피우는구나.' }, { who: 'hayun', text: '할머니, 내년 봄엔 같이 꽃구경 가요.' }, { who: 'kkotnim', face: 'joy', text: '아이고, 그래야지. 그래야지.' }],
+      dochi: [{ who: 'dochi', text: '…아들 배가 돌아왔소.' }, { who: 'dochi', text: '…등불을 보고 왔다더군.\n하윤 씨가 켠 불 말이오.' }, { who: 'hayun', face: 'wow', text: '정말요? 다행이에요!' }, { who: 'dochi', face: 'joy', text: '…오늘 저녁엔 굴비 한 두름 가져가시오.' }],
+      kang: [{ who: 'kang', text: '젊을 때 윤해 씨와 등대 불을 같이 지켰지.' }, { who: 'kang', text: '그 사람은 늘 말했네.\n"불은 혼자 켜는 게 아니라, 기다리는 사람이 같이 켜는 거"라고.' }, { who: 'hayun', text: '저도 같이 지킬게요, 선생님.' }, { who: 'kang', face: 'joy', text: '허허, 든든하구먼.' }],
+      rua: [{ who: 'rua', text: '나, 사실 이 섬에 그림 그리러 잠깐 왔던 거야.' }, { who: 'rua', text: '그런데 너랑 섬이 바뀌는 걸 보니까…\n떠날 수가 없더라.' }, { who: 'hayun', face: 'joy', text: '그럼 계속 있어! 바다별채 손님방 비워 둘게.' }, { who: 'rua', face: 'joy', text: '…고마워. 진짜로.' }]
     }
   };
 
@@ -680,7 +806,7 @@
     '판이 복잡하면 오른쪽 아래 🔨 자동 합치기! 부탁에 쓸 물건은 남겨 둬요.'
   ];
 
-  const API = { CHAINS, GENS, VILLAGERS, AREAS, STORY_ORDERS, LETTERS, SECRETS, DAILY, EVENTS, EVENT_REF_MONDAY, EVENT_FROM_AREA, BOARD, BAL, SHOP, MUSIC, START, STORY, TIPS, SAVE_KEY: 'arichae_merge_v1', SYNC_KEY: 'arichae_merge_sync', VERSION: 3 };
+  const API = { CHAINS, GENS, VILLAGERS, AREAS, STORY_ORDERS, LETTERS, SECRETS, DAILY, EVENTS, EVENT_REF_MONDAY, EVENT_FROM_AREA, BOARD, BAL, SHOP, MUSIC, START, STORY, TIPS, TOWN, OUTFITS, MONG_ACC, FRIEND, SAVE_KEY: 'arichae_merge_v1', SYNC_KEY: 'arichae_merge_sync', VERSION: 4 };
   if (typeof module === 'object' && module.exports) module.exports = API;
   else root.MergeData = API;
 })(typeof window !== 'undefined' ? window : globalThis);

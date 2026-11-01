@@ -19,6 +19,8 @@ function emptyState(rng) {
   return st;
 }
 // 이야기 부탁을 다 건넨 것으로 (복원 작업만 시험할 때)
+// 오늘 하루 무료 자동 합치기를 다 쓴 것으로 (동전 값 시험)
+function noFree(st) { st.boost.fday = C.dayKey(T0); st.boost.fused = D.BAL.autoMerge.freeDay; return st; }
 function soAll(st) { Object.keys(D.STORY_ORDERS).forEach((k) => { st.sos[k] = T0; }); st.orders = st.orders.filter((o) => !o.story); return st; }
 let n = 0;
 function test(name, fn) { fn(); n++; console.log('  ok', name); }
@@ -635,21 +637,35 @@ test('지역 1~6 전/후 배경 · 시작/엔딩 그림 · 이벤트 그림이 �
 });
 
 console.log('4단계 · 지역 4~6 · 작업 자리');
-test('작업·비밀 자리는 그림 안(0~100%), 마을 화면에 보이는 세로 구간 안 · 작업 자리끼리 겹치지 않음', () => {
+test('마을 지도: 작업마다 짓기 자리(지역 그림 안) · 잔해·비밀도 그림 안 · 지은 것끼리 겹치지 않음 · 그림이 다 있음', () => {
+  const fs = require('fs');
+  const IMG = path.join(__dirname, '..', 'static', 'img', 'merge', 'town');
+  const T = D.TOWN, inT = (x, y) => x >= 40 && x <= T.tw - 40 && y >= 40 && y <= T.th - 30;
+  const has = (id) => fs.existsSync(path.join(IMG, id + '.webp'));
   D.AREAS.forEach((a) => {
-    const y0 = a.view[0] * 100, y1 = a.view[1] * 100;
-    const pts = a.tasks.map((t) => [t.x, t.y, t.id]);
-    a.tasks.forEach((t) => { assert.ok(t.x >= 3 && t.x <= 97 && t.y >= y0 + 2 && t.y <= y1 - 1, '작업 자리 ' + t.id); assert.ok(t.r >= 10 && t.r <= 30); });
+    assert.ok(T.areas[a.id] && T.areas[a.id].paths.length, a.id + ' 지역 칸·걷는 길');
+    const pts = [];
+    a.tasks.forEach((t) => {
+      const b = T.build[t.id];
+      assert.ok(b && ['B3', 'D1', 'G'].indexOf(b.kind) >= 0, '짓기 ' + t.id);
+      if (b.kind === 'B3') { ['a', 'b', 'c'].forEach((v) => assert.ok(has(b.art + '_' + v), b.art + '_' + v)); assert.strictEqual(b.looks.length, 3); }
+      if (b.kind === 'D1') assert.ok(has(b.art), b.art);
+      if (b.at) { assert.ok(inT(b.at[0], b.at[1]), '자리 ' + t.id); if (!b.z && !b.fx) pts.push([b.at[0], b.at[1], t.id]); }
+      (b.rep || []).forEach((r) => assert.ok(inT(r[0], r[1])));
+      (b.clears || []).forEach((c) => { assert.ok(has(c[0]), c[0]); assert.ok(inT(c[1], c[2]), '잔해 ' + t.id); });
+    });
     for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
-      const d = Math.hypot(pts[i][0] - pts[j][0], (pts[i][1] - pts[j][1]) * 1.77);   // 세로 % → 가로 % 비율 (720×1274)
-      assert.ok(d >= 9, '너무 가까움 ' + pts[i][2] + ' ' + pts[j][2]);
+      assert.ok(Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]) >= 60, '너무 가까움 ' + pts[i][2] + ' ' + pts[j][2]);
     }
     const s = a.secrets;
-    s.letters.forEach((l) => { assert.ok(l.y >= y0 && l.y <= y1, '편지 자리 ' + l.id); if (l.after) assert.ok(a.tasks.some((t) => t.id === l.after)); });
-    s.gulls.concat(s.bottle).forEach((g) => assert.ok(g[0] >= 2 && g[0] <= 98 && g[1] >= y0 && g[1] <= y1, a.id + ' 비밀 자리 ' + g));
+    s.letters.forEach((l) => { assert.ok(inT(l.x, l.y), '편지 자리 ' + l.id); if (l.after) assert.ok(a.tasks.some((t) => t.id === l.after)); });
+    s.gulls.concat(s.bottle).forEach((g) => assert.ok(inT(g[0], g[1]), a.id + ' 비밀 자리 ' + g));
+    assert.ok(has('map_' + a.id), '바탕 ' + a.id);
+    assert.ok(has('w_' + T.areas[a.id].who), '걷는 ' + T.areas[a.id].who);
   });
-  assert.strictEqual(C.LETTER_TOTAL, 12); assert.strictEqual(C.GULL_TOTAL, 18);
-  assert.strictEqual(D.AREAS.reduce((s, a) => s + a.secrets.letters.length, 0), 12);
+  Object.keys(D.OUTFITS).forEach((k) => { assert.ok(has(D.OUTFITS[k].art)); if (D.OUTFITS[k].face) assert.ok(has(D.OUTFITS[k].face)); });
+  Object.keys(T.fillers).forEach((k) => assert.ok(has(T.fillers[k].art), k));
+  ['w_mongdol', 'c_scaffold', T.ruin.art, 'm_sunglasses', 'm_tube'].forEach((id) => assert.ok(has(id), id));
 });
 test('지역 4~6: 주문 난이도(2개·4~7 → 2~3개·5~8 → 2~3개·6~9) · 체인 G·H', () => {
   const st = soAll(emptyState(seeded(4)));
@@ -830,7 +846,7 @@ test('이벤트 부탁 → 점수 → 보상 길 (마지막 칸 = 장식) · 끝
     st.board = st.board.map((c, k) => (k === 0 || (c && c.k === 'gen') ? c : null));
   }
   assert.strictEqual(got, 10); assert.ok(st.decos.indexOf(e.deco) >= 0, '장식');
-  assert.ok(C.placeDeco(st, e.deco, 2, 40, 70, mon).ok); assert.deepStrictEqual(st.placed[e.deco], { a: 2, x: 40, y: 70 });
+  assert.ok(C.placeDeco(st, e.deco, 400, 2700, mon).ok); assert.deepStrictEqual(st.placed[e.deco], { wx: 400, wy: 2700 });
   st.board[5] = item(e.chain, 3); st.bag[0] = item(e.chain, 2);
   const coins = st.coins;
   const r = C.eventTick(st, mon + 7 * 864e5, seeded(2));
@@ -962,16 +978,16 @@ test('도우미: 바쁜 손(10분 기운 0) · 발생기 바로 충전 · 다른
   assert.ok(C.shopBuy(st, { id: 'skipnow' }, T0 + 1000, seeded(1)).ok); assert.ok(C.skipOrder(st, st.orders[0].id, T0 + 2000, seeded(1)).ok);
   const b = C.shopBuy(st, { id: 'bag' }, T0, seeded(1)); assert.ok(b.ok); assert.strictEqual(st.bag.length, D.BAL.bagStart + 1);
 });
-test('자동 합치기: 같은 단계 2개씩 · 연쇄 · 결과는 아래쪽/왼쪽 칸 · 값 = m × (3 + 횟수) · 미리 계산은 판을 안 바꿔요', () => {
-  const st = emptyState(seeded(3)); st.orders = []; st.coins = 100;
+test('자동 합치기: 같은 단계 2개씩 · 연쇄 · 결과는 아래쪽/왼쪽 칸 · 값 = 횟수(최소 3) × 배수(최대 2) · 최대 20 · 미리 계산은 판을 안 바꿔요', () => {
+  const st = noFree(emptyState(seeded(3))); st.orders = []; st.coins = 100;
   st.board[0] = item('a', 1); st.board[1] = item('a', 1); st.board[7] = item('a', 1); st.board[8] = item('a', 1);
   st.board[20] = item('b', 2); st.board[2] = item('b', 2);
   const before = JSON.stringify(st.board);
   const plan = C.autoMergePlan(st, T0);
-  assert.strictEqual(plan.n, 4, 'a1 둘 둘 → a2 둘 → a3 하나 · b2 둘'); assert.strictEqual(plan.price, 3 + 4);
+  assert.strictEqual(plan.n, 4, 'a1 둘 둘 → a2 둘 → a3 하나 · b2 둘'); assert.strictEqual(plan.price, 4);
   assert.strictEqual(JSON.stringify(st.board), before);
   const r = C.autoMerge(st, T0);
-  assert.ok(r.ok); assert.strictEqual(st.coins, 100 - 7);
+  assert.ok(r.ok); assert.strictEqual(st.coins, 100 - 4);
   assert.strictEqual(st.board.filter(Boolean).length, 2);
   const at3 = st.board.findIndex((c) => c && c.c === 'a'); assert.deepStrictEqual(st.board[at3], item('a', 3)); assert.strictEqual(C.rc(at3).r, 1, '아래 줄로');
   assert.strictEqual(C.rc(at3).c, 0, '같은 줄이면 왼쪽');
@@ -980,7 +996,22 @@ test('자동 합치기: 같은 단계 2개씩 · 연쇄 · 결과는 아래쪽/�
   assert.strictEqual(C.autoMerge(st, T0).reason, 'none');
   const big = emptyState(); big.orders = []; big.area = 4; big.unlocked = ['a'];
   for (let i = 0; i < 40; i++) big.board[i] = item('a', 1);
-  const p = C.autoMergePlan(big, T0); assert.ok(p.n > 22); assert.strictEqual(p.price, 11 * 25, '최대 m × 25');
+  const p = C.autoMergePlan(big, T0); assert.ok(p.n > 22); assert.strictEqual(p.price, 20, '최대 20 (5지역이어도)');
+  // 버그(2026-11): 동전 10개인데 19번 합치기에 154+ → 이제 1지역 19번 = 19, 2지역부터도 ×2 까지 · 최소 3
+  const one = emptyState(); one.area = 0; assert.strictEqual(C.autoPrice(one, 19), 19); assert.strictEqual(C.autoPrice(one, 1), 3);
+  one.area = 3; assert.strictEqual(C.autoPrice(one, 5), 10); assert.strictEqual(C.autoPrice(one, 19), 20);
+});
+test('자동 합치기: 하루 2번 무료 (0시에 새로) → 다 쓰면 동전 · 1분 도우미도 싸게 (8 × 최대 2)', () => {
+  const st = emptyState(seeded(3)); st.orders = []; st.coins = 0;
+  const two = () => { st.board[0] = item('a', 1); st.board[1] = item('a', 1); };
+  two(); assert.strictEqual(C.autoMergePlan(st, T0).free, 2);
+  let r = C.autoMerge(st, T0); assert.ok(r.ok && r.free); assert.strictEqual(st.coins, 0);
+  two(); r = C.autoMerge(st, T0 + 1000); assert.ok(r.ok && r.free);
+  two(); assert.strictEqual(C.autoMerge(st, T0 + 2000).reason, 'coins', '무료를 다 쓰면 동전');
+  assert.strictEqual(C.autoFreeLeft(st, T0 + 864e5), 2, '다음 날 다시 2번');
+  const back = C.deserialize(C.serialize(st), T0, seeded(1)); assert.strictEqual(C.autoFreeLeft(back, T0), 0, '저장해도 그대로');
+  st.area = 5; assert.strictEqual(C.itemCoins(st, 'auto1m'), 16); st.area = 0; assert.strictEqual(C.itemCoins(st, 'auto1m'), 8);
+  assert.strictEqual(D.SHOP.items.auto1m.gems, 1);
 });
 test('자동 합치기는 부탁에 필요한 물건(단계·개수)·발생기·최고 단계·모래더미·보조 물건·무지개 소라·고정한 물건을 안 건드려요', () => {
   const st = emptyState(seeded(3)); st.coins = 100;
@@ -1004,12 +1035,12 @@ test('자동 합치기는 부탁에 필요한 물건(단계·개수)·발생기�
   assert.strictEqual(C.autoMergePlan(bag, T0).n, 1, '가방에 있으면 판의 것은 합쳐도 돼요');
 });
 test('자동 합치기: 무료 1번(오늘의 무료)은 동전 대신 · 되돌리기는 동전도 돌려줘요 · 동전이 모자라면 안 돼요', () => {
-  const st = emptyState(seeded(3)); st.orders = []; st.coins = 2;
+  const st = noFree(emptyState(seeded(3))); st.orders = []; st.coins = 2;
   st.board[0] = item('a', 1); st.board[1] = item('a', 1);
   assert.strictEqual(C.autoMerge(st, T0).reason, 'coins');
   st.coins = 10;
   const snap = C.snapshot(st);
-  assert.ok(C.autoMerge(st, T0).ok); assert.strictEqual(st.coins, 6);
+  assert.ok(C.autoMerge(st, T0).ok); assert.strictEqual(st.coins, 7);
   C.restore(st, snap); assert.strictEqual(st.coins, 10); assert.deepStrictEqual(st.board[0], item('a', 1));
   st.boost.autoTok = 1;
   const r = C.autoMerge(st, T0); assert.ok(r.ok && r.token); assert.strictEqual(st.coins, 10); assert.strictEqual(st.boost.autoTok, 0);
@@ -1019,7 +1050,7 @@ test('자동 합치기 1분: 새로 놓인 물건이 짝을 만나면 바로 합
   st.board[0] = item('a', 2); st.board[8] = item('a', 1); st.board[2] = { k: 'gen', g: 'gen_a' };
   st.board[9] = item('a', 1);
   assert.deepStrictEqual(C.autoChain(st, 9, T0), [], '켜기 전엔 그대로');
-  assert.ok(C.shopBuy(st, { id: 'auto1m' }, T0, seeded(1)).ok); assert.strictEqual(st.coins, 70); assert.strictEqual(st.boost.autoMs, 60000);
+  assert.ok(C.shopBuy(st, { id: 'auto1m' }, T0, seeded(1)).ok); assert.strictEqual(st.coins, 92); assert.strictEqual(st.boost.autoMs, 60000);
   const steps = C.autoChain(st, 9, T0);
   assert.strictEqual(steps.length, 2, 'a1+a1 → a2, a2+a2 → a3');
   assert.deepStrictEqual(st.board.filter((c) => c && c.k === 'item'), [item('a', 3)]);
@@ -1032,10 +1063,10 @@ test('v2 저장 → v3: 소리 크기 1~3 → 0~100 · 배경음은 한 번만 �
   v2.v = 2; v2.settings = { sfx: true, vib: true, easy: false, nums: true, hint: true, bgm: false, vol: 2, bgmVol: 3, big: false, calm: false };
   delete v2.shop; delete v2.boost; v2.coins = 42; v2.gems = 9;
   const st = C.deserialize(JSON.stringify(v2), T0, seeded(1));
-  assert.strictEqual(st.v, 3); assert.strictEqual(st.settings.bgm, true); assert.strictEqual(st.settings.bgmAsked, true);
+  assert.strictEqual(st.v, D.VERSION); assert.strictEqual(st.settings.bgm, true); assert.strictEqual(st.settings.bgmAsked, true);
   assert.strictEqual(st.settings.vol, 65); assert.strictEqual(st.settings.bgmVol, 90); assert.strictEqual(st.settings.autoKeep, true);
   assert.strictEqual(st.coins, 42); assert.strictEqual(st.gems, 9, '소라별은 그대로 (상점에서 써요)');
-  assert.deepStrictEqual(st.boost, { autoMs: 0, handsMs: 0, autoTok: 0 }); assert.ok(C.shopTouch(st, T0));
+  assert.deepStrictEqual(st.boost, { autoMs: 0, handsMs: 0, autoTok: 0, fday: '', fused: 0 }); assert.ok(C.shopTouch(st, T0));
   st.settings.bgm = false; st.settings.vol = 3;
   const back = C.deserialize(C.serialize(st), T0, seeded(1));
   assert.strictEqual(back.settings.bgm, false, '끈 건 존중'); assert.strictEqual(back.settings.vol, 3, 'v3 의 3 은 그냥 3');
@@ -1065,5 +1096,89 @@ test('버그: 이벤트 부탁(별 0)을 건넨 뒤 위 칸 동전이 멈춰 실
   // 화면 코드: 별 0 이면 별을 날리지 않고(도착 알림 없음) 동전 하나만 센다
   const ui = require('fs').readFileSync(path.join(base, 'ui.js'), 'utf8');
   assert.ok(/shown\.begin\(now\(\), r\.stars > 0 \? 2 : 1\)/.test(ui) && !/shown\.hold/.test(ui));
+});
+console.log('마을 짓기 2단계 · 저장 v4 · 모양 · 옷 · 몽돌 · 장식 · 우정');
+test('v3 저장 → v4: 끝낸 작업은 지은 건물(첫 모양 무료) · 별·지역·이야기 그대로 · 장식 % → 지도 px(섬 안) · 새 모습 안내 한 번', () => {
+  const v3 = soAll(C.newState(T0, seeded(9)));
+  v3.v = 3; ['look', 'owned', 'outfit', 'mongAcc', 'cam', 'tapDay', 'friend'].forEach((k) => delete v3[k]);
+  v3.area = 2; v3.stars = 5; v3.coins = 77;
+  D.AREAS[0].tasks.concat(D.AREAS[1].tasks).forEach((t) => { v3.tasks[t.id] = T0; });
+  v3.tasks.r3_road = T0; v3.story = { r1_gate: true, r2_open: 'skip' };
+  v3.decos = ['kite_deco']; v3.placed = { kite_deco: { a: 1, x: 40, y: 70 } };
+  const st = C.deserialize(JSON.stringify(v3), T0, seeded(1));
+  assert.strictEqual(st.v, 4); assert.strictEqual(st.area, 2); assert.strictEqual(st.stars, 5); assert.strictEqual(st.coins, 77);
+  assert.strictEqual(Object.keys(st.tasks).length, 14, '작업 id 그대로'); assert.deepStrictEqual(st.story, v3.story);
+  ['r1_gate', 'r1_paper', 'r1_room', 'r2_pier', 'r2_awning', 'r2_ice'].forEach((id) => { assert.strictEqual(C.lookOf(st, id), 0); assert.deepStrictEqual(C.looksOwned(st, id), [0]); });
+  assert.strictEqual(st.look.r3_road, undefined, '땅 고치기(G)는 모양 없음'); assert.strictEqual(st.look.r1_sign, undefined, '장식은 모양 없음');
+  const o = C.areaOrigin(1), p = st.placed.kite_deco;
+  assert.ok(p.wx > o.x + 300 && p.wx < o.x + 1236 && p.wy > o.y + 250 && p.wy < o.y + 800, '2지역 섬 안쪽');
+  assert.strictEqual(st.seen.townNew, 1); assert.strictEqual(st.outfit, 'base'); assert.deepStrictEqual(st.owned.outfits, ['base']);
+  const back = C.deserialize(C.serialize(st), T0, seeded(1));
+  assert.deepStrictEqual(back.look, st.look); assert.deepStrictEqual(back.placed, st.placed);
+  const fresh = C.deserialize(JSON.stringify(Object.assign(C.newState(T0, seeded(2)), { v: 3 })), T0, seeded(1));
+  assert.ok(!fresh.seen.townNew, '처음 하는 사람은 안내 없음');
+  assert.strictEqual(S.pickSave(st, back, false), 'local', '서버 비교 기준(작업·지역·건넨 수) 그대로');
+});
+test('짓기 → 모양 고르기: 하나는 무료 · 나머지는 동전(30 × 그 지역 배수)으로 열고 · 연 모양끼리는 무료로 바꿔요', () => {
+  const st = soAll(emptyState(seeded(3))); st.stars = 10; st.coins = 100;
+  assert.strictEqual(C.setLook(st, 'r1_gate', 1, T0).reason, 'notbuilt');
+  assert.ok(C.doTask(st, 'r1_gate', T0, seeded(1)).ok);
+  assert.deepStrictEqual(C.looksPending(st), ['r1_gate']);
+  const f = C.setLook(st, 'r1_gate', 2, T0); assert.ok(f.ok && f.free); assert.strictEqual(C.lookOf(st, 'r1_gate'), 2); assert.strictEqual(st.coins, 100);
+  const lock = C.setLook(st, 'r1_gate', 0, T0); assert.strictEqual(lock.reason, 'locked'); assert.strictEqual(lock.price, 30);
+  assert.ok(C.setLook(st, 'r1_gate', 0, T0, true).ok); assert.strictEqual(st.coins, 70); assert.strictEqual(C.lookOf(st, 'r1_gate'), 0);
+  assert.ok(C.setLook(st, 'r1_gate', 2, T0).ok, '연 모양은 무료'); assert.strictEqual(st.coins, 70);
+  st.coins = 5; assert.strictEqual(C.setLook(st, 'r1_gate', 1, T0, true).reason, 'coins');
+  assert.strictEqual(C.lookPrice(st, 'r4_pavilion'), 30 * D.SHOP.mult[3]);
+  C.doTask(st, 'r1_paper', T0, seeded(1)); assert.ok(C.firstLook(st, 'r1_paper', T0).ok, '그냥 닫으면 첫 모양');
+  assert.deepStrictEqual(C.looksOwned(st, 'r1_paper'), [0]); assert.ok(!C.firstLook(st, 'r1_paper', T0).ok);
+  assert.strictEqual(C.setLook(st, 'r1_sign', 1, T0).reason, 'gone', '장식은 모양이 하나');
+});
+test('하윤 옷 사기·입기 (동전·소라별 · 여름 옷은 6~8월만) · 몽돌 소품 · 마을 장식 사서 놓기 · 지은 건물 톡 엽전(하루 한 번)', () => {
+  const st = emptyState(seeded(3)); st.coins = 620; st.gems = 30;
+  const nov = new Date(2026, 10, 1).getTime(), jul = new Date(2026, 6, 1).getTime();
+  assert.strictEqual(C.wearOutfit(st, 'trench', nov).reason, 'locked');
+  assert.ok(C.buyOutfit(st, 'trench', 'coins', nov).ok); assert.strictEqual(st.coins, 120); assert.strictEqual(st.outfit, 'trench');
+  assert.strictEqual(C.buyOutfit(st, 'trench', 'coins', nov).reason, 'have');
+  assert.strictEqual(C.buyOutfit(st, 'vacation', 'gems', nov).reason, 'season', '여름 옷은 여름에만');
+  assert.ok(C.buyOutfit(st, 'vacation', 'gems', jul).ok); assert.strictEqual(st.gems, 10);
+  assert.ok(C.wearOutfit(st, 'base', nov).ok); assert.strictEqual(st.outfit, 'base');
+  const back = C.deserialize(C.serialize(st), nov, seeded(1)); assert.deepStrictEqual(back.owned.outfits, ['base', 'trench', 'vacation']);
+  assert.ok(C.buyMong(st, 'sunglasses', nov).ok); assert.strictEqual(st.coins, 0); assert.strictEqual(st.mongAcc, 'sunglasses');
+  assert.strictEqual(C.wearMong(st, 'hat', nov).reason, 'locked'); st.decos.push('mongdol_hat'); assert.ok(C.wearMong(st, 'hat', nov).ok);
+  assert.ok(C.wearMong(st, null, nov).ok); assert.strictEqual(st.mongAcc, null);
+  st.coins = 30;
+  const f = C.buyFiller(st, 'pine', nov); assert.ok(f.ok); assert.strictEqual(st.coins, 10); assert.strictEqual(C.decoKind(f.id), 'pine');
+  assert.strictEqual(C.buyFiller(st, 'pine', nov).reason, 'coins');
+  assert.ok(C.placeDeco(st, f.id, 900, 2500, nov).ok); assert.deepStrictEqual(st.placed[f.id], { wx: 900, wy: 2500 });
+  assert.ok(C.placeDeco(st, f.id, null, null, nov).removed);
+  assert.strictEqual(C.placeDeco(st, 'mongdol_hat', 1, 1, nov).reason, 'none', '몽돌 모자는 지도에 안 놓아요');
+  st.tasks.r1_gate = nov; const c0 = st.coins;
+  const a = C.tapToy(st, 'r1_gate', nov, seeded(2)); assert.ok(a.coins >= 1 && a.coins <= 3); assert.strictEqual(st.coins, c0 + a.coins);
+  assert.strictEqual(C.tapToy(st, 'r1_gate', nov + 1000, seeded(2)).coins, 0, '하루 한 번');
+  assert.ok(C.tapToy(st, 'r1_gate', nov + 864e5, seeded(2)).coins >= 1);
+});
+test('우정: 선물 점수(최애·좋아함·보통) · 하루 3번 · 단계 보상 1~5 · 부탁 건네기 +2', () => {
+  const st = emptyState(seeded(3)); st.coins = 0; st.gems = 0;
+  st.board[0] = item('a', 8); st.board[1] = item('a', 3); st.board[2] = item('b', 2); st.bag[0] = item('a', 7);
+  let r = C.giveGift(st, 'juni', { board: 0 }, T0, seeded(1));
+  assert.ok(r.ok); assert.strictEqual(r.kind, 'love'); assert.strictEqual(r.pts, 8 * 3 + 10); assert.strictEqual(st.board[0], null);
+  assert.deepStrictEqual(r.ups.map((u) => u.lv), [1], '34점 → 1단계'); assert.strictEqual(st.coins, D.FRIEND.coins1);
+  r = C.giveGift(st, 'juni', { board: 1 }, T0, seeded(1)); assert.strictEqual(r.kind, 'like'); assert.strictEqual(r.pts, 6);
+  assert.deepStrictEqual(r.ups.map((u) => u.lv), [2]); assert.strictEqual(st.gems, 3); assert.ok(r.ups[0].letter);
+  r = C.giveGift(st, 'juni', { bag: 0 }, T0, seeded(1)); assert.strictEqual(r.kind, 'love'); assert.strictEqual(st.bag[0], null);
+  st.board[3] = item('d', 1);
+  assert.strictEqual(C.giveGift(st, 'juni', { board: 3 }, T0, seeded(1)).reason, 'day', '하루 3번');
+  r = C.giveGift(st, 'mina', { board: 3 }, T0, seeded(1)); assert.strictEqual(r.kind, 'ok'); assert.strictEqual(r.pts, 1);
+  assert.strictEqual(C.friendInfo(st, 'juni', T0 + 864e5).left, 3, '다음 날 다시');
+  const ups = C.addFriend(st, 'juni', 500, T0, seeded(1));
+  assert.deepStrictEqual(ups.map((u) => u.lv), [3, 4, 5]); assert.ok(ups[1].scene && ups[1].gift); assert.strictEqual(ups[2].title, '준이의 단짝');
+  assert.ok(st.friend.juni.pendDeco && st.friend.juni.pendOutfit, '그림이 오면 받을 장식·옷 표시');
+  C.FRIENDS.filter((k) => k !== 'juni').forEach((k) => C.addFriend(st, k, 500, T0, seeded(1)));
+  assert.strictEqual(st.friendAll, D.FRIEND.allTitle);
+  const d = emptyState(seeded(4)); const o = d.orders.find((x) => !x.story && !x.ev);
+  o.need.forEach((nd, k) => { d.board[k] = item(nd.c, nd.t); });
+  const del = C.deliver(d, o.id, T0, seeded(1)); assert.ok(del.ok); assert.strictEqual(d.friend[o.who].pts, D.FRIEND.deliverPts);
+  const back = C.deserialize(C.serialize(st), T0, seeded(1)); assert.strictEqual(back.friend.juni.lv, 5);
 });
 console.log(`\n모두 통과 (${n}개)`);

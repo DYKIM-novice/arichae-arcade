@@ -8,7 +8,7 @@
   'use strict';
 
   const D = (typeof module === 'object' && module.exports) ? require('./data.js') : root.MergeData;
-  const { CHAINS, GENS, AREAS, BOARD, BAL, START, VILLAGERS, STORY_ORDERS, SECRETS, DAILY, EVENTS, LETTERS, SHOP } = D;
+  const { CHAINS, GENS, AREAS, BOARD, BAL, START, VILLAGERS, STORY_ORDERS, SECRETS, DAILY, EVENTS, LETTERS, SHOP, TOWN, OUTFITS, MONG_ACC, FRIEND } = D;
   const N = BOARD.cols * BOARD.rows;
   const COLS = BOARD.cols;
 
@@ -58,7 +58,7 @@
       refill: { day: dayKey(now), n: 0 },
       stats: { merges: 0, spawns: 0, delivered: 0, sold: 0, best: {} },
       // 소리 크기 vol·bgmVol = 0~100 (v3 부터 · 옛 1~3 단계는 MIGRATE[2]) · bgm 은 처음부터 켜짐 (첫 톡 뒤에 들려요)
-      settings: { sfx: true, vib: true, easy: false, nums: true, hint: true, bgm: true, bgmAsked: true, vol: 65, bgmVol: 60, quietNight: false, autoKeep: true, big: false, calm: false },
+      settings: { sfx: true, vib: true, easy: false, nums: true, hint: true, bgm: true, bgmAsked: true, vol: 65, bgmVol: 60, quietNight: false, autoKeep: true, big: false, calm: false, alwaysDay: false },
       seen: {},
       area: 0, tasks: {}, story: {},
       bag: new Array(BAL.bagStart).fill(null), gifts: [], charge: {},
@@ -72,7 +72,9 @@
       decos: [], placed: {},     // 장식 (가진 것 · 마을에 놓은 자리)
       thx: {},                   // 고맙다는 말 돌려 쓰기 (사람 → 다음 번호)
       shop: { day: '', deals: [], bought: {}, rerolled: false, freeTaken: false, free: 0 },   // 상점 (매일 0시 새로)
-      boost: { autoMs: 0, handsMs: 0, autoTok: 0 },   // 자동 합치기 1분 · 바쁜 손 남은 시간(앱을 연 동안만 줄어요) · 무료 자동 합치기
+      boost: { autoMs: 0, handsMs: 0, autoTok: 0, fday: '', fused: 0 },
+      // 마을 짓기 (v4 · merge_town.md §A·§H·§I): 건물 모양 · 가진 모양/옷/몽돌 소품 · 입은 옷 · 지도 카메라 · 건물 톡 날짜 · 우정
+      look: {}, owned: { looks: {}, outfits: ['base'], mong: [] }, outfit: 'base', mongAcc: null, cam: null, tapDay: {}, friend: {}, friendAll: '', fillerSeq: 0,   // fday·fused = 오늘 쓴 하루 무료 자동 합치기   // 자동 합치기 1분 · 바쁜 손 남은 시간(앱을 연 동안만 줄어요) · 무료 자동 합치기
       createdAt: now, updatedAt: now
     };
     board.forEach((cell) => { if (cell && cell.k === 'item') st.found[itemId(cell)] = true; });
@@ -509,6 +511,7 @@
     st.stats.delivered++;
     st.orders.splice(k, 1);
     if (order.story) st.sos[order.story] = now;
+    const friendUps = order.ev ? [] : addFriend(st, order.who, FRIEND.deliverPts, now, rng);   // 부탁 건네기도 우정 +2
     if (st.daily && !order.ev) {   // 오늘의 부탁 '○○ 부탁 n번'
       const seen = {};
       order.need.forEach((x) => { if (!seen[x.c]) { seen[x.c] = 1; st.daily.del[x.c] = (st.daily.del[x.c] | 0) + 1; } });
@@ -522,7 +525,7 @@
     if (order.ev) { const eo = eventOrderFill(st, now, rng); if (eo) added.push(eo); }
     added.forEach((o) => { const j = st.orders.indexOf(o); if (j >= 0) { st.orders.splice(j, 1); st.orders.push(o); } });
     st.updatedAt = now;
-    return { ok: true, order, cells: s.cells, bag: s.bag, coins: order.coins, stars: order.stars, added, bonus, story: order.story || null, evRewards };
+    return { ok: true, order, cells: s.cells, bag: s.bag, coins: order.coins, stars: order.stars, added, bonus, story: order.story || null, evRewards, friendUps };
   }
   function skipOrder(st, orderId, now, rng) {
     const wait = (st.skipAt || 0) + BAL.skipCooldownMs - now;
@@ -550,7 +553,7 @@
   // 가격 배수 m: 지금 지역(다 고친 뒤엔 마지막 지역) 번호로
   function shopMult(st) { return SHOP.mult[Math.max(0, Math.min(SHOP.mult.length - 1, st.area | 0))]; }
   const shopChains = (st) => st.unlocked.filter((c) => CHAINS[c] && !isAux(c) && !isEvent(c));
-  function itemCoins(st, id) { const it = SHOP.items[id]; return it && it.coins ? it.coins * (it.mult ? shopMult(st) : 1) : 0; }
+  function itemCoins(st, id) { const it = SHOP.items[id]; return it && it.coins ? it.coins * (it.mult ? Math.min(shopMult(st), it.multMax || 99) : 1) : 0; }
   // 오늘의 특가 3칸: 한 칸은 꼭 지금 지역 체인 3~4단계 (주문 막힘 풀기) · 나머지는 dealPool 에서 · 30~50% 할인
   function genDeals(st, day, salt) {
     const r = seeded(hash(day + ':' + (salt || '') + ':' + (st.area | 0)));
@@ -690,26 +693,34 @@
   }
   function autoPrice(st, n) {
     if (!n) return 0;
-    const m = shopMult(st);
-    return Math.min(m * BAL.autoMerge.cap, m * (BAL.autoMerge.base + n));
+    const A = BAL.autoMerge, m = Math.min(shopMult(st), A.multMax);
+    return Math.min(A.cap, Math.max(A.min, n * A.perMerge) * m);
+  }
+  // 오늘 남은 무료 자동 합치기 (하루 BAL.autoMerge.freeDay 번 · 0시에 새로)
+  function autoFreeLeft(st, now) {
+    const b = st.boost || {};
+    return Math.max(0, BAL.autoMerge.freeDay - (b.fday === dayKey(now || 0) ? b.fused | 0 : 0));
   }
   // 미리 계산 (판은 그대로): { n 합치는 횟수, steps:[{from,to}], price, token 무료 횟수 }
   function autoMergePlan(st, now) {
     const sim = clone(st);
     const steps = runAuto(sim, now || 0);
-    return { n: steps.length, steps: steps.map((s) => ({ from: s.from, to: s.at })), price: autoPrice(st, steps.length), token: (st.boost && st.boost.autoTok) | 0 };
+    return { n: steps.length, steps: steps.map((s) => ({ from: s.from, to: s.at })), price: autoPrice(st, steps.length), token: (st.boost && st.boost.autoTok) | 0, free: autoFreeLeft(st, now) };
   }
   // 값 치르기까지 (화면은 steps 를 하나씩 move 로 보여 줘요) · 무료 횟수가 있으면 그것부터
   function autoMergeBuy(st, now, opts) {
     const plan = autoMergePlan(st, now);
     if (!plan.n) return { ok: false, reason: 'none' };
-    const useTok = !(opts && opts.token === false) && plan.token > 0;
-    const price = useTok ? 0 : plan.price;
+    // 하루 무료 → 무료 쿠폰(오늘의 무료 선물) → 동전 차례
+    const useFree = !(opts && opts.free === false) && plan.free > 0;
+    const useTok = !useFree && !(opts && opts.token === false) && plan.token > 0;
+    const price = useFree || useTok ? 0 : plan.price;
     if (st.coins < price) return { ok: false, reason: 'coins', price, short: price - st.coins };
     st.coins -= price;
     if (useTok) st.boost.autoTok--;
+    if (useFree) { const d = dayKey(now || 0); if (st.boost.fday !== d) { st.boost.fday = d; st.boost.fused = 0; } st.boost.fused++; }
     st.updatedAt = now;
-    return { ok: true, steps: plan.steps, n: plan.n, price, token: useTok };
+    return { ok: true, steps: plan.steps, n: plan.n, price, token: useTok, free: useFree };
   }
   function autoMerge(st, now, opts) {
     const b = autoMergeBuy(st, now, opts);
@@ -997,11 +1008,12 @@
     if (st.ev) eventOrderFill(st, now, rng || Math.random);
     return out;
   }
-  // 장식 놓기 (마을 그림 위 · 지역 번호 · 그림 전체 기준 %) · x 가 없으면 치우기
-  function placeDeco(st, id, area, x, y, now) {
-    if (st.decos.indexOf(id) < 0) return { ok: false, reason: 'none' };
-    if (x == null) { delete st.placed[id]; st.updatedAt = now; return { ok: true, removed: true }; }
-    st.placed[id] = { a: area | 0, x: Math.max(3, Math.min(97, +x)), y: Math.max(3, Math.min(97, +y)) };
+  // 장식 놓기 (마을 지도 세계 px · v4) · wx 가 없으면 치우기
+  function placeDeco(st, id, wx, wy, now) {
+    if (st.decos.indexOf(id) < 0 || id === 'mongdol_hat') return { ok: false, reason: 'none' };
+    if (wx == null) { delete st.placed[id]; st.updatedAt = now; return { ok: true, removed: true }; }
+    const W = TOWN.cols * TOWN.tw, H = TOWN.rows * TOWN.th;
+    st.placed[id] = { wx: Math.round(Math.max(20, Math.min(W - 20, +wx))), wy: Math.round(Math.max(20, Math.min(H - 20, +wy))) };
     st.updatedAt = now;
     return { ok: true };
   }
@@ -1042,6 +1054,181 @@
     };
   }
 
+  /* ---------- 마을 짓기 (merge_town.md §A · 지도 화면은 town.js) ---------- */
+  // 지역 칸의 세계 좌표 원점 · 작업이 속한 지역 번호
+  function areaOrigin(i) { const a = AREAS[i], t = a && TOWN.areas[a.id]; return t ? { x: t.col * TOWN.tw, y: t.row * TOWN.th } : { x: 0, y: 0 }; }
+  function taskArea(taskId) { return AREAS.findIndex((a) => a.tasks.some((t) => t.id === taskId)); }
+  const isB3 = (taskId) => !!(TOWN.build[taskId] && TOWN.build[taskId].kind === 'B3');
+  // 건물 모양: 지금 모양 번호 · 가진 모양 · 다른 모양 값 (30 × 그 지역 배수)
+  function lookOf(st, taskId) { return Math.max(0, Math.min(2, (st.look && st.look[taskId]) | 0)); }
+  function looksOwned(st, taskId) { return (st.owned && st.owned.looks && st.owned.looks[taskId]) || []; }
+  function lookPrice(st, taskId) { const i = Math.max(0, taskArea(taskId)); return TOWN.lookCoins * SHOP.mult[Math.min(SHOP.mult.length - 1, i)]; }
+  // 모양 고르기: 가진 것이면 바로 · 아직 하나도 없으면(지을 때) 무료 · 그 밖엔 buy 일 때 동전으로 열고 바꿔요
+  function setLook(st, taskId, k, now, buy) {
+    k = k | 0;
+    if (!isB3(taskId) || k < 0 || k > 2) return { ok: false, reason: 'gone' };
+    if (!st.tasks[taskId]) return { ok: false, reason: 'notbuilt' };
+    const own = looksOwned(st, taskId).slice();
+    let free = false, price = 0;
+    if (own.indexOf(k) < 0) {
+      if (!own.length) free = true;
+      else {
+        price = lookPrice(st, taskId);
+        if (!buy) return { ok: false, reason: 'locked', price };
+        if (st.coins < price) return { ok: false, reason: 'coins', price, short: price - st.coins };
+        st.coins -= price;
+      }
+      own.push(k);
+      st.owned.looks[taskId] = own;
+    }
+    st.look[taskId] = k;
+    st.updatedAt = now;
+    return { ok: true, k, free, price };
+  }
+  // 모양 고르기 창을 그냥 닫으면: 첫 모양을 무료로
+  function firstLook(st, taskId, now) {
+    if (isB3(taskId) && st.tasks[taskId] && !looksOwned(st, taskId).length) return setLook(st, taskId, 0, now);
+    return { ok: false };
+  }
+  // 아직 모양을 안 고른(옮긴 저장 포함) 지은 건물들
+  function looksPending(st) { return Object.keys(TOWN.build).filter((id) => isB3(id) && st.tasks[id] && !looksOwned(st, id).length); }
+
+  // 마을 장식 (상점 꾸미기 · 몇 개든) → st.decos 에 'f_종류_번호' 로 · 지도에서 놓아요
+  function fillerPrice(st) { return TOWN.fillerCoins * shopMult(st); }
+  function buyFiller(st, kind, now) {
+    if (!TOWN.fillers[kind]) return { ok: false, reason: 'gone' };
+    const price = fillerPrice(st);
+    if (st.coins < price) return { ok: false, reason: 'coins', price, short: price - st.coins };
+    st.coins -= price;
+    st.fillerSeq = (st.fillerSeq | 0) + 1;
+    const id = 'f_' + kind + '_' + st.fillerSeq;
+    st.decos.push(id);
+    st.updatedAt = now;
+    return { ok: true, id, price };
+  }
+  const decoKind = (id) => { const m = /^f_([a-z]+)_\d+$/.exec(id); return m ? m[1] : null; };
+
+  // 하윤 옷 · 몽돌 소품
+  const inSeason = (o, now) => !o.season || o.season.indexOf(new Date(now).getMonth() + 1) >= 0;
+  function buyOutfit(st, id, pay, now) {
+    const o = OUTFITS[id];
+    if (!o || !o.coins) return { ok: false, reason: 'gone' };
+    if (st.owned.outfits.indexOf(id) >= 0) return { ok: false, reason: 'have' };
+    if (!inSeason(o, now)) return { ok: false, reason: 'season' };
+    const cur = pay === 'gems' && o.gems ? 'gems' : 'coins';
+    const price = cur === 'gems' ? o.gems : o.coins;
+    if (st[cur] < price) return { ok: false, reason: cur, price, short: price - st[cur] };
+    st[cur] -= price;
+    st.owned.outfits.push(id);
+    st.outfit = id;
+    st.updatedAt = now;
+    return { ok: true, id, price, pay: cur };
+  }
+  function wearOutfit(st, id, now) {
+    if (!OUTFITS[id] || (id !== 'base' && st.owned.outfits.indexOf(id) < 0)) return { ok: false, reason: 'locked' };
+    st.outfit = id; st.updatedAt = now;
+    return { ok: true };
+  }
+  const mongHas = (st, id) => (MONG_ACC[id] && MONG_ACC[id].deco ? st.decos.indexOf(MONG_ACC[id].deco) >= 0 : st.owned.mong.indexOf(id) >= 0);
+  function buyMong(st, id, now) {
+    const m = MONG_ACC[id];
+    if (!m || !m.coins) return { ok: false, reason: 'gone' };
+    if (mongHas(st, id)) return { ok: false, reason: 'have' };
+    if (st.coins < m.coins) return { ok: false, reason: 'coins', price: m.coins, short: m.coins - st.coins };
+    st.coins -= m.coins;
+    st.owned.mong.push(id);
+    st.mongAcc = id;
+    st.updatedAt = now;
+    return { ok: true, id, price: m.coins };
+  }
+  function wearMong(st, id, now) {
+    if (id != null && !mongHas(st, id)) return { ok: false, reason: 'locked' };
+    st.mongAcc = id || null; st.updatedAt = now;
+    return { ok: true };
+  }
+  // 지은 건물 톡: 하루 한 번씩 엽전 1~3
+  function tapToy(st, taskId, now, rng) {
+    if (!st.tasks[taskId]) return { ok: false };
+    const day = dayKey(now);
+    if (st.tapDay[taskId] === day) return { ok: true, coins: 0 };
+    st.tapDay[taskId] = day;
+    const coins = rint(rng || Math.random, TOWN.tapCoins[0], TOWN.tapCoins[1]);
+    st.coins += coins;
+    st.updatedAt = now;
+    return { ok: true, coins };
+  }
+
+  /* ---------- 마을 사람 선물 · 우정 (merge_town.md §I) ---------- */
+  const FRIENDS = Object.keys(FRIEND.loves);
+  function friendOf(st, who) {
+    if (!st.friend[who]) st.friend[who] = { pts: 0, lv: 0, day: '', n: 0, seen: {} };
+    return st.friend[who];
+  }
+  function giftScore(who, cell) {
+    if (!cell || cell.k !== 'item') return { pts: 0, kind: 'no' };
+    const id = itemId(cell);
+    if ((FRIEND.loves[who] || []).indexOf(id) >= 0) return { pts: cell.t * 3 + 10, kind: 'love' };
+    if (VILLAGERS[who] && VILLAGERS[who].chains.indexOf(cell.c) >= 0) return { pts: cell.t * 2, kind: 'like' };
+    return { pts: cell.t, kind: 'ok' };
+  }
+  function friendInfo(st, who, now) {
+    const f = friendOf(st, who);
+    const day = dayKey(now);
+    const left = FRIEND.perDay - (f.day === day ? f.n : 0);
+    const next = FRIEND.lv[f.lv] || null;
+    return { who, pts: f.pts, lv: f.lv, max: FRIEND.lv.length, next, prev: f.lv ? FRIEND.lv[f.lv - 1] : 0, left: Math.max(0, left), seen: f.seen, f };
+  }
+  // 점수 더하기 → 단계가 오르면 보상 (여러 단계 한 번에도)
+  function addFriend(st, who, pts, now, rng) {
+    if (FRIENDS.indexOf(who) < 0 || pts <= 0) return [];
+    const f = friendOf(st, who);
+    f.pts += pts;
+    const ups = [];
+    while (f.lv < FRIEND.lv.length && f.pts >= FRIEND.lv[f.lv]) {
+      f.lv++;
+      const up = { who, lv: f.lv };
+      if (f.lv === 1) { up.coins = FRIEND.coins1 * shopMult(st); st.coins += up.coins; }
+      if (f.lv === 2) { up.gems = FRIEND.gems2; st.gems += up.gems; up.letter = FRIEND.letters[who]; f.letter = true; }
+      if (f.lv === 3) { up.gems = FRIEND.gems3; st.gems += up.gems; f.pendDeco = true; }   // 우정 장식 그림이 오면 받아요
+      if (f.lv === 4) { up.scene = who; const c = { k: 'item', c: 'bj', t: 3 }; up.gift = Object.assign({ cell: c }, giveCell(st, clone(c), rng || Math.random)); }
+      if (f.lv === 5) {
+        up.gems = FRIEND.gems5; st.gems += up.gems; f.pendOutfit = true;
+        up.title = VILLAGERS[who].name + '의 단짝';
+        if (FRIENDS.every((k) => st.friend[k] && st.friend[k].lv >= FRIEND.lv.length) && !st.friendAll) {
+          st.friendAll = FRIEND.allTitle; up.all = FRIEND.allTitle;
+          up.wild = [];
+          for (let i = 0; i < FRIEND.allWild; i++) up.wild.push(giveCell(st, { k: 'wild' }, rng || Math.random));
+        }
+      }
+      ups.push(up);
+    }
+    return ups;
+  }
+  // 선물하기: from = { board: 칸 } | { bag: 칸 } · 하루 한 사람당 3번
+  function giveGift(st, who, from, now, rng) {
+    if (FRIENDS.indexOf(who) < 0) return { ok: false, reason: 'gone' };
+    const info = friendInfo(st, who, now);
+    if (info.left <= 0) return { ok: false, reason: 'day' };
+    const cell = from.bag != null ? st.bag[from.bag] : st.board[from.board];
+    if (!cell || cell.k !== 'item') return { ok: false, reason: 'noitem' };
+    const sc = giftScore(who, cell);
+    if (from.bag != null) st.bag[from.bag] = null; else st.board[from.board] = null;
+    const f = info.f, day = dayKey(now);
+    if (f.day !== day) { f.day = day; f.n = 0; }
+    f.n++;
+    f.seen[itemId(cell)] = sc.kind;
+    const ups = addFriend(st, who, sc.pts, now, rng);
+    st.updatedAt = now;
+    return { ok: true, cell, pts: sc.pts, kind: sc.kind, ups, line: FRIEND.react[who][sc.kind === 'love' ? 0 : sc.kind === 'like' ? 1 : 2] };
+  }
+  // 선물로 줄 수 있는 물건 (판·가방 · 발생기 빼고)
+  function giftChoices(st) {
+    const out = [];
+    st.board.forEach((c, i) => { if (c && c.k === 'item' && !covered(st, i)) out.push({ cell: c, from: { board: i } }); });
+    st.bag.forEach((c, i) => { if (c && c.k === 'item') out.push({ cell: c, from: { bag: i } }); });
+    return out;
+  }
+
   /* ---------- 저장 문자열 (save.js 가 씀) ---------- */
   function serialize(st) { return JSON.stringify(st); }
   function validCell(c) {
@@ -1078,6 +1265,26 @@
       if (!s.bgmAsked) { s.bgm = true; s.bgmAsked = true; }
       st.settings = s;
       st.v = 3;
+      return st;
+    },
+    // v3 → v4: 진짜 마을 짓기 · 끝낸 작업 = 지은 건물(첫 모양 무료) · 장식 자리 % → 지도 세계 px · 처음 열 때 '새 모습' 안내
+    3: (st) => {
+      st.tasks = st.tasks && typeof st.tasks === 'object' ? st.tasks : {};
+      st.look = {}; st.owned = { looks: {}, outfits: ['base'], mong: [] };
+      Object.keys(st.tasks).forEach((id) => { if (isB3(id)) { st.look[id] = 0; st.owned.looks[id] = [0]; } });
+      const placed = st.placed && typeof st.placed === 'object' ? st.placed : {};
+      st.placed = {};
+      Object.keys(placed).forEach((id) => {
+        const p = placed[id];
+        if (!p || typeof p !== 'object') return;
+        const o = areaOrigin(Math.max(0, Math.min(AREAS.length - 1, p.a | 0)));
+        // 옛 % 는 옛 그림 기준이라 섬 안쪽(지역 그림 가운데 60%)으로 옮겨요 → 바다에 빠지지 않게
+        st.placed[id] = { wx: Math.round(o.x + TOWN.tw * (0.25 + 0.5 * Math.max(0, Math.min(100, +p.x || 50)) / 100)),
+          wy: Math.round(o.y + TOWN.th * (0.3 + 0.45 * Math.max(0, Math.min(100, +p.y || 50)) / 100)) };
+      });
+      st.seen = st.seen && typeof st.seen === 'object' ? st.seen : {};
+      if (Object.keys(st.tasks).length) st.seen.townNew = 1;   // '마을이 새 모습이 됐어요!' 한 번
+      st.v = 4;
       return st;
     }
   };
@@ -1120,8 +1327,21 @@
     if (!Array.isArray(st.shop.deals)) st.shop.deals = [];
     st.shop.deals = st.shop.deals.filter((d) => d && (d.id === 'tier' ? CHAINS[d.c] && D.SHOP.tierPrice[d.t] : D.SHOP.items[d.id]));
     if (!st.shop.bought || typeof st.shop.bought !== 'object') st.shop.bought = {};
-    st.boost = Object.assign({ autoMs: 0, handsMs: 0, autoTok: 0 }, st.boost && typeof st.boost === 'object' ? st.boost : {});
-    ['autoMs', 'handsMs', 'autoTok'].forEach((k) => { st.boost[k] = Math.max(0, Number(st.boost[k]) || 0); });
+    st.boost = Object.assign({ autoMs: 0, handsMs: 0, autoTok: 0, fday: '', fused: 0 }, st.boost && typeof st.boost === 'object' ? st.boost : {});
+    if (typeof st.boost.fday !== 'string') st.boost.fday = '';
+    ['autoMs', 'handsMs', 'autoTok', 'fused'].forEach((k) => { st.boost[k] = Math.max(0, Number(st.boost[k]) || 0); });
+    // 마을 (v4)
+    ['look', 'tapDay', 'friend'].forEach((k) => { if (!st[k] || typeof st[k] !== 'object' || Array.isArray(st[k])) st[k] = {}; });
+    Object.keys(st.look).forEach((id) => { if (!isB3(id)) delete st.look[id]; else st.look[id] = Math.max(0, Math.min(2, st.look[id] | 0)); });
+    const ow = st.owned && typeof st.owned === 'object' ? st.owned : {};
+    st.owned = { looks: ow.looks && typeof ow.looks === 'object' ? ow.looks : {}, outfits: Array.isArray(ow.outfits) ? ow.outfits.filter((x) => OUTFITS[x]) : [], mong: Array.isArray(ow.mong) ? ow.mong.filter((x) => MONG_ACC[x]) : [] };
+    if (st.owned.outfits.indexOf('base') < 0) st.owned.outfits.unshift('base');
+    Object.keys(st.owned.looks).forEach((id) => { const v = st.owned.looks[id]; st.owned.looks[id] = isB3(id) && Array.isArray(v) ? v.filter((k) => k >= 0 && k <= 2) : []; if (!st.owned.looks[id].length) delete st.owned.looks[id]; });
+    if (!OUTFITS[st.outfit] || st.owned.outfits.indexOf(st.outfit) < 0) st.outfit = 'base';
+    if (st.mongAcc && !mongHas(st, st.mongAcc)) st.mongAcc = null;
+    Object.keys(st.placed).forEach((id) => { const p = st.placed[id]; if (!p || typeof p.wx !== 'number' || typeof p.wy !== 'number') delete st.placed[id]; });
+    Object.keys(st.friend).forEach((k) => { const f = st.friend[k]; if (FRIENDS.indexOf(k) < 0 || !f || typeof f !== 'object') { delete st.friend[k]; return; } f.pts = Math.max(0, +f.pts || 0); f.lv = Math.max(0, Math.min(FRIEND.lv.length, f.lv | 0)); f.n = f.n | 0; if (!f.seen || typeof f.seen !== 'object') f.seen = {}; });
+    if (st.cam && (typeof st.cam !== 'object' || !isFinite(st.cam.x) || !isFinite(st.cam.y) || !isFinite(st.cam.z))) st.cam = null;
     fillOrders(st, now, rng || Math.random);
     regen(st, now);
     return st;
@@ -1138,9 +1358,12 @@
     covered, isFree, emptyCount, nearestEmpty, giveCell, chargeInfo, tapGen, canMerge, mergeResult, move, peel, findPair,
     sell, useItem, bagPrice, growBag, toBag, fromBag, takeGift, snapshot, restore,
     shopMult, shopChains, itemCoins, shopTouch, shopBuy, shopReroll, shopFree, dealPrice, restingGens,
-    autoReserve, autoPairs, autoPrice, autoMergePlan, autoMergeBuy, autoMerge, autoChain, boostTick, setPin,
+    autoReserve, autoPairs, autoPrice, autoFreeLeft, autoMergePlan, autoMergeBuy, autoMerge, autoChain, boostTick, setPin,
     orderLevel, makeOrder, fillOrders, orderStatus, orderGuide, deliver, skipOrder,
     areaInfo, mapPins, doTask, completeArea,
+    areaOrigin, taskArea, isB3, lookOf, looksOwned, lookPrice, setLook, firstLook, looksPending, fillerPrice, buyFiller, decoKind,
+    inSeason, buyOutfit, wearOutfit, mongHas, buyMong, wearMong, tapToy,
+    FRIENDS, friendOf, giftScore, friendInfo, addFriend, giveGift, giftChoices,
     isEvent, genLevel, genUpInfo, upgradeGen, storyOrderActive, syncStoryOrders,
     bottleToday, secretsIn, secretCounts, findSecret, GULL_TOTAL, LETTER_TOTAL,
     dailyTouch, questInfo, claimQuests, attendInfo, claimAttend,

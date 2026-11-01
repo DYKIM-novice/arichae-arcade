@@ -28,6 +28,9 @@
     put('events', [e + '_deco', e + '_banner']);
   });
 
+  // 마을 지도 그림 (tools/merge_art.py town → town/<이름>) · id = 't_' + 이름 (예: t_b_r1_gate_a · t_map_r1 · t_w_juni)
+  if (root.MergeArtList) Object.keys(root.MergeArtList).forEach((k) => { if (k.indexOf('town/') === 0) FILES['t_' + k.slice(5)] = k; });
+
   let ROOT = 'static/';
   try {
     const me = document.currentScript && document.currentScript.src;

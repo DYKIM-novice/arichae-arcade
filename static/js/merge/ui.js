@@ -52,6 +52,10 @@
   }, true);
   // 얼굴 그림: face = 'joy' | 'wow' (없으면 기본) · 기본도 없으면 색 동그라미 + 첫 글자
   function faceSrc(v, face) {
+    if (v === D.VILLAGERS.hayun && st.outfit && st.outfit !== 'base') {   // 옷 갈아입으면 대사창·말하는 칸 얼굴도 (merge_town.md §H.1)
+      const o = D.OUTFITS[st.outfit], f = o && o.face && A.src('t_' + o.face);
+      if (f) return f;
+    }
     const id = face && v.faces && v.faces[face];
     return (id && A.src(id)) || A.src(v.art) || '';
   }
@@ -166,7 +170,7 @@
     if (!b) return;
     const n = C.autoPairs(st).length;
     b.classList.toggle('dim', !n);
-    $('auto-tok').classList.toggle('hide', !(st.boost.autoTok > 0));
+    $('auto-tok').classList.toggle('hide', !(st.boost.autoTok > 0 || C.autoFreeLeft(st, now()) > 0));
   }
   function bump(id) { const el = $(id); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
 
@@ -265,6 +269,7 @@
         if (g.at >= 0) { renderBoard(); restartAnim(itEl(g.at), 'pop'); }
       }, 700 + k * 450));
       if (r.story && D.STORY[r.story]) setTimeout(() => talk(D.STORY[r.story], (skipped) => { st.story[r.story] = skipped && !st.story[r.story] ? 'skip' : true; changed(); renderAll(); if (window.MergeTown) window.MergeTown.resume(); }), 1500);
+      if (r.friendUps && r.friendUps.length && window.MergeTown) setTimeout(() => window.MergeTown.friendUps(r.friendUps), r.story ? 2600 : 1300);   // 우정 +2 로 단계가 오르면
       clearUndo();
       renderBoard(); renderOrders(); renderInfo(); renderNav();
       if (r.bonus) {
@@ -904,6 +909,7 @@
     arcIn(itEl(at), center($('btn-bag')), center(cellEl(at)));
   }
   $('btn-bag').addEventListener('click', () => { F.unlock(); openBag(); });
+  if ($('btn-folk')) $('btn-folk').addEventListener('click', () => { F.unlock(); if (window.MergeTown) window.MergeTown.openFolk(); });
 
   /* ---------- 상점 (merge_town.md §F · 판 아래 [상점] · 탭 5개 · 매일 0시 특가 · 무료 1칸) ---------- */
   let shopTab = 'deal';
@@ -966,8 +972,8 @@
     }
     if (shopTab === 'help') {
       const plan = C.autoMergePlan(st, t);
-      const tok = st.boost.autoTok | 0;
-      const auto = shCard('<span class="sh-emo">🔨</span>', '자동 합치기', plan.n ? `지금 ${plan.n}번 합칠 수 있어요 · 부탁 물건은 남겨요` : '지금은 합칠 게 없어요',
+      const tok = (st.boost.autoTok | 0) + (plan.free | 0);
+      const auto = shCard('<span class="sh-emo">🔨</span>', '자동 합치기', plan.n ? `지금 ${plan.n}번 · 하루 ${D.BAL.autoMerge.freeDay}번 무료` : `합칠 게 없어요 · 하루 ${D.BAL.autoMerge.freeDay}번 무료`,
         shBtn('data-auto="1"', plan.price, 'coins', !plan.n || (!tok && st.coins < plan.price), tok && plan.n ? `무료 ${tok}번` : plan.n ? null : '없음'));
       const one = (id, extra) => {
         const it = D.SHOP.items[id], p = C.itemCoins(st, id);
@@ -983,9 +989,48 @@
       const bag = shCard('<span class="sh-emo">👜</span>', '가방 한 칸', `지금 ${st.bag.length}칸 · 최대 ${D.BAL.bagMax}칸`, shBtn('data-buy="bag"', bp, 'coins', !bp || st.coins < bp, bp ? null : '가장 커요'));
       return auto + one('auto1m', am) + one('recharge') + one('hands', hm) + one('skipnow') + bag;
     }
-    // 꾸미기: 그림이 들어오면 열려요
-    return D.SHOP.deco.map((x) => shCard(`<span class="sh-emo">${x.ic}</span>`, x.name, `동전 ${esc(x.note)}`, '<button type="button" class="sh-b soon" disabled>곧 나와요</button>', 'soon')).join('')
-      + '<p class="center muted">건물 모양·장식·하윤 옷·몽돌 소품은 그림이 준비되는 대로 여기에 들어와요</p>';
+    return decoBody(t);
+  }
+  // 꾸미기 탭 (merge_town.md §F.3 ⑤ · §H): 하윤 옷 · 몽돌 소품 · 마을 장식 · 건물 다른 모양
+  const tsrc = (id) => A.src('t_' + id);
+  const timg = (id, label) => { const s = tsrc(id); return s ? `<img src="${esc(s)}" alt="${esc(label || '')}" draggable="false">` : `<span class="ph">${esc(label || '')}</span>`; };
+  function decoBody(t) {
+    const T = D.TOWN, m = C.shopMult(st);
+    const outfits = Object.keys(D.OUTFITS).filter((k) => A.has('t_' + D.OUTFITS[k].art)).map((k) => {
+      const o = D.OUTFITS[k], own = st.owned.outfits.indexOf(k) >= 0, on = st.outfit === k, season = C.inSeason(o, t);
+      let buy;
+      if (own) buy = on ? shBtn('', 0, 'coins', true, '입는 중') : shBtn(`data-wear="${k}"`, 0, 'coins', false, '입기');
+      else if (!season) buy = shBtn('', 0, 'coins', true, '여름에 나와요');
+      else buy = shBtn(`data-outfit="${k}"`, o.coins, 'coins', st.coins < o.coins) + (o.gems ? shBtn(`data-outfit="${k}" data-pay="gems"`, o.gems, 'gems', st.gems < o.gems) : '');
+      return `<div class="sh-wear${on ? ' on' : ''}"><div class="sh-doll">${timg(o.art, o.name)}</div><b>${esc(o.name)}</b><small>${esc(o.sub || '기본 옷')}</small><div class="sh-buy">${buy}</div></div>`;
+    }).join('');
+    const mong = Object.keys(D.MONG_ACC).filter((k) => D.MONG_ACC[k].coins || C.mongHas(st, k)).map((k) => {
+      const a = D.MONG_ACC[k], own = C.mongHas(st, k), on = st.mongAcc === k;
+      const ic = a.art ? timg(a.art, a.name) : '<span class="sh-emo">🎀</span>';
+      const buy = own ? (on ? shBtn('data-mwear="-"', 0, 'coins', false, '벗기') : shBtn(`data-mwear="${k}"`, 0, 'coins', false, '씌우기')) : shBtn(`data-mong="${k}"`, a.coins, 'coins', st.coins < a.coins);
+      return shCard(ic, a.name, own ? (on ? '몽돌이가 하고 있어요' : '가지고 있어요') : '걷는 몽돌이에게 씌워요', buy, on ? 'done' : '');
+    }).join('');
+    const fp = C.fillerPrice(st);
+    const fill = Object.keys(T.fillers).map((k) => {
+      const f = T.fillers[k], n = st.decos.filter((id) => C.decoKind(id) === k).length;
+      return `<button type="button" class="sh-fill" data-filler="${k}" ${st.coins < fp ? 'disabled' : ''}>${timg(f.art, f.name)}<b>${esc(f.name)}</b><small>${COIN()}${fp}${n ? ` · ${n}개` : ''}</small></button>`;
+    }).join('');
+    const built = Object.keys(T.build).filter((id) => C.isB3(id) && st.tasks[id]);
+    const looks = built.map((id) => {
+      const b = T.build[id], own = C.looksOwned(st, id), cur = C.lookOf(st, id), price = C.lookPrice(st, id);
+      const vs = b.looks.map((nm, k) => {
+        const has = own.indexOf(k) >= 0;
+        const lab = has ? (cur === k ? '지금' : '바꾸기') : `${COIN()}${price}`;
+        return `<button type="button" class="sh-look${cur === k ? ' on' : ''}" data-look="${id}:${k}" ${!has && st.coins < price ? 'disabled' : ''} title="${esc(nm)}">${timg(b.art + '_' + 'abc'[k], nm)}<small>${lab}</small></button>`;
+      }).join('');
+      const nm = (D.AREAS.find((a) => a.tasks.some((x) => x.id === id)).tasks.find((x) => x.id === id) || {}).name;
+      return `<div class="sh-lrow"><span>${esc(nm || id)}</span><div>${vs}</div></div>`;
+    }).join('');
+    return `<h3 id="sec-outfit">하윤 옷 <small>대사창·말하는 칸·마을에서 걷는 하윤이 다 바뀌어요</small></h3><div class="sh-wears">${outfits}</div>
+      <h3 id="sec-mong">몽돌 소품</h3>${mong}
+      <h3 id="sec-filler">마을 장식 <small>몇 개든 · 마을 [꾸미기]에서 지도에 놓아요 · ×${m}</small></h3><div class="sh-fills">${fill}</div>
+      <h3 id="sec-look">건물 다른 모양 <small>지을 때 하나는 무료 · 연 모양끼리는 언제든 무료</small></h3>
+      ${looks || '<p class="center muted">마을에서 건물을 지으면 여기서 모양을 바꿔요</p>'}`;
   }
   function shopHTML() {
     C.shopTouch(st, now());
@@ -1021,14 +1066,16 @@
     }
     if (r.price) { bump(r.pay === 'gems' ? 'hud-coin' : 'hud-coin'); }
   }
-  function openShop(tab) {
+  function openShop(tab, sec) {
     if (tab) shopTab = tab;
+    if (sec) setTimeout(() => { const el = document.getElementById('sec-' + sec), body = $('sheet').querySelector('.sh-body'); if (el && body) body.scrollTop = el.offsetTop - body.offsetTop - 6; }, 30);
     const re = () => { const b = $('sheet').querySelector('.sheet-box'); if (b) { const y = (b.querySelector('.sh-body') || {}).scrollTop || 0; b.innerHTML = shopHTML(); const nb = b.querySelector('.sh-body'); if (nb) nb.scrollTop = y; } };
     openSheet(shopHTML(), (b) => {
       F.unlock();
       const t = now();
       if (b.dataset.tab) { shopTab = b.dataset.tab; F.sfx('pick'); re(); return; }
       if (b.dataset.auto) { closeSheet(); openAuto(); return; }
+      if (shopTab === 'deco' && decoClick(b, t)) { re(); renderAll(); changed(); if (window.MergeTown) window.MergeTown.refresh(); return; }
       let r = null, label = '';
       if (b.dataset.free) { r = C.shopFree(st, t, rng); if (r.ok) label = r.free.label; }
       else if (b.dataset.reroll) { r = C.shopReroll(st, t); if (r.ok) { F.sfx('swap'); toast('특가를 새로 섞었어요'); } }
@@ -1044,18 +1091,35 @@
     $('sheet').querySelector('.sheet-box').classList.add('shop-box');
   }
   $('btn-shop').addEventListener('click', () => { F.unlock(); openShop(); });
+  // 꾸미기 탭 누름 → 처리했으면 true
+  function decoClick(b, t) {
+    let r = null, msg = '';
+    if (b.dataset.wear) { r = C.wearOutfit(st, b.dataset.wear, t); msg = '옷을 갈아입었어요!'; }
+    else if (b.dataset.outfit) { r = C.buyOutfit(st, b.dataset.outfit, b.dataset.pay || 'coins', t); msg = `「${(D.OUTFITS[b.dataset.outfit] || {}).name}」을 샀어요! 바로 입었어요`; }
+    else if (b.dataset.mong) { r = C.buyMong(st, b.dataset.mong, t); msg = '몽돌이 소품을 샀어요! 마을에서 보세요'; }
+    else if (b.dataset.mwear) { r = C.wearMong(st, b.dataset.mwear === '-' ? null : b.dataset.mwear, t); msg = b.dataset.mwear === '-' ? '소품을 벗겼어요' : '몽돌이에게 씌웠어요'; }
+    else if (b.dataset.filler) { r = C.buyFiller(st, b.dataset.filler, t); msg = '마을 장식을 샀어요! 마을 [꾸미기]에서 놓아요'; }
+    else if (b.dataset.look) { const [id, k] = b.dataset.look.split(':'); r = C.setLook(st, id, Number(k), t, true); msg = r.ok && r.price ? `새 모양을 열었어요 (동전 ${r.price})` : '모양을 바꿨어요'; }
+    else return false;
+    if (!r.ok) { if (r.reason === 'season') { F.sfx('bad'); toast('여름(6~8월)에 상점에 나와요'); } else shopFail(r); return true; }
+    F.sfx(r.price ? 'deliver' : 'discover'); F.vibrate(12); toast(msg);
+    if (r.price) { countUp('coins', st.coins); bump('hud-coin'); }
+    clearUndo();
+    return true;
+  }
 
   /* ---------- 🔨 자동 합치기 (merge_town.md §G) ---------- */
   function openAuto() {
     if (busy) return;
     const plan = C.autoMergePlan(st, now());
     if (!plan.n) { F.sfx('bad'); toast('합칠 게 없어요 · 부탁에 쓸 물건과 고정한 물건은 남겨 둬요'); restartAnim($('btn-auto'), 'wig1'); return; }
-    const tok = st.boost.autoTok | 0;
-    const can = tok > 0 || st.coins >= plan.price;
+    const tok = st.boost.autoTok | 0, free = plan.free | 0;
+    const can = free > 0 || tok > 0 || st.coins >= plan.price;
+    const label = free > 0 ? `무료로 합치기 · 오늘 ${free}번 남음` : tok > 0 ? `무료 쿠폰으로 합치기 · ${tok}장` : `합치기 · ${COIN()}${plan.price}`;
     openSheet(`<h2>자동 합치기</h2>
       <div class="big-num"><span class="am-big">🔨</span><span>${plan.n}번 합쳐요</span></div>
-      <p class="center muted">같은 물건 2개씩 판 전체를 한 번에 · 결과가 또 짝이면 이어서<br>부탁 카드에 필요한 물건 · 발생기 · 최고 단계 · 📌 고정한 물건은 그대로</p>
-      <button type="button" class="btn main" data-go="1" ${can ? '' : 'disabled'}>${tok > 0 ? `무료로 합치기 (남은 무료 ${tok}번)` : `합치기 · ${COIN()}${plan.price}`}</button>
+      <p class="center muted am-note">같은 물건 2개씩 한 번에 합쳐요<br>부탁 물건·📌 고정은 그대로</p>
+      <button type="button" class="btn main am-go" data-go="1" ${can ? '' : 'disabled'}>${label}</button>
       ${!can ? `<p class="center muted">동전이 ${plan.price - st.coins}개 모자라요</p>` : ''}
       <button type="button" class="btn" data-close="1">그만두기</button>`,
     (b) => { if (b.dataset.go) { closeSheet(); runAuto(); } });
@@ -1121,6 +1185,7 @@
       ${tg('bgm', '배경음악', '가야금·피리 곡 · 지역·낮밤마다 달라요')}
       ${st.settings.bgm ? vol('bgmVol', '배경음악 크기') : ''}
       ${st.settings.bgm ? tg('quietNight', '조용한 밤 모드', '늘 잔잔한 밤 곡만') : ''}
+      ${tg('alwaysDay', '마을 늘 낮', '해 지면 켜지는 등불·밤 덮개 끄기')}
       ${tg('autoKeep', '자동 합치기: 부탁 물건 남기기', '부탁 카드에 필요한 물건은 안 합쳐요')}
       ${F.canVibrate() ? tg('vib', '진동') : ''}
       ${tg('easy', '편하게 모드', '기운 없이 계속 뽑기')}
@@ -1634,7 +1699,7 @@
     F.attach($('fx'));
     setTimeout(layout, 400);   // 글꼴을 다 읽은 뒤 한 번 더 (높이가 달라질 수 있어요)
     try { document.fonts.ready.then(layout); } catch (e) { /* 무시 */ }
-    A.preload(Object.keys(A.FILES).filter((id) => !/^r\d_|^story_|^title$|^board$|_banner$|_deco$/.test(id)));
+    A.preload(Object.keys(A.FILES).filter((id) => !/^r\d_|^story_|^title$|^board$|_banner$|_deco$|^t_/.test(id)));   // 마을 그림(t_)은 지도를 열 때 보이는 것만
     setInterval(tick, 1000);
     dailyEventTick();
     C.shopTouch(st, now());
@@ -1664,7 +1729,7 @@
     get state() { return st; }, renderAll, renderNav, apply, tap, deliver, layout, changed, toast, say, talk, flash, floatTag, center, cellEl, itEl,
     artImg, esc, josa, setBg, clearUndo, restartAnim, openBag, syncPush, sync, STAR, faceSrc, faceHTML, react, quiet,
     openMenu, openDaily, openBook, openEvent, openLetters, openSettings, openSheet, closeSheet, dailyEventTick, mmss,
-    openShop, openAuto, runAuto, musicTick, autoAfter, arcIn,
+    openShop, openAuto, runAuto, musicTick, autoAfter, arcIn, countUp, bump,
     get busy() { return busy; }
   };
 })();
