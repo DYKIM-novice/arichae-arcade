@@ -58,12 +58,12 @@
       refill: { day: dayKey(now), n: 0 },
       stats: { merges: 0, spawns: 0, delivered: 0, sold: 0, best: {} },
       // 소리 크기 vol·bgmVol = 0~100 (v3 부터 · 옛 1~3 단계는 MIGRATE[2]) · bgm 은 처음부터 켜짐 (첫 톡 뒤에 들려요)
-      settings: { sfx: true, vib: true, easy: false, nums: true, hint: true, bgm: true, bgmAsked: true, vol: 65, bgmVol: 60, quietNight: false, autoKeep: true, big: false, calm: false, alwaysDay: false },
+      settings: { sfx: true, vib: true, easy: false, nums: true, hint: true, bgm: true, bgmAsked: true, vol: 65, bgmVol: 60, quietNight: false, bgmStyle: 'piano', autoKeep: true, big: false, calm: false, alwaysDay: false },
       seen: {},
       area: 0, tasks: {}, story: {},
       bag: new Array(BAL.bagStart).fill(null), gifts: [], charge: {},
       events: {},
-      genLv: {},                 // 발생기 강화 단계 (0~3)
+      genLv: {},                 // 발생기 강화 단계 (0~5 · 옛 저장의 0~3 도 그대로)
       sos: {},                   // 끝낸 이야기 부탁 (id → 시각)
       sec: { letters: {}, gulls: {}, bottleDay: '', title: '' },   // 숨은 비밀
       daily: { day: '', att: { n: 0, last: '' }, base: null, q: [], del: {}, maxT: 0, claimed: false },
@@ -153,8 +153,11 @@
     if (!g || !g.charge) return null;
     const ch = st.charge[gid] || { n: 0, until: 0 };
     const rest = ch.until > now ? ch.until - now : 0;
-    return { left: rest ? 0 : g.charge.taps - ch.n, max: g.charge.taps, restMs: rest };
+    const taps = chargeTaps(st, gid);
+    return { left: rest ? 0 : Math.max(0, taps - ch.n), max: taps, restMs: rest };
   }
+  // 발생기 톡 (화면 규칙): 고른 칸이 이 발생기면 꺼내기, 아니면 고르기만 (기운 안 씀 · 끌어서 옮긴 뒤에도 같음)
+  function genTap(selIdx, idx) { return selIdx === idx && idx >= 0 ? 'spawn' : 'select'; }
   function tapGen(st, idx, now, rng) {
     const g = st.board[idx];
     if (!g || g.k !== 'gen') return { ok: false, reason: 'notgen' };
@@ -174,7 +177,7 @@
       const c = st.charge[g.g] || { n: 0, until: 0 };
       if (c.until && c.until <= now) { c.n = 0; c.until = 0; }
       c.n++;
-      if (c.n >= info.charge.taps) { c.n = 0; c.until = now + info.charge.restMs; }
+      if (c.n >= chargeTaps(st, g.g)) { c.n = 0; c.until = now + Math.round(info.charge.restMs * (BAL.genUp.rest[genLevel(st, g.g)] || 1)); }
       st.charge[g.g] = c;
     }
     const lv = genLevel(st, g.g);
@@ -185,19 +188,28 @@
     st.board[at] = cell;
     const first = markFound(st, cell);
     if (first) st.gems += BAL.firstFindGems;
+    // 강화 4·5단계: 가끔 덤으로 1단계 하나 더 (기운 안 씀 · 빈칸이 있을 때만)
+    let extra = null;
+    const bp = BAL.genUp.bonus[lv] || 0;
+    if (bp && rng() < bp) {
+      const at2 = nearestEmpty(st, idx, rng);
+      if (at2 >= 0) { extra = { at: at2, cell: { k: 'item', c: info.chain, t: 1 } }; st.board[at2] = extra.cell; markFound(st, extra.cell); }
+    }
     st.stats.spawns++;
     st.updatedAt = now;
-    return { ok: true, at, cell, first };
+    return { ok: true, at, cell, first, extra };
   }
 
   /* ---------- 발생기 강화 (동전 3번) ---------- */
+  function chargeTaps(st, gid) { const g = GENS[gid]; return g && g.charge ? g.charge.taps + (BAL.genUp.taps[genLevel(st, gid)] || 0) : 0; }
   function genLevel(st, gid) { return Math.max(0, Math.min(BAL.genUp.prices.length, (st.genLv && st.genLv[gid]) | 0)); }
   function genUpInfo(st, gid) {
     const g = GENS[gid];
     if (!g || g.event) return null;
     const lv = genLevel(st, gid);
     const price = lv < BAL.genUp.prices.length ? BAL.genUp.prices[lv] : 0;
-    return { lv, max: BAL.genUp.prices.length, price, tier2: lv ? BAL.genUp.tier2[lv] : BAL.spawnTier2, tier3: BAL.genUp.tier3[lv] || 0 };
+    return { lv, max: BAL.genUp.prices.length, price, tier2: lv ? BAL.genUp.tier2[lv] : BAL.spawnTier2, tier3: BAL.genUp.tier3[lv] || 0,
+      bonus: BAL.genUp.bonus[lv] || 0, taps: g.charge ? chargeTaps(st, gid) : 0, restMs: g.charge ? Math.round(g.charge.restMs * (BAL.genUp.rest[lv] || 1)) : 0 };
   }
   function upgradeGen(st, gid, now) {
     const u = genUpInfo(st, gid);
@@ -480,13 +492,16 @@
     const gid = Object.keys(GENS).find((g) => GENS[g].chain === c) || null;
     const gcells = [];
     if (gid) st.board.forEach((x, i) => { if (x && x.k === 'gen' && x.g === gid) gcells.push(i); });
-    const steps = [];
-    for (let k = 1; k <= t; k++) {
+    // levels: 그 체인 1단계부터 끝 단계까지 다 (판·가방에 몇 개 · 본 적 있는지) · steps: 부탁 단계까지
+    const levels = [];
+    for (let k = 1; k <= ch.tiers.length; k++) {
       const cells = [];
       st.board.forEach((x, i) => { if (x && x.k === 'item' && x.c === c && x.t === k && !covered(st, i)) cells.push(i); });
       const bag = (st.bag || []).filter((x) => x && x.k === 'item' && x.c === c && x.t === k).length;
-      steps.push({ t: k, id: c + k, name: ch.tiers[k - 1], cells, bag, have: cells.length + bag });
+      const have = cells.length + bag;
+      levels.push({ t: k, id: c + k, name: ch.tiers[k - 1], cells, bag, have, known: !!(st.found && st.found[c + k]) || have > 0 });
     }
+    const steps = levels.slice(0, t);
     // 가장 높은 단계 중 이미 가진 것 (거기부터 합치면 돼요)
     let best = 0;
     steps.forEach((s) => { if (s.have) best = s.t; });
@@ -494,7 +509,9 @@
       c, t, name: ch.tiers[t - 1], chain: ch.name,
       gen: gid ? { id: gid, name: GENS[gid].name, cells: gcells } : null,
       from: gid ? 'gen' : (ch.aux || isEvent(c) ? 'box' : 'none'),
-      steps, best, ready: steps[t - 1].have > 0
+      steps, levels, max: ch.tiers.length, best, ready: steps[t - 1].have > 0,
+      // [찾기]가 반짝일 칸: 그 체인 물건 전부(판) + 발생기
+      find: levels.reduce((a, s) => a.concat(s.cells), []).concat(gid ? gcells : [])
     };
   }
   function deliver(st, orderId, now, rng) {
@@ -1146,9 +1163,30 @@
     if (st[cur] < price) return { ok: false, reason: cur, price, short: price - st[cur] };
     st[cur] -= price;
     st.owned.outfits.push(id);
-    st.outfit = id;
-    st.updatedAt = now;
+    st.updatedAt = now;              // 사기만 해요 · 입을지는 화면이 물어봐요 ("지금 입을까요?" → wearOutfit)
     return { ok: true, id, price, pay: cur };
+  }
+  // 옷 칸 상태: buy(사기) · wear(입기) · worn(입는 중 · 지금 입은 한 벌만) · season(철 아님)
+  function outfitState(st, id, now) {
+    const o = OUTFITS[id];
+    if (!o) return 'gone';
+    if (st.outfit === id) return 'worn';
+    if (id === 'base' || st.owned.outfits.indexOf(id) >= 0) return 'wear';
+    return inSeason(o, now) ? 'buy' : 'season';
+  }
+  // 살 때 묻는 말 ("○○을(를) 동전 N개에 살까요?")
+  // 받침: 끝의 괄호·따옴표(」 ) 같은 것은 건너뛰고 마지막 한글로 봐요 · 숫자는 읽는 소리로 (1 일 · 2 이 · 3 삼 …)
+  const hasBatchim = (w) => {
+    const s = String(w);
+    for (let i = s.length - 1; i >= 0; i--) {
+      const ch = s[i], c = s.charCodeAt(i);
+      if (c >= 0xac00 && c <= 0xd7a3) return (c - 0xac00) % 28 > 0;
+      if (ch >= '0' && ch <= '9') return '013678'.indexOf(ch) >= 0;
+    }
+    return false;
+  };
+  function buyAsk(name, price, pay, verb) {
+    return `${name}${hasBatchim(name) ? '을' : '를'} ${pay === 'gems' ? '소라별' : '동전'} ${price}개에 ${verb || '살까요'}?`;
   }
   function wearOutfit(st, id, now) {
     if (!OUTFITS[id] || (id !== 'base' && st.owned.outfits.indexOf(id) < 0)) return { ok: false, reason: 'locked' };
@@ -1364,6 +1402,7 @@
     if (st.ev && (typeof st.ev !== 'object' || !eventDef(st.ev.id))) st.ev = null;
     if (!st.ev) st.orders = st.orders.filter((o) => !o.ev);
     ['vol', 'bgmVol'].forEach((k) => { st.settings[k] = Math.max(0, Math.min(100, Number(st.settings[k]) || 0)); });
+    if (st.settings.bgmStyle !== 'east') st.settings.bgmStyle = 'piano';   // 배경음악 종류: 피아노(기본) · 동양풍
     if (!st.shop || typeof st.shop !== 'object' || Array.isArray(st.shop)) st.shop = def.shop;
     if (!Array.isArray(st.shop.deals)) st.shop.deals = [];
     st.shop.deals = st.shop.deals.filter((d) => d && (d.id === 'tier' ? CHAINS[d.c] && D.SHOP.tierPrice[d.t] : D.SHOP.items[d.id]));
@@ -1396,16 +1435,16 @@
   const API = {
     N, HOME, maxTier, isAux, itemId, itemName, sellValue, sellAsk, rc, dayKey,
     newState, regen, energyInfo, refill, refillPrice,
-    covered, isFree, emptyCount, nearestEmpty, giveCell, chargeInfo, tapGen, canMerge, mergeResult, move, peel, findPair,
+    covered, isFree, emptyCount, nearestEmpty, giveCell, chargeInfo, genTap, tapGen, canMerge, mergeResult, move, peel, findPair,
     sell, useItem, bagPrice, growBag, toBag, fromBag, takeGift, snapshot, restore,
     shopMult, shopChains, itemCoins, shopTouch, shopBuy, shopReroll, shopFree, dealPrice, restingGens,
     autoReserve, autoPairs, autoPrice, autoFreeLeft, autoMergePlan, autoMergeBuy, autoMerge, autoChain, boostTick, setPin,
     orderLevel, makeOrder, fillOrders, orderStatus, orderGuide, deliver, skipOrder,
     areaInfo, mapPins, doTask, completeArea,
     areaOrigin, v4ToMap, zoneAt, taskArea, isB3, lookOf, looksOwned, lookPrice, setLook, firstLook, looksPending, fillerPrice, buyFiller, decoKind,
-    inSeason, buyOutfit, wearOutfit, mongHas, buyMong, wearMong, tapToy,
+    inSeason, buyOutfit, wearOutfit, outfitState, buyAsk, mongHas, buyMong, wearMong, tapToy,
     FRIENDS, friendOf, giftScore, friendInfo, addFriend, giveGift, giftChoices,
-    isEvent, genLevel, genUpInfo, upgradeGen, storyOrderActive, syncStoryOrders,
+    isEvent, genLevel, chargeTaps, genUpInfo, upgradeGen, storyOrderActive, syncStoryOrders,
     bottleToday, secretsIn, secretCounts, findSecret, GULL_TOTAL, LETTER_TOTAL,
     dailyTouch, questInfo, claimQuests, attendInfo, claimAttend,
     weekStart, currentEvent, eventInfo, eventTick, endEvent, makeEventOrder, placeDeco, thanksLine, collection,

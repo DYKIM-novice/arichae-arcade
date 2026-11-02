@@ -283,7 +283,10 @@
     giftTier2: 0.3,            // 보자기에서 2단계가 나올 확률 (큰 보자기는 3단계도 조금)
     firstFindGems: 1,          // 처음 발견하면 소라별 1
     // 발생기 강화 (동전 · 3번): 2단계 확률 10 → 20 → 30% · 마지막 강화는 가끔(8%) 3단계
-    genUp: { prices: [80, 240, 600], tier2: [0.10, 0.20, 0.30, 0.30], tier3: [0, 0, 0, 0.08] },
+    // 발생기 강화 5단계 (단계 0~5 · 값은 [단계] 기준) · 4·5단계는 중반 이후 목표 (중반 부탁 한 번 ≈ 동전 30~60 · 4단계 ≈ 부탁 25번 · 5단계 ≈ 40번)
+    //  tier2/tier3 = 2·3단계가 나올 확률 · bonus = 덤으로 1단계 하나 더 (기운 그대로 · 빈칸이 있을 때) · 충전식: taps 더하기 · rest 쉬는 시간 배율
+    genUp: { prices: [80, 240, 600, 1200, 2000], tier2: [0.10, 0.20, 0.30, 0.30, 0.32, 0.34], tier3: [0, 0, 0, 0.08, 0.12, 0.16],
+      bonus: [0, 0, 0, 0, 0.06, 0.12], taps: [0, 0, 0, 0, 2, 4], rest: [1, 1, 1, 1, 0.85, 0.7] },
     firstEasyOrders: 2,        // 새 판 첫 부탁 2장은 1단계 물건 (첫 '고치기'까지 1~2분)
     // 자동 합치기 (merge_town.md §G · 2026-11 값 내림): 값 = 합치는 횟수 × 1 (최소 3) × 지역 배수(최대 ×2), 최대 20 · 하루 2번은 무료
     autoMerge: { perMerge: 1, min: 3, multMax: 2, cap: 20, freeDay: 2 }
@@ -351,9 +354,74 @@
     chords: {
       C: ['C3', 'G3', 'C4', 'E4'], Am: ['A2', 'E3', 'A3', 'C4'], Dm: ['D3', 'A3', 'C4', 'D4'], Gs: ['G2', 'D3', 'G3', 'A3'],
       G: ['G2', 'D3', 'G3', 'B3'], Em: ['E2', 'B2', 'E3', 'G3'], Es: ['E2', 'D3', 'E3', 'G3'], D: ['D2', 'A2', 'D3', 'E3'],
-      As: ['A2', 'E3', 'A3', 'B3'], Bm: ['B2', 'F#3', 'B3', 'D4'], F: ['F2', 'C3', 'F3', 'A3'], Cs: ['C3', 'G3', 'C4', 'D4'], Dmf: ['D2', 'A2', 'D3', 'F3']
+      As: ['A2', 'E3', 'A3', 'B3'], Bm: ['B2', 'F#3', 'B3', 'D4'], F: ['F2', 'C3', 'F3', 'A3'], Cs: ['C3', 'G3', 'C4', 'D4'], Dmf: ['D2', 'A2', 'D3', 'F3'],
+      // 피아노 곡 화음 (왼손: [베이스, 위 3음])
+      Cma7: ['C3', 'G3', 'B3', 'E4'], GB: ['B2', 'G3', 'B3', 'D4'], Am7: ['A2', 'E3', 'G3', 'C4'], Em7: ['E2', 'B2', 'D3', 'G3'],
+      Fma7: ['F2', 'C3', 'E3', 'A3'], CE: ['E2', 'G3', 'C4', 'E4'], Dm7: ['D3', 'A3', 'C4', 'F4'], G7: ['G2', 'D3', 'F3', 'B3'],
+      Gsu: ['G2', 'D3', 'G3', 'C4'], E7: ['E2', 'B2', 'D3', 'G#3'], Bb: ['Bb2', 'F3', 'Bb3', 'D4']
     },
+    // 피아노 배경음악 (기본 · 설정 '배경음악 종류'에서 동양풍으로 바꿀 수 있어요)
+    //  곡 4개(아침 바다 → 오후 장터 → 노을 → 고요한 밤)를 차례로 · 한 곡 약 5분 · 끝나면 첫 곡으로 · 곡 사이는 살며시 줄었다가 다음 곡 머리
+    //  form: 구간 차례 (공백으로) · 'A1' = 변주 1 · 'A2+2' = 변주 2 를 온음 위로 · 변주: 0 기본 · 1 왼손 흐르게+아래 옥타브 겹침 · 2 선율 한 옥타브 위+왼손 성기게 · 3 아래 화음 겹침
+    //  I = 머리(왼손만) · Z = 끝맺음 · lh = 왼손 무늬(0~3 화음 음 · 4~7 한 옥타브 위 · . 쉼) · 화면·지역·낮밤과 상관없이 이어서 흘러요
+    lists: { piano: ['p_morning', 'p_market', 'p_sunset', 'p_night'], piano_quiet: ['p_night'] },
     songs: {
+      // 피아노 1 · 아침 바다 (다장조 · 잔잔하게 내려오는 베이스)
+      p_morning: { piano: true, title: '아침 바다', bpm: 72, spb: 8, tr: 0, vel: 0.9,
+        form: 'I A B A1 C D2 B1 A3 C1 D B2 A2+2 Z+2',
+        lh: ['0 . 1 . 2 . 3 .', '0 1 2 3 4 3 2 1', '0 . . . 2 3 . .', '0 . 2 . 4 . 2 .'],
+        I: { chords: 'Cma7 Fma7', mel: '. . . . . . . . | . . . . . . . .' },
+        A: { chords: 'Cma7 GB Am7 Em7 Fma7 CE Dm7 G7',
+          mel: 'E5 - - - D5 - C5 - | D5 - - - G4 - - - | C5 - - - B4 - A4 - | B4 - - - G4 - - - | A4 - - - C5 - F5 - | E5 - - - D5 - C5 - | D5 - - - E5 - F5 - | D5 - - - - - . .' },
+        B: { chords: 'Fma7 G7 Em7 Am7 Dm7 Em7 F G7',
+          mel: 'A4 - C5 - E5 - - - | D5 - - C5 B4 - G4 - | G4 - B4 - E5 - - - | E5 - D5 - C5 - - - | F5 - E5 - D5 - A4 - | G5 - E5 - D5 - B4 - | C5 - D5 - E5 - F5 - | G5 - - - F5 - D5 -' },
+        C: { chords: 'Am Am Fma7 Fma7 Dm7 G7 Cma7 E7',
+          mel: 'A4 - - B4 C5 - E5 - | A5 - - - G5 - E5 - | F5 - - - E5 - C5 - | A4 - - - - - . . | D5 - F5 - A5 - G5 - | F5 - - - D5 - B4 - | C5 - E5 - G5 - E5 - | G#4 - - - B4 - D5 -' },
+        D: { chords: 'Fma7 Em7 Dm7 Cma7 Bb Fma7 Dm7 Gsu',
+          mel: 'A4 - C5 - E5 - G5 - | G5 - - - E5 - D5 - | F5 - - - D5 - A4 - | B4 - C5 - E5 - - - | D5 - - - F5 - - - | E5 - - - C5 - A4 - | C5 - D5 - F5 - E5 - | D5 - - - - - . .' },
+        Z: { chords: 'Fma7 G7 Cma7 Cma7', mel: 'A4 - - - C5 - - - | D5 - - - B4 - - - | C5 - - - - - - - | . . . . . . . .' } },
+      // 피아노 2 · 오후 장터 (라장조 · 조금 걸음이 빠르게)
+      p_market: { piano: true, title: '오후 장터', bpm: 84, spb: 8, tr: 2, vel: 0.85,
+        form: 'I A B A1 C D A2 B1 C3 D1 A3 B2 A1 Z',
+        lh: ['0 . 2 1 3 . 2 1', '0 2 1 3 4 3 2 1', '0 . 2 . 0 . 3 .', '0 . 1 2 3 . 2 .'],
+        I: { chords: 'C Fma7', mel: '. . . . . . . . | . . . . . . . .' },
+        A: { chords: 'C Fma7 Am7 G F CE Dm7 Gsu',
+          mel: 'G4 - C5 - E5 - D5 C5 | A4 - - - - - G4 A4 | C5 - E5 - G5 - E5 D5 | D5 - - - - - . . | C5 - A4 - F5 - E5 D5 | E5 - - - C5 - - - | D5 - C5 - A4 - C5 D5 | C5 - - - B4 - . .' },
+        B: { chords: 'Am Em F C Dm Am Bb G7',
+          mel: 'E5 - - D5 C5 - E5 - | B4 - - - G4 - - - | A4 - C5 - F5 - E5 - | E5 - - - G5 - - - | F5 - E5 D5 - - A4 - | C5 - - - E5 - - - | D5 - F5 - Bb4 - - - | B4 - - - D5 - F5 -' },
+        C: { chords: 'Fma7 Em7 Dm7 Cma7 Fma7 Em7 Dm7 G',
+          mel: 'A5 - - - G5 - F5 - | G5 - - - E5 - - - | F5 - E5 - D5 - C5 - | B4 - - - G4 - - - | A4 - C5 - F5 - A5 - | G5 - - - E5 - B4 - | D5 - C5 - A4 - - - | B4 - - - - - . .' },
+        D: { chords: 'Am7 Dm7 G7 Cma7 Fma7 Bb Dm7 G7',
+          mel: 'E5 - C5 - A4 - C5 E5 | F5 - - - D5 - A4 - | B4 - D5 - G5 - F5 - | E5 - - - . . G4 - | A4 - C5 - E5 - D5 C5 | D5 - - - F5 - D5 - | C5 - A4 - D5 - F5 - | G5 - F5 - D5 - B4 -' },
+        Z: { chords: 'Fma7 G7 C C', mel: 'A4 - - - C5 - - - | B4 - - - D5 - - - | C5 - - - - - - - | . . . . . . . .' } },
+      // 피아노 3 · 노을 (가장조 · 따뜻하고 느리게)
+      p_sunset: { piano: true, title: '노을', bpm: 64, spb: 8, tr: -3, vel: 0.9,
+        form: 'I A B A1 C D B1 A2 C3 A3 Z',
+        lh: ['0 . 1 . 2 . 3 .', '0 1 2 3 4 3 2 1', '0 . . . 2 . 3 .', '0 . 2 . 4 . 2 .'],
+        I: { chords: 'Cma7 Fma7', mel: '. . . . . . . . | . . . . . . . .' },
+        A: { chords: 'Cma7 Em7 Fma7 G Cma7 Em7 Dm7 G',
+          mel: 'G4 - C5 - E5 - - - | D5 - - - B4 - - - | A4 - C5 - E5 - - - | D5 - - - - - . . | G4 - C5 - G5 - - - | E5 - - - D5 - B4 - | C5 - D5 - F5 - E5 - | D5 - - - - - . .' },
+        B: { chords: 'Am7 Am7 Dm7 G Cma7 Fma7 Dm7 E7',
+          mel: 'E5 - - - A5 - - - | G5 - E5 - C5 - - - | D5 - - - F5 - - - | E5 - D5 - B4 - - - | C5 - - - E5 - G5 - | A5 - - - G5 - F5 - | F5 - E5 - D5 - C5 - | B4 - - - G#4 - - -' },
+        C: { chords: 'Fma7 G Em7 Am7 Fma7 G Cma7 Cma7',
+          mel: 'C5 - - - A4 - - - | B4 - - - D5 - - - | G5 - - - E5 - - - | C5 - - - - - E5 - | F5 - - - A5 - C6 - | B5 - - - G5 - D5 - | E5 - - - - - - - | C5 - - - - - . .' },
+        D: { chords: 'Dm7 Em7 Fma7 G Em7 Am7 Fma7 Gsu',
+          mel: 'F5 - - - A5 - - - | G5 - - - E5 - - - | E5 - - - C5 - A4 - | B4 - - - D5 - - - | G4 - B4 - E5 - - - | C5 - - - E5 - A5 - | G5 - - - F5 - E5 - | D5 - - - - - . .' },
+        Z: { chords: 'Fma7 G Cma7 Cma7', mel: 'C5 - - - A4 - - - | B4 - - - D5 - - - | C5 - - - - - - - | . . . . . . . .' } },
+      // 피아노 4 · 고요한 밤 (가단조 ↔ 다장조 · 가장 느리게 · 조용한 밤 모드는 이 곡만)
+      p_night: { piano: true, title: '고요한 밤', bpm: 58, spb: 8, tr: 0, vel: 0.8,
+        form: 'I A B A1 C D B1 A2 D3 Z',
+        lh: ['0 . . . 2 . 3 .', '0 . 1 . 2 . 3 .', '0 . . . . . 2 .', '0 . 2 . 3 . 2 .'],
+        I: { chords: 'Am7 Fma7', mel: '. . . . . . . . | . . . . . . . .' },
+        A: { chords: 'Am7 Fma7 Cma7 G Am7 Fma7 Dm7 E7',
+          mel: 'C5 - - - E5 - - - | A5 - - - G5 - - - | E5 - - - D5 - C5 - | D5 - - - - - . . | C5 - - - B4 - A4 - | A4 - - - C5 - E5 - | F5 - - - E5 - D5 - | B4 - - - G#4 - - -' },
+        B: { chords: 'Fma7 G7 Em7 Am7 Dm7 G7 Cma7 Cma7',
+          mel: 'A4 - C5 - F5 - - - | D5 - - - B4 - - - | G4 - B4 - E5 - - - | C5 - - - A4 - - - | D5 - F5 - A5 - - - | G5 - F5 - D5 - B4 - | C5 - - - - - - - | E5 - D5 - C5 - . .' },
+        C: { chords: 'Dm7 Dm7 Cma7 Cma7 Bb Bb E7 E7',
+          mel: 'A4 - - - D5 - F5 - | E5 - - - D5 - - - | C5 - - - E5 - G5 - | G5 - - - - - . . | F5 - - - D5 - Bb4 - | C5 - - - D5 - - - | E5 - - - D5 - B4 - | G#4 - - - - - . .' },
+        D: { chords: 'Fma7 Em7 Am7 Am7 Dm7 G7 Cma7 E7',
+          mel: 'C5 - - - - - A4 - | B4 - - - G4 - - - | C5 - - - E5 - - - | A4 - - - - - . . | F4 - A4 - D5 - - - | D5 - - - B4 - - - | G4 - - - E5 - - - | D5 - - - B4 - G#4 -' },
+        Z: { chords: 'Dm7 E7 Am7 Am7', mel: 'F5 - - - D5 - - - | B4 - - - G#4 - - - | A4 - - - - - - - | . . . . . . . .' } },
       // 판 화면 낮: 피리 선율 + 가야금 반주 + 작은 북 · 음역 좁게 (집중 방해 안 되게)
       board_day: { bpm: 88, spb: 8, tr: -12, form: 'AABA', inst: { A: 'flute', B: 'flute' }, counter: true, vel: 0.9,
         drums: ['k . . t . . t .', 'k . t . k . t .', 'k . . t k . t t'],
@@ -462,15 +530,15 @@
       r6: { box: [380, 170, 1470, 1150], center: [925, 660], who: 'kang', paths: [[[700, 620], [900, 560], [1100, 600]], [[1020, 1000], [1110, 1040], [1200, 1030]]] }
     },
     build: {
-      r1_gate: {kind: 'B3', art: 'b_r1_gate', at: [1150, 2060], w: 230, clears: [['c_rubble_wood', 1150, 2060, 170]], lights: [[0.3, 0.6], [0.72, 0.6]], looks: ['쪽빛 기와 솟을대문', '나무 사립문', '단청 꽃 대문']},
+      r1_gate: {kind: 'B3', art: 'b_r1_gate', at: [1168, 2088], w: 215, clears: [['c_rubble_wood', 1160, 2080, 160]], lights: [[0.3, 0.6], [0.72, 0.6]], looks: ['쪽빛 기와 솟을대문', '나무 사립문', '단청 꽃 대문']},
       r1_paper: {kind: 'B3', art: 'b_r1_paper', at: [900, 2230], w: 320, clears: [['c_rubble_stone', 900, 2230, 190]], lights: [[0.4, 0.62], [0.68, 0.6]], looks: ['기와 본채', '초가 본채', '분홍 담장 본채']},
       r1_sign: {kind: 'D1', art: 'd_r1_sign', at: [780, 2250], w: 62, mount: {on: 'r1_paper', w: 46, label: '바다별채', looks: [[0.315, 0.532, 0.53], [0.25, 0.585, 0.55], [0.3, 0.535, 0.45]]}},
-      r1_maru: {kind: 'D1', art: 'd_r1_maru', at: [1060, 2170], w: 150, clears: [['c_weeds', 1060, 2170, 90]]},
-      r1_lamp: {kind: 'D1', art: 'd_r1_lamp', at: [1010, 1990], w: 78, lights: [[0.5, 0.36]]},
-      r1_room: {kind: 'B3', art: 'b_r1_room', at: [830, 1890], w: 250, clears: [['c_rubble_wood', 830, 1890, 170]], lights: [[0.5, 0.62]], looks: ['기와 별채', '초가 별채', '꽃 창살 별채']},
-      r2_pier: {kind: 'B3', art: 'b_r2_pier', at: [1960, 2480], w: 240, clears: [['c_rubble_wood', 1960, 2480, 150]], lights: [[0.2, 0.3], [0.85, 0.3]], looks: ['원목 선착장', '하늘색 칠 선착장', '등불 단 선착장']},
+      r1_maru: {kind: 'D1', art: 'd_r1_maru', at: [1085, 2138], w: 122, clears: [['c_weeds', 1085, 2138, 85]]},
+      r1_lamp: {kind: 'D1', art: 'd_r1_lamp', at: [1000, 1985], w: 74, lights: [[0.5, 0.36]]},
+      r1_room: {kind: 'B3', art: 'b_r1_room', at: [845, 1866], w: 205, clears: [['c_rubble_wood', 845, 1860, 150]], lights: [[0.5, 0.62]], looks: ['기와 별채', '초가 별채', '꽃 창살 별채']},
+      r2_pier: {kind: 'B3', art: 'b_r2_pier', at: [2000, 2462], w: 240, clears: [['c_rubble_wood', 1985, 2470, 150]], lights: [[0.2, 0.3], [0.85, 0.3]], looks: ['원목 선착장', '하늘색 칠 선착장', '등불 단 선착장']},
       r2_net: {kind: 'D1', art: 'd_r2_net', at: [1500, 2600], w: 150, clears: [['c_beach_trash', 1500, 2600, 110]]},
-      r2_awning: {kind: 'B3', art: 'b_r2_awning', at: [1640, 2380], w: 220, clears: [['c_rubble_wood', 1640, 2380, 150]], lights: [[0.5, 0.5]], looks: ['줄무늬 천 가게', '짚 지붕 가게', '색동 천 가게']},
+      r2_awning: {kind: 'B3', art: 'b_r2_awning', at: [1585, 2300], w: 200, clears: [['c_rubble_wood', 1585, 2300, 140]], lights: [[0.5, 0.5]], looks: ['줄무늬 천 가게', '짚 지붕 가게', '색동 천 가게']},
       r2_ice: {kind: 'B3', art: 'b_r2_ice', at: [2180, 2270], w: 240, clears: [['c_rubble_stone', 2180, 2270, 160]], lights: [[0.32, 0.72]], looks: ['돌 얼음 창고', '나무 얼음 창고', '하늘 기와 얼음 창고']},
       r2_boat: {kind: 'D1', art: 'd_r2_boat', at: [2250, 2610], w: 190, fx: 'bob'},
       r2_stall: {kind: 'D1', art: 'd_r2_stall', at: [1760, 2250], w: 160, clears: [['c_rubble_wood', 1760, 2250, 110]]},
@@ -489,7 +557,7 @@
       r4_pavilion: {kind: 'B3', art: 'b_r4_pavilion', at: [1350, 1140], w: 245, clears: [['c_rubble_wood', 1350, 1140, 160]], lights: [[0.5, 0.42]], looks: ['육각 기와 정자', '초가 정자', '단청 정자']},
       r4_path: {kind: 'D1', art: 'd_r4_path', at: [760, 1660], w: 115, rep: [[700, 1570], [665, 1480], [640, 1390]]},
       r5_clean: {kind: 'G', clears: [['c_beach_trash', 2500, 470, 140], ['c_beach_trash', 1680, 450, 130], ['c_beach_trash', 2620, 1250, 110]]},
-      r5_hut: {kind: 'B3', art: 'b_r5_hut', at: [2470, 1020], w: 210, clears: [['c_rubble_wood', 2470, 1020, 150]], lights: [[0.5, 0.55]], looks: ['초가 쉼터', '천막 쉼터', '꽃 지붕 쉼터']},
+      r5_hut: {kind: 'B3', art: 'b_r5_hut', at: [2440, 1010], w: 200, clears: [['c_rubble_wood', 2440, 1010, 145]], lights: [[0.5, 0.55]], looks: ['초가 쉼터', '천막 쉼터', '꽃 지붕 쉼터']},
       r5_stage: {kind: 'B3', art: 'b_r5_stage', at: [2180, 800], w: 220, clears: [['c_rubble_wood', 2180, 800, 150]], lights: [[0.3, 0.4], [0.7, 0.4]], looks: ['나무 무대', '색동 휘장 무대', '등불 무대']},
       r5_cloth: {kind: 'D1', art: 'd_r5_cloth', at: [1960, 760], w: 165, fx: 'sway'},
       r5_swing: {kind: 'D1', art: 'd_r5_swing', at: [1990, 1060], w: 140},
@@ -497,7 +565,7 @@
       r5_arch: {kind: 'B3', art: 'b_r5_arch', at: [2270, 1270], w: 175, lights: [[0.28, 0.42], [0.72, 0.42]], looks: ['청사초롱 아치', '연꽃 등 아치', '별 모양 등 아치']},
       r6_path: {kind: 'G', clears: [['c_weeds', 1180, 1000, 120], ['c_rubble_stone', 1300, 950, 130], ['c_weeds', 1100, 1010, 100]]},
       r6_fence: {kind: 'D1', art: 'd_r6_fence', at: [640, 600], w: 120, rep: [[760, 640], [1080, 600]]},
-      r6_hut: {kind: 'B3', art: 'b_r6_hut', at: [700, 530], w: 205, clears: [['c_rubble_stone', 700, 530, 140]], lights: [[0.45, 0.62]], looks: ['돌 오두막', '나무 오두막', '파란 지붕 오두막']},
+      r6_hut: {kind: 'B3', art: 'b_r6_hut', at: [725, 520], w: 195, clears: [['c_rubble_stone', 725, 520, 135]], lights: [[0.45, 0.62]], looks: ['돌 오두막', '나무 오두막', '파란 지붕 오두막']},
       r6_stairs: {kind: 'G', fx: 'ruin'},
       r6_wall: {kind: 'B3', art: 'b_r6_wall', at: [920, 430], w: 150, lights: [[0.5, 0.12]], looks: ['흰·빨강 띠 등대', '흰·쪽빛 띠 등대', '크림·분홍 띠 등대']},
       r6_bell: {kind: 'D1', art: 'd_r6_bell', at: [1120, 450], w: 120},
@@ -520,11 +588,11 @@
   };
 
   // 하윤 옷 (merge_town.md §H · 옷 한 벌 = 전신 그림 1장 · 얼굴 칸 = 그 그림 위쪽(face)) · 기본 옷은 기존 얼굴 그림(기쁨·놀람)
-  //  season: 이 달에만 상점에 진열 (여름 바캉스 6~8월)
+  //  옷은 철과 상관없이 일 년 내내 상점에 있어요 (season 을 주면 그 달에만 · 지금은 쓰지 않아요)
   const OUTFITS = {
     base: { name: '연두 저고리 + 앞치마', art: 'h_hayun_base', face: null },
     trench: { name: '트렌치코트 + 베레모', art: 'h_outfit_trench', face: 'h_trench_face', coins: 500, gems: 25, sub: '세련된 옷' },
-    vacation: { name: '밀짚모자 + 꽃무늬 휴양 원피스', art: 'h_outfit_vacation', face: 'h_vacation_face', coins: 400, gems: 20, season: [6, 7, 8], sub: '여름 바캉스 (6~8월)' }
+    vacation: { name: '밀짚모자 + 꽃무늬 휴양 원피스', art: 'h_outfit_vacation', face: 'h_vacation_face', coins: 400, gems: 20, sub: '여름 바캉스 옷 · 일 년 내내' }
   };
   // 몽돌 소품: 걷는 몽돌 그림(w_mongdol) 위에 겹쳐요 · at = [가운데 x, 가운데 y, 폭] (몽돌 그림 비율 · 왼쪽 보는 그림 기준)
   const MONG_ACC = {
@@ -792,7 +860,7 @@
   // 하윤의 짧은 도움말 (아래 정보 칸 · 아무것도 안 골랐을 때)
   const TIPS = [
     '같은 물건 두 개를 끌어다 겹치면 더 좋은 물건이 돼요!',
-    '바구니·절구·항아리를 톡 하면 물건이 나와요. 기운이 1 들어요.',
+    '바구니·절구·항아리를 톡 해서 고르고, 한 번 더 톡 하면 물건이 나와요. 기운이 1 들어요.',
     '부탁 카드에 초록 체크가 뜨면 [건네기]를 눌러요.',
     '하나 톡, 같은 것 톡 — 끌지 않아도 합쳐져요.',
     '기운은 2분에 1씩 저절로 차요. 앱을 닫아도 차요.',

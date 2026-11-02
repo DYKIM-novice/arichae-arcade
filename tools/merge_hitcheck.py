@@ -5,7 +5,7 @@
 
 - 폰처럼(터치 · is_mobile · 주소창 있는 높이) 340×600, 360×640, 378×660, 390×740, 412×915 와 '글씨 크게' 로 열어서
   판의 모든 칸 가운데(+ 아래쪽 네 귀퉁이 근처)를 elementFromPoint 로 찍어 그 칸이 맞는지 봐요 (다른 것이 덮으면 실패)
-- 맨 아랫줄 발생기를 진짜 터치로 톡 → 기운이 줄어드는지도 봐요
+- 맨 아랫줄 발생기를 진짜 터치로 톡(고르기 · 기운 그대로) → 한 번 더 톡 → 기운이 줄어드는지도 봐요
 - 실패하면 덮은 요소를 알려 주고 종료 코드 1
 """
 import sys
@@ -38,7 +38,8 @@ def close_popups(page):
     # 첫 화면 시트(출석 등)·이야기 창을 닫아요
     for _ in range(6):
         if page.evaluate("() => !document.getElementById('sheet').classList.contains('hide')"):
-            page.evaluate("() => { const b = document.querySelector('#sheet [data-close]') || document.querySelector('#sheet .btn'); if (b) b.click(); else document.getElementById('sheet').click(); }")
+            # 닫기 단추 → 없으면 바깥(시트 배경) 톡 (매일 선물 창의 '받기' 단추는 누르지 않아요)
+            page.evaluate("() => { const b = document.querySelector('#sheet [data-close]'); if (b) b.click(); else document.getElementById('sheet').click(); }")
             page.wait_for_timeout(400)
             continue
         if page.evaluate("() => { const t = document.getElementById('talk'); return t && !t.classList.contains('hide'); }"):
@@ -68,10 +69,17 @@ def main():
                   const c = cells.find((x) => x.querySelector('.it.gen')); if (!c) return null; const q = c.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height * .7 }; }""")
                 tapped = None
                 if tap:
+                    # 첫 톡 = 고르기만 (기운 그대로) · 같은 발생기를 다시 톡 = 꺼내기 (기운이 줄어요)
+                    page.wait_for_timeout(1500)   # 처음 몇 초 뒤 저절로 뜨는 매일 선물 창도 닫고 나서
+                    close_popups(page)
                     e0 = page.evaluate("() => document.querySelector('#hud').textContent")
                     page.touchscreen.tap(tap["x"], tap["y"])
+                    page.wait_for_timeout(450)
+                    close_popups(page)
+                    first_same = page.evaluate("() => document.querySelector('#hud').textContent") == e0
+                    page.touchscreen.tap(tap["x"], tap["y"])
                     page.wait_for_timeout(500)
-                    tapped = page.evaluate("() => document.querySelector('#hud').textContent") != e0
+                    tapped = first_same and page.evaluate("() => document.querySelector('#hud').textContent") != e0
                 ok = r["n"] == 63 and not r["bad"] and tapped is not False
                 fails += not ok
                 tag = f"{w}x{h}{' 글씨크게' if big else ''}"

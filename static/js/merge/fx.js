@@ -20,7 +20,18 @@
   const LADDER = [72, 74, 76, 79, 81, 84, 86, 88, 91, 93, 96];
 
   /* ---------- 악기 (어느 AudioContext 에서나: 실시간·오프라인 시험 둘 다) ---------- */
-  const noiseCache = new WeakMap(), ksCache = new WeakMap(), irCache = new WeakMap();
+  const noiseCache = new WeakMap(), ksCache = new WeakMap(), irCache = new WeakMap(), pwCache = new WeakMap();
+  // 피아노 음색 (배음 세기 · 한 번 만들어 둠)
+  function pianoWave(ctx) {
+    let w = pwCache.get(ctx);
+    if (!w) {
+      const amp = [0, 1, 0.42, 0.2, 0.13, 0.07, 0.045, 0.025, 0.014, 0.008];
+      const re = new Float32Array(amp.length), im = new Float32Array(amp);
+      w = ctx.createPeriodicWave(re, im);
+      pwCache.set(ctx, w);
+    }
+    return w;
+  }
   function noiseBuf(ctx) {
     let b = noiseCache.get(ctx);
     if (!b) {
@@ -112,6 +123,36 @@
       lfo.connect(lg); lg.connect(o.detune);
       o.connect(fl); fl.connect(g);
       [o, lfo].forEach((x) => { x.start(t); x.stop(t + dur + 1); });
+    },
+    // 부드러운 피아노: 배음 파형 2개(±3cent 살짝 어긋나 따뜻하게) → 밝기 필터(치는 순간 밝고 점점 어두워짐)
+    //  소리 크기: 4ms 에 올라 → 빠르게 한 번 줄고 → 낮은 음일수록 길게 사라짐 · 손을 떼면(dur) 0.3초에 걸쳐 멈춤 (페달처럼 dur 을 길게 주면 이어 울림)
+    piano(dest, t, midi, dur, vel) {
+      const ctx = dest.context, f = mtof(midi), w = pianoWave(ctx);
+      const g = ctx.createGain(), fl = ctx.createBiquadFilter();
+      const off = t + Math.max(0.3, dur);
+      const tau = Math.max(0.7, Math.min(3.2, 3.2 - (midi - 40) * 0.055));
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(vel, t + 0.005);
+      g.gain.setTargetAtTime(vel * 0.5, t + 0.005, 0.1);
+      g.gain.setTargetAtTime(0.0001, t + 0.28, tau);
+      g.gain.setTargetAtTime(0.0001, off, 0.3);
+      fl.type = 'lowpass'; fl.Q.value = 0.4;
+      const bright = Math.min(9000, f * (2.5 + vel * 9));
+      fl.frequency.setValueAtTime(bright, t);
+      fl.frequency.setTargetAtTime(Math.max(300, f * 1.6), t + 0.01, 0.5);
+      const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), h = ctx.createGain();
+      o1.setPeriodicWave(w); o2.setPeriodicWave(w);
+      o1.frequency.setValueAtTime(f, t); o2.frequency.setValueAtTime(f, t);
+      o1.detune.value = 3; o2.detune.value = -3; h.gain.value = 0.5;
+      o1.connect(h); o2.connect(h); h.connect(fl); fl.connect(g); g.connect(dest);
+      // 망치 소리: 아주 작은 '톡'
+      const n = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), ng = ctx.createGain();
+      n.buffer = noiseBuf(ctx); bp.type = 'bandpass'; bp.frequency.value = Math.min(6000, f * 3); bp.Q.value = 0.9;
+      ng.gain.setValueAtTime(vel * 0.05, t); ng.gain.setTargetAtTime(0.0001, t + 0.002, 0.006);
+      n.connect(bp); bp.connect(ng); ng.connect(dest);
+      const end = off + 1.3;
+      o1.start(t); o2.start(t); o1.stop(end); o2.stop(end);
+      n.start(t, Math.random()); n.stop(t + 0.05);
     },
     // 작은 북·나무·쇠: k 장구 쿵 · t 딱 · m 목탁 · c 작은 꽹과리 · b 작은 종 · g 징
     drum(dest, t, kind, vel) {

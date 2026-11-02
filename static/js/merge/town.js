@@ -226,12 +226,51 @@
     const h = new Date().getHours();
     return h >= 6 && h < 17 ? 'day' : h >= 17 && h < 19 ? 'dusk' : 'night';
   }
+  // 발밑 정보 (그림마다 한 번): PNG 아래 투명 여백(padB) · 바닥 띠(받침·기단) 실루엣으로 만든 접지 그림자 그림
+  //  건물 그림은 3/4 시점이라 '맨 아래 점'이 앞 모서리예요 → 동그란 그림자를 그 점에 두면 기단 아래로 떨어져 떠 보여요.
+  //  그래서 그림의 아래 28% 실루엣을 어둡게 칠하고 흐리게 번진 그림자를 기단 바로 밑(살짝 아래로)에 깔아요 → 기단 테두리에 딱 붙어요.
+  const SH_W = 192, SH_P = 14;
+  function footOf(o) {
+    if (o.foot !== undefined) return o.foot;
+    o.foot = null;
+    try {
+      const W0 = SH_W, H0 = Math.max(1, Math.round(SH_W * o.h / o.w));
+      const c = document.createElement('canvas'); c.width = W0; c.height = H0;
+      const q = c.getContext('2d'); q.drawImage(o.im, 0, 0, W0, H0);
+      const d = q.getImageData(0, 0, W0, H0).data;
+      let top = -1, bot = -1;
+      for (let y = 0; y < H0 && top < 0; y++) for (let x = 0; x < W0; x++) if (d[(y * W0 + x) * 4 + 3] > 128) { top = y; break; }
+      for (let y = H0 - 1; y >= 0 && bot < 0; y--) for (let x = 0; x < W0; x++) if (d[(y * W0 + x) * 4 + 3] > 128) { bot = y; break; }
+      if (top < 0) return o.foot;
+      const bandTop = Math.floor(bot - (bot - top) * 0.28);
+      let bl = W0, br = 0;
+      for (let y = bandTop; y <= bot; y++) for (let x = 0; x < W0; x++) if (d[(y * W0 + x) * 4 + 3] > 128) { if (x < bl) bl = x; if (x > br) br = x; }
+      // 바닥 띠만 남기고 어둡게
+      q.clearRect(0, 0, W0, bandTop);
+      q.globalCompositeOperation = 'source-in'; q.fillStyle = 'rgb(46,32,22)'; q.fillRect(0, 0, W0, H0);
+      q.globalCompositeOperation = 'source-over';
+      const sh = document.createElement('canvas'); sh.width = W0 + SH_P * 2; sh.height = H0 + SH_P * 2;
+      const g2 = sh.getContext('2d');
+      // 1) 기단 자리 타원 (옅게 · 바닥 띠 가운데에서 발밑보다 조금 아래까지 · 떨어지지 않게)
+      const ecx = SH_P + (bl + br) / 2, bh = bot - bandTop, ecy = SH_P + bot - bh * 0.32, erx = (br - bl) * 0.56, ery = Math.max(3, bh * 0.52);
+      g2.save(); g2.translate(ecx, ecy); g2.scale(1, ery / erx);
+      const gr = g2.createRadialGradient(0, 0, 0, 0, 0, erx);
+      gr.addColorStop(0, 'rgba(46,32,22,.5)'); gr.addColorStop(0.7, 'rgba(46,32,22,.32)'); gr.addColorStop(1, 'rgba(46,32,22,0)');
+      g2.fillStyle = gr; g2.beginPath(); g2.arc(0, 0, erx, 0, 6.283); g2.fill(); g2.restore();
+      // 2) 바닥 띠 실루엣을 흐리게 (테두리에 붙는 진한 그림자)
+      if (typeof g2.filter === 'string') { g2.filter = 'blur(3px)'; g2.drawImage(c, SH_P, SH_P); g2.filter = 'none'; }
+      else { g2.globalAlpha = 0.18; for (let k = 0; k < 12; k++) { const a = k / 12 * 6.283; g2.drawImage(c, SH_P + Math.cos(a) * 3, SH_P + Math.sin(a) * 2); } g2.globalAlpha = 1; }
+      o.foot = { padB: (H0 - 1 - bot) / H0, shadow: sh, sk: o.w / W0 };
+    } catch (e) { o.foot = null; }
+    return o.foot;
+  }
   function spriteRect(o) {
     const im = img(o.art);
     if (!im) return null;
     const h = o.w * im.h / im.w;
     if (o.center) { const sk = Math.abs(o.skew || 0) * o.w; return { im, x: o.wx - o.w / 2, y: o.wy - h / 2 - sk / 2, w: o.w, h: h + sk }; }
-    return { im, x: o.wx - o.w / 2, y: o.wy - h, w: o.w, h };
+    const f = footOf(im), pb = f ? f.padB * h : 0;      // 투명 여백만큼 내려서 그림의 진짜 바닥이 발밑 자리에 닿게
+    return { im, x: o.wx - o.w / 2, y: o.wy - h + pb, w: o.w, h };
   }
   // 현판 글씨 (그림은 빈 나무판이라 코드로 써요)
   function drawLabel(g, text, w, h) {
@@ -240,24 +279,24 @@
     g.font = `${fs}px Jua, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillStyle = '#5b3416'; g.fillText(text, 0, h * 0.02);
   }
-  // 접지 그림자: 발밑에 넓고 옅은 그림자 + 바로 밑 진한 그림자 (건물이 땅에 붙어 보이게) · 미리 그린 둥근 그라데이션을 납작하게
-  let shadowSpr = null, shadowDone = false;
+  // 접지 그림자: 그 그림의 바닥 띠 실루엣(흐림)을 기단 바로 밑에 · 살짝 아래·옆으로 번져 테두리에 붙은 진한 그림자 (떨어진 동그라미 아님)
+  let shadowDone = false;
   const hasShadow = (o) => !o.noShadow && !o.center && o.fx !== 'bob' && o.fx !== 'pond';
   function groundShadow(g, o, sc) {
     if (!hasShadow(o)) return;
-    if (!shadowSpr) {
-      shadowSpr = document.createElement('canvas'); shadowSpr.width = shadowSpr.height = 64;
-      const q = shadowSpr.getContext('2d'), gr = q.createRadialGradient(32, 32, 0, 32, 32, 32);
-      gr.addColorStop(0, 'rgba(48,34,24,1)'); gr.addColorStop(0.55, 'rgba(48,34,24,.55)'); gr.addColorStop(1, 'rgba(48,34,24,0)');
-      q.fillStyle = gr; q.fillRect(0, 0, 64, 64);
-    }
-    const s = cam.s, k = typeof sc === 'object' && sc ? sc.x : (sc || 1);
+    const r = spriteRect(o); if (!r) return;
+    const f = footOf(r.im); if (!f) return;
+    const s = cam.s, kx = typeof sc === 'object' && sc ? sc.x : (sc || 1), ky = typeof sc === 'object' && sc ? sc.y : (sc || 1);
     const fx = (o.wx - cam.x) * s + VW / 2, fy = (o.wy - cam.y) * s + VH / 2;
-    const w = o.w * s * k, light = o.kind === 'debris' || o.kind === 'deco';
-    g.globalAlpha = light ? 0.22 : 0.3;
-    g.drawImage(shadowSpr, fx - w * 0.55, fy - w * 0.13, w * 1.1, w * 0.24);
-    g.globalAlpha = light ? 0.3 : 0.42;
-    g.drawImage(shadowSpr, fx - w * 0.36, fy - w * 0.06, w * 0.72, w * 0.11);
+    const ws = r.w * s * kx, hs = r.h * s * ky;                   // 화면 위 그림 크기
+    const u = ws / SH_W;                                          // 그림자 그림 1px → 화면 px
+    const top = fy - hs + f.padB * r.h * s * ky;                  // 그림 위쪽 (spriteRect 와 같은 자리)
+    const light = o.kind === 'debris' || o.kind === 'deco';
+    const drop = Math.max(2, ws * 0.028);                         // 아래로 살짝 (기단 앞 모서리 밑으로 진하게 보이는 만큼)
+    const spread = 1.07;                                          // 옆으로 살짝 넓게
+    const uy = u * ky / kx, W2 = f.shadow.width * u * spread;
+    g.globalAlpha = light ? 0.5 : 0.78;
+    g.drawImage(f.shadow, fx - W2 / 2, top - SH_P * uy + drop, W2, f.shadow.height * uy);
     g.globalAlpha = 1;
   }
   function drawSprite(g, o, sc, dy, alpha) {
@@ -285,7 +324,7 @@
       const fx = (o.wx - cam.x) * s + VW / 2, fy = (o.wy - cam.y) * s + VH / 2;
       const sy = typeof sc === 'object' ? sc.y : sc, sxx = typeof sc === 'object' ? sc.x : sc;
       g.save(); g.translate(fx, fy); g.scale(sxx, sy);
-      g.drawImage(r.im.im || r.im, -r.w * s / 2, -r.h * s + (dy || 0) * s, r.w * s, r.h * s);
+      g.drawImage(r.im.im || r.im, -r.w * s / 2, (r.y - o.wy) * s + (dy || 0) * s, r.w * s, r.h * s);
       g.restore();
     } else g.drawImage(r.im.im, x, y, r.w * s, r.h * s);
     if (o.label && !(sc && sc !== 1)) { g.save(); g.translate(x + r.w * s / 2, y + r.h * s / 2); drawLabel(g, o.label, r.w * s, r.h * s); g.restore(); }
@@ -447,6 +486,7 @@
     let bub = null;
     const be = $('tw-bub');
     if (be && !be.classList.contains('hide')) { const r = be.getBoundingClientRect(), c = cv.getBoundingClientRect(); bub = { x0: r.left - c.left, y0: r.top - c.top, x1: r.right - c.left, y1: r.bottom - c.top }; }
+    const tags = [];
     for (let i = 0; i < NA; i++) {
       if (isOpen(i) || i === lift) continue;
       const c = T.areas[D.AREAS[i].id].center, p = toScr(c[0], c[1]);
@@ -457,7 +497,13 @@
       g.font = `${f1}px Jua, sans-serif`; const w1 = g.measureText('🔒 ' + name).width;
       g.font = `${f2}px Jua, sans-serif`; const w2 = g.measureText(sub).width;
       const bw = Math.max(w1, w2) + 28, bh = f1 + f2 + 22;
+      // 위 칸(이름·동전)·아래 버튼 밑으로 숨지 않게 그 사이 칸 안으로 (지역 가운데가 칸 밖이면 가장자리에 붙여요)
+      const lo = UI_T + bh / 2 + 8, hi = VH - UI_B - bh / 2 - 8;
+      if (hi < lo || p.y < lo - bh * 2 || p.y > hi + bh * 2) continue;
+      p.y = clamp(p.y, lo, hi); p.x = clamp(p.x, bw / 2 + 8, VW - bw / 2 - 8);
       if (bub && p.x + bw / 2 > bub.x0 && p.x - bw / 2 < bub.x1 && p.y + bh / 2 > bub.y0 && p.y - bh / 2 < bub.y1) continue;
+      if (tags.some((r) => p.x + bw / 2 > r.x0 && p.x - bw / 2 < r.x1 && p.y + bh / 2 > r.y0 && p.y - bh / 2 < r.y1)) continue;   // 이름표끼리 겹치면 앞 것만
+      tags.push({ x0: p.x - bw / 2, x1: p.x + bw / 2, y0: p.y - bh / 2, y1: p.y + bh / 2 });
       g.fillStyle = 'rgba(255,250,242,.82)';
       g.beginPath(); if (g.roundRect) g.roundRect(p.x - bw / 2, p.y - bh / 2, bw, bh, 14); else g.rect(p.x - bw / 2, p.y - bh / 2, bw, bh); g.fill();
       g.fillStyle = 'rgba(90,70,60,.92)'; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -943,8 +989,17 @@
       <button type="button" class="btn" data-pk="close">${pick.first ? '첫 번째 모양으로 할래요' : '닫기'}</button></div>`;
     el.classList.remove('hide');
   }
-  function pickClick(btn) {
+  function pickClick(btn, confirmed) {
     if (!pick) return;
+    // 동전이 드는 새 모양은 먼저 물어봐요 (상점과 같이)
+    if (!confirmed && btn.dataset.pk === 'ok' && U.askYesNo) {
+      const own = C.looksOwned(st(), pick.id);
+      if (own.length && own.indexOf(pick.sel) < 0) {
+        const nm = `「${T.build[pick.id].looks[pick.sel]}」 모양`;
+        U.askYesNo(C.buyAsk(nm, C.lookPrice(st(), pick.id), 'coins'), () => pickClick(btn, true));
+        return;
+      }
+    }
     if (btn.dataset.look != null) { pick.sel = Number(btn.dataset.look); preview[pick.id] = pick.sel; dirty(); F.sfx('pick'); renderPick(); return; }
     if (btn.dataset.pk === 'ok') {
       const r = C.setLook(st(), pick.id, pick.sel, now(), true);

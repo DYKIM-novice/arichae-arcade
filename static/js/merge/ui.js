@@ -86,7 +86,7 @@
       let cost = st.settings.easy ? '' : `<span class="gcost">${artImg('energy', '')}1</span>`;
       if (ch) cost += ch.restMs ? `<span class="gcharge rest">${mmss(ch.restMs)}</span>` : `<span class="gcharge">${ch.left}</span>`;
       const lv = C.genLevel(st, cell.g);
-      if (lv) cost += `<span class="glv">${'★'.repeat(lv)}</span>`;
+      if (lv) cost += `<span class="glv">${lv > 3 ? '★' + lv : '★'.repeat(lv)}</span>`;   // 4·5단계는 짧게 (칸이 좁아요)
       return `<div class="it gen c-${g.chain}${ch && ch.restMs ? ' resting' : ''}${g.event ? ' evgen' : ''}">${artImg(cell.g, g.name)}${cost}</div>`;
     }
     if (cell.k === 'wild') return `<div class="it wild">${artImg('wild', '무지개 소라')}</div>`;
@@ -344,9 +344,10 @@
     const g = guide; guide = null;
     g.el.classList.add('bye');
     setTimeout(() => g.el.remove(), 180);
-    Array.prototype.forEach.call(document.querySelectorAll('.cell.guide'), (c) => c.classList.remove('guide', 'gen-g'));
     Array.prototype.forEach.call(document.querySelectorAll('.oc-item.on'), (b) => b.classList.remove('on'));
   }
+  // 부탁 물건 톡 → 그 체인 전체 창 (원작처럼): 1단계~끝 단계 칸 (모르는 건 ?) · 칸마다 판·가방에 있는 개수 · 부탁 단계 강조
+  //  · '생산'에 그 물건을 만드는 발생기 · [찾기] = 창을 닫고 판에서 그 물건들과 발생기를 반짝반짝
   function openGuide(o, k) {
     const was = guide && guide.oid === o.id && guide.k === k;
     closeGuide();
@@ -358,49 +359,63 @@
     let src;
     if (g.gen) {
       const lock = !g.gen.cells.length;
-      src = `<div class="gd-src">${artImg(g.gen.id, g.gen.name, 'gd-gen')}<span><b>${esc(g.gen.name)}</b> 톡 → ${esc(ch.name)} 1단계${lock ? `<br><small>${D.GENS[g.gen.id].event ? '이벤트 동안 판에 나오는 발생기예요' : '이 발생기는 아직 판에 없어요 · [마을]을 고치면 생겨요'}</small>` : ''}</span></div>`;
+      src = `<div class="gd-src">${artImg(g.gen.id, g.gen.name, 'gd-gen')}<span><b>${esc(g.gen.name)}</b>${g.gen.cells.length > 1 ? ` <em class="gd-cnt">판에 ${g.gen.cells.length}개</em>` : ''}<br>`
+        + `${lock ? `<small>${D.GENS[g.gen.id].event ? '이벤트 동안 판에 나오는 발생기예요' : '아직 판에 없어요 · [마을]을 고치면 생겨요'}</small>` : `톡 해서 고르고 한 번 더 톡 → ${esc(ch.name)} 1단계`}</span></div>`;
     } else {
       const nm = esc(josa(ch.name, '은', '는'));
       src = `<div class="gd-src"><span>${g.from === 'box' ? `${nm} 발생기에서 안 나와요 · 선물 보자기·매일 선물·이벤트 보상에서 나와요` : `${nm} 다른 곳에서 얻어요`}</span></div>`;
     }
-    const steps = g.steps.map((s, j) => {
-      const known = !!st.found[s.id] || s.have > 0;
+    const tiles = g.levels.map((s) => {
       const im = A.src(s.id);
-      const arrow = j ? `<i class="gd-arr" aria-hidden="true"><small>2개</small>→</i>` : '';
-      return `${arrow}<span class="gd-step${s.have ? ' have' : ''}${s.t === g.t ? ' goal' : ''}${known ? '' : ' unk'}" title="${esc(s.name)}">`
-        + `${im ? `<img src="${esc(im)}" alt="${esc(s.name)}" draggable="false">` : `<span class="ph">${esc(s.name)}</span>`}<i class="tier">${s.t}</i>`
-        + `${s.have ? `<b class="gd-n">${s.have}</b>` : ''}</span>`;
+      const goal = s.t === g.t;
+      const pic = !s.known ? '<span class="gd-q">?</span>' : im ? `<img src="${esc(im)}" alt="${esc(s.name)}" draggable="false">` : `<span class="ph">${esc(s.name)}</span>`;
+      return `<span class="gd-step${s.have ? ' have' : ''}${goal ? ' goal' : ''}${s.known ? '' : ' unk'}" title="${esc(s.known ? s.name : '???')}" aria-label="${s.t}단계 ${esc(s.known ? s.name : '모르는 물건')} · ${s.have}개">`
+        + `${pic}<i class="tier">${s.t}</i>${s.have ? `<b class="gd-n">${s.have}</b>` : ''}${goal ? '<em class="gd-goal">부탁</em>' : ''}</span>`;
     }).join('');
     let tip;
     if (g.ready) tip = g.steps[g.t - 1].cells.length ? '벌써 판에 있어요! [건네기]만 누르면 돼요.' : '가방에 있어요! [건네기]를 누르면 가방에서 꺼내 줘요.';
     else if (g.best) tip = `${g.best}단계는 가지고 있어요 · 같은 것 2개를 합쳐서 한 단계씩 올려요.`;
-    else tip = g.gen ? '발생기를 톡 해서 1단계를 꺼내고, 같은 것 2개를 합쳐요.' : '같은 것 2개를 합치면 한 단계 올라가요.';
+    else tip = g.gen ? '발생기를 톡 해서 고르고, 한 번 더 톡 하면 1단계가 나와요. 같은 것 2개를 합쳐요.' : '같은 것 2개를 합치면 한 단계 올라가요.';
+    const canFind = g.find.length > 0 || g.levels.some((s) => s.bag);
     const el = document.createElement('div');
     el.className = 'gd-pop c-' + n.c;
     el.setAttribute('role', 'dialog');
-    el.setAttribute('aria-label', '만드는 법');
-    el.innerHTML = `<div class="gd-head"><b>만드는 법</b><span>${esc(g.name)} · ${g.t}단계</span><button type="button" class="gd-x" aria-label="닫기">✕</button></div>
-      ${src}<div class="gd-steps">${steps}</div><p class="gd-tip">${esc(tip)}</p>`;
+    el.setAttribute('aria-label', esc(ch.name) + ' 단계');
+    el.innerHTML = `<div class="gd-head"><b>${esc(ch.name)}</b><span>부탁: ${esc(g.name)} · ${g.t}단계</span><button type="button" class="gd-x" aria-label="닫기">✕</button></div>
+      <div class="gd-steps gd-grid">${tiles}</div>
+      <div class="gd-sec">생산</div>${src}
+      <p class="gd-tip">${esc(tip)}</p>
+      <div class="gd-acts"><button type="button" class="btn main gd-find" ${canFind ? '' : 'disabled'}>🔍 찾기</button></div>`;
     document.body.appendChild(el);
-    const top = $('orders').getBoundingClientRect().bottom + 2;
     const w = Math.min(innerWidth - 16, 420);
     el.style.width = w + 'px';
     el.style.left = Math.round((innerWidth - w) / 2) + 'px';
-    el.style.top = Math.round(top) + 'px';
-    guide = { el, oid: o.id, k };
+    // 부탁 카드 바로 아래 · 너무 길면 아래 칸 위까지 (안에서 굴려요)
+    const top = Math.round($('orders').getBoundingClientRect().bottom + 2);
+    const room = Math.max(160, $('foot').getBoundingClientRect().top - 4 - top);
+    el.style.top = top + 'px';
+    el.style.maxHeight = Math.max(room, Math.min(innerHeight - 16 - top, 300)) + 'px';
+    if (el.getBoundingClientRect().bottom > innerHeight - 6) el.style.top = Math.max(6, innerHeight - 6 - el.offsetHeight) + 'px';
+    guide = { el, oid: o.id, k, g };
     const btn = $('orders').querySelector(`.oc-item[data-hl="${o.id}:${k}"]`);
     if (btn) btn.classList.add('on');
-    // 판에서 반짝: 발생기 + 부탁 단계까지의 같은 체인 물건
+    el.querySelector('.gd-find').addEventListener('click', () => findOnBoard(g));
+  }
+  // [찾기]: 창을 닫고 그 체인 물건(부탁 단계까지 가까운 것 먼저)·발생기를 판에서 4초 반짝 · 가방에만 있으면 가방 버튼 흔들
+  let findT = 0;
+  function findOnBoard(g) {
+    closeGuide();
+    clearTimeout(findT);
+    Array.prototype.forEach.call(document.querySelectorAll('.cell.guide'), (c) => c.classList.remove('guide', 'gen-g'));
     const mark = (i, gen) => { const c = cellEl(i); if (c) { c.classList.add('guide'); if (gen) c.classList.add('gen-g'); } };
+    g.levels.forEach((s) => s.cells.forEach((i) => mark(i, false)));
     if (g.gen) g.gen.cells.forEach((i) => mark(i, true));
-    g.steps.forEach((s) => s.cells.forEach((i) => mark(i, false)));
-    // 반짝이는 칸을 덜 가리는 쪽에 (위: 부탁 카드 바로 아래 · 아래: 정보 칸 바로 위)
-    const lit = Array.prototype.map.call(document.querySelectorAll('.cell.guide'), (c) => c.getBoundingClientRect());
-    const h = el.offsetHeight;
-    const bottomTop = Math.round($('foot').getBoundingClientRect().top - 4 - h);
-    const hidden = (y) => lit.filter((r) => r.bottom > y && r.top < y + h).length;
-    if (bottomTop > top && hidden(bottomTop) < hidden(top)) el.style.top = bottomTop + 'px';
-    if (g.ready && !g.steps[g.t - 1].cells.length) restartAnim($('btn-bag'), 'wig1');
+    const items = g.levels.reduce((a, s) => a.concat(s.cells), []);
+    flash(items.concat(g.gen ? g.gen.cells : []));
+    if (g.levels.some((s) => s.bag)) restartAnim($('btn-bag'), 'wig1');
+    F.sfx('pick');
+    if (!g.find.length) toast('판에는 없고 가방에 있어요');
+    findT = setTimeout(() => Array.prototype.forEach.call(document.querySelectorAll('.cell.guide'), (c) => c.classList.remove('guide', 'gen-g')), 4000);
   }
   // 안내창 밖을 톡 → 닫기 (안내창 안의 ✕ 도)
   document.addEventListener('pointerdown', (e) => {
@@ -461,10 +476,10 @@
       const g = D.GENS[cell.g];
       const ch = D.CHAINS[g.chain];
       const u = C.genUpInfo(st, cell.g);
-      const odds = u ? ` · 2단계 ${Math.round(u.tier2 * 100)}%${u.tier3 ? ` · 3단계 ${Math.round(u.tier3 * 100)}%` : ''}` : ' · 이벤트 발생기';
+      const odds = u ? ` · 2단계 ${Math.round(u.tier2 * 100)}%${u.tier3 ? ` · 3단계 ${Math.round(u.tier3 * 100)}%` : ''}${u.bonus ? ` · 덤 하나 ${Math.round(u.bonus * 100)}%` : ''}${u.taps && u.lv >= 4 ? ` · 충전 ${u.taps}번` : ''}` : ' · 이벤트 발생기';
       const up = u ? `<div class="info-acts"><button type="button" class="act up" data-act="up" ${u.price ? '' : 'disabled'}>${u.price ? `강화 ${artImg('coin', '')}${u.price}` : '강화 끝'}</button><small class="lv">${'★'.repeat(u.lv)}${'☆'.repeat(u.max - u.lv)}</small></div>` : '';
       h = `<div class="info-box c-${g.chain}"><div class="info-ic">${artImg(cell.g, g.name)}</div>
-        <div class="info-txt"><b>${esc(g.name)}<em>발생기</em></b><p class="one">톡 → ${esc(ch.name)} · ${st.settings.easy ? '편하게' : '기운 1'}${odds}</p>${ladderHTML(g.chain, 0)}</div>${up}</div>`;
+        <div class="info-txt"><b>${esc(g.name)}<em>발생기</em></b><p class="one">한 번 더 톡 → ${esc(ch.name)} · ${st.settings.easy ? '편하게' : '기운 1'}${odds}</p>${ladderHTML(g.chain, 0)}</div>${up}</div>`;
     } else {
       const m = infoMsg || { v: D.VILLAGERS.hayun, text: D.TIPS[tipIdx % D.TIPS.length] };
       const s = faceSrc(m.v, m.face);
@@ -556,6 +571,11 @@
     F.sfx('spawn'); F.vibrate(8);
     setTimeout(() => F.burst(b.x, b.y, [D.CHAINS[r.cell.c].color, '#ffffff'], 6, 0.55), 300);
     if (r.first) setTimeout(() => { floatTag('새 발견! ' + C.itemName(r.cell), b.x, b.y - b.h * 0.6); F.sfx('discover'); }, 320);
+    if (r.extra) {   // 강화 덤: 하나 더
+      const c2 = center(cellEl(r.extra.at));
+      arcIn(itEl(r.extra.at), a, c2, 120);
+      setTimeout(() => { floatTag('덤 하나 더!', c2.x, c2.y - c2.h * 0.6, true); F.sfx('spawn'); }, 420);
+    }
     clearUndo();
     renderHud(); renderOrders(); renderInfo();
     changed();
@@ -599,7 +619,11 @@
     }
     const cell = st.board[i];
     if (!cell) { if (sel >= 0) { sel = -1; tipIdx++; renderBoard(); renderInfo(); } return; }
-    if (cell.k === 'gen') { sel = i; renderBoard(); renderInfo(); spawn(i); return; }
+    // 발생기: 처음 톡 = 고르기만(정보 보기 · 기운 안 씀) · 이미 고른 발생기를 다시 톡 = 물건 꺼내기 (C.genTap)
+    if (cell.k === 'gen') {
+      if (C.genTap(sel, i) === 'spawn') { spawn(i); return; }
+      sel = i; F.sfx('pick'); renderBoard(); renderInfo(); return;
+    }
     if (sel >= 0 && sel !== i && C.canMerge(st.board[sel], cell)) { glide(sel, i); return; }
     if (sel === i) { sel = -1; tipIdx++; } else { sel = i; F.sfx('pick'); }
     renderBoard(); renderInfo();
@@ -755,15 +779,20 @@
     else if (b.dataset.act === 'bag') putInBag(i);
     else if (b.dataset.act === 'sell') sellAt(i, false);
   });
-  function upgradeAt(i) {
+  function upgradeAt(i, confirmed) {
     const cell = st.board[i];
     if (!cell || cell.k !== 'gen') return;
+    const u = C.genUpInfo(st, cell.g);
+    if (!confirmed && u && u.price && st.coins >= u.price) {   // 동전이 드니까 먼저 물어봐요
+      askYesNo(C.buyAsk(`${D.GENS[cell.g].name} 강화 ${u.lv + 1}단계`, u.price, 'coins', '할까요'), () => { if (st.board[i] === cell) upgradeAt(i, true); });
+      return;
+    }
     const r = C.upgradeGen(st, cell.g, now());
     if (!r.ok) { F.sfx('bad'); toast(r.reason === 'coins' ? `동전이 ${r.price - st.coins}개 모자라요` : '더는 강화할 수 없어요'); return; }
     const p = center(cellEl(i));
     F.sfx('maxed'); F.vibrate([12, 30, 12]);
     F.burst(p.x, p.y, ['#ffd25a', '#ffffff', D.CHAINS[D.GENS[cell.g].chain].color], 22, 1.3);
-    floatTag(`강화 ${'★'.repeat(r.lv)} · 2단계 ${Math.round(r.info.tier2 * 100)}%`, p.x, p.y - p.h * 0.6, true);
+    floatTag(`강화 ${'★'.repeat(r.lv)} · 2단계 ${Math.round(r.info.tier2 * 100)}%${r.info.tier3 ? ` · 3단계 ${Math.round(r.info.tier3 * 100)}%` : ''}${r.info.bonus ? ` · 덤 ${Math.round(r.info.bonus * 100)}%` : ''}`, p.x, p.y - p.h * 0.6, true);
     renderAll(); bump('hud-coin'); changed();
   }
   function useAt(i) {
@@ -870,7 +899,7 @@
       if (b && onClick) onClick(b);
     };
   }
-  function closeSheet() { $('sheet').classList.add('hide'); $('sheet').innerHTML = ''; sheetKind = ''; F.sfx('close'); musicTick(); }
+  function closeSheet() { closeAsk(); $('sheet').classList.add('hide'); $('sheet').innerHTML = ''; sheetKind = ''; F.sfx('close'); musicTick(); }
 
   function energyHTML() {
     const e = C.energyInfo(st, now());
@@ -1032,11 +1061,12 @@
   function decoBody(t) {
     const T = D.TOWN, m = C.shopMult(st);
     const outfits = Object.keys(D.OUTFITS).filter((k) => A.has('t_' + D.OUTFITS[k].art)).map((k) => {
-      const o = D.OUTFITS[k], own = st.owned.outfits.indexOf(k) >= 0, on = st.outfit === k, season = C.inSeason(o, t);
+      const o = D.OUTFITS[k], state = C.outfitState(st, k, t), on = state === 'worn';
       let buy;
-      if (own) buy = on ? shBtn('', 0, 'coins', true, '입는 중') : shBtn(`data-wear="${k}"`, 0, 'coins', false, '입기');
-      else if (!season) buy = shBtn('', 0, 'coins', true, '여름에 나와요');
-      else buy = shBtn(`data-outfit="${k}"`, o.coins, 'coins', st.coins < o.coins) + (o.gems ? shBtn(`data-outfit="${k}" data-pay="gems"`, o.gems, 'gems', st.gems < o.gems) : '');
+      if (state === 'worn') buy = '<span class="sh-state worn">✓ 입는 중</span>';
+      else if (state === 'wear') buy = shBtn(`data-wear="${k}"`, 0, 'coins', false, '입기');
+      else if (state === 'season') buy = shBtn('', 0, 'coins', true, '여름에 나와요');
+      else buy = shBtn(`data-outfit="${k}"`, o.coins, 'coins', st.coins < o.coins, `사기 ${COIN()}${o.coins}`) + (o.gems ? shBtn(`data-outfit="${k}" data-pay="gems"`, o.gems, 'gems', st.gems < o.gems, `사기 ${GEM()}${o.gems}`) : '');
       return `<div class="sh-wear${on ? ' on' : ''}"><div class="sh-doll">${timg(o.art, o.name)}</div><b>${esc(o.name)}</b><small>${esc(o.sub || '기본 옷')}</small><div class="sh-buy">${buy}</div></div>`;
     }).join('');
     const mong = Object.keys(D.MONG_ACC).filter((k) => D.MONG_ACC[k].coins || C.mongHas(st, k)).map((k) => {
@@ -1101,14 +1131,62 @@
     }
     if (r.price) { bump(r.pay === 'gems' ? 'hud-coin' : 'hud-coin'); }
   }
+  // 예/아니요 작은 창 (상점 시트 위) · 바깥을 톡하면 아니요
+  function closeAsk() { const el = $('ask'); if (el) el.remove(); }
+  function askYesNo(q, onYes, yes, no) {
+    closeAsk();
+    const el = document.createElement('div');
+    el.id = 'ask'; el.className = 'ask';
+    el.innerHTML = `<div class="ask-box" role="alertdialog" aria-modal="true"><p>${q}</p><div class="two"><button type="button" class="btn" data-ask="no">${no || '아니요'}</button><button type="button" class="btn main" data-ask="yes">${yes || '예'}</button></div></div>`;
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-ask]');
+      if (!b && e.target.closest('.ask-box')) return;
+      closeAsk();
+      if (b && b.dataset.ask === 'yes') onYes(); else F.sfx('close');
+    });
+    document.body.appendChild(el);
+    F.sfx('open');
+  }
+  // 상점 단추 → 살 것의 이름·값 (돈이 안 드는 단추는 null: 탭·무료 선물·입기·바꾸기·자동 합치기 창)
+  let shopRe = null;
+  function buyQuote(b, t) {
+    const d = b.dataset;
+    if (d.deal != null) {
+      const x = st.shop.deals[Number(d.deal)]; if (!x) return null;
+      const nm = x.id === 'tier' ? `${C.itemName({ k: 'item', c: x.c, t: x.t })} ${x.t}단계` : D.SHOP.items[x.id].name;
+      return { name: nm, price: C.dealPrice(st, x), pay: 'coins' };
+    }
+    if (d.tier) return { name: `${C.itemName({ k: 'item', c: d.c, t: Number(d.tier) })} ${d.tier}단계`, price: D.SHOP.tierPrice[Number(d.tier)], pay: 'coins' };
+    if (d.reroll) return { name: '특가 다시 섞기', price: D.SHOP.rerollCoins * C.shopMult(st), pay: 'coins', verb: '할까요' };
+    if (d.buy) {
+      if (d.buy === 'refill') return { name: '기운 가득 채우기', price: C.refillPrice(st, t).price, pay: 'coins', verb: '할까요' };
+      if (d.buy === 'bag') return { name: '가방 한 칸', price: C.bagPrice(st), pay: 'coins' };
+      const it = D.SHOP.items[d.buy]; if (!it) return null;
+      const gems = d.pay === 'gems';
+      return { name: it.name, price: gems ? it.gems : C.itemCoins(st, d.buy), pay: gems ? 'gems' : 'coins' };
+    }
+    if (d.outfit) { const o = D.OUTFITS[d.outfit]; if (!o) return null; const gems = d.pay === 'gems'; return { name: o.name, price: gems ? o.gems : o.coins, pay: gems ? 'gems' : 'coins' }; }
+    if (d.mong) { const a = D.MONG_ACC[d.mong]; return a ? { name: a.name, price: a.coins, pay: 'coins' } : null; }
+    if (d.filler) { const f = D.TOWN.fillers[d.filler]; return f ? { name: f.name, price: C.fillerPrice(st), pay: 'coins' } : null; }
+    if (d.look) {
+      const [id, k] = d.look.split(':');
+      if (C.looksOwned(st, id).indexOf(Number(k)) >= 0) return null;
+      return { name: `「${D.TOWN.build[id].looks[Number(k)]}」 모양`, price: C.lookPrice(st, id), pay: 'coins' };
+    }
+    return null;
+  }
   function openShop(tab, sec) {
     if (tab) shopTab = tab;
     if (sec) setTimeout(() => { const el = document.getElementById('sec-' + sec), body = $('sheet').querySelector('.sh-body'); if (el && body) body.scrollTop = el.offsetTop - body.offsetTop - 6; }, 30);
     const re = () => { const b = $('sheet').querySelector('.sheet-box'); if (b) { const y = (b.querySelector('.sh-body') || {}).scrollTop || 0; b.innerHTML = shopHTML(); const nb = b.querySelector('.sh-body'); if (nb) nb.scrollTop = y; } };
-    openSheet(shopHTML(), (b) => {
+    shopRe = re;
+    const act = (b, confirmed) => {
       F.unlock();
       const t = now();
       if (b.dataset.tab) { shopTab = b.dataset.tab; F.sfx('pick'); re(); return; }
+      // 돈이 드는 것은 모두 먼저 물어봐요 ("○○을(를) 동전 N개에 살까요?" 예/아니요)
+      const q = confirmed ? null : buyQuote(b, t);
+      if (q) { askYesNo(C.buyAsk(q.name, q.price, q.pay, q.verb), () => act(b, true)); return; }
       if (b.dataset.auto) { closeSheet(); openAuto(); return; }
       if (shopTab === 'deco' && decoClick(b, t)) { re(); renderAll(); changed(); if (window.MergeTown) window.MergeTown.refresh(); return; }
       let r = null, label = '';
@@ -1122,7 +1200,8 @@
       if (!b.dataset.reroll) shopGot(r, label);
       clearUndo();
       re(); renderAll(); changed();
-    }, 'shop');
+    };
+    openSheet(shopHTML(), (b) => act(b, false), 'shop');
     $('sheet').querySelector('.sheet-box').classList.add('shop-box');
   }
   $('btn-shop').addEventListener('click', () => { F.unlock(); openShop(); });
@@ -1130,7 +1209,13 @@
   function decoClick(b, t) {
     let r = null, msg = '';
     if (b.dataset.wear) { r = C.wearOutfit(st, b.dataset.wear, t); msg = '옷을 갈아입었어요!'; }
-    else if (b.dataset.outfit) { r = C.buyOutfit(st, b.dataset.outfit, b.dataset.pay || 'coins', t); msg = `「${(D.OUTFITS[b.dataset.outfit] || {}).name}」을 샀어요! 바로 입었어요`; }
+    else if (b.dataset.outfit) {
+      const id = b.dataset.outfit, nm = (D.OUTFITS[id] || {}).name;
+      r = C.buyOutfit(st, id, b.dataset.pay || 'coins', t); msg = `「${nm}」${josa(nm, '을', '를').slice(nm.length)} 샀어요!`;
+      if (r.ok) setTimeout(() => askYesNo(`「${esc(nm)}」${josa(nm, '을', '를').slice(nm.length)} 지금 입을까요?`, () => {
+        if (C.wearOutfit(st, id, now()).ok) { F.sfx('discover'); toast('옷을 갈아입었어요!'); if (shopRe) shopRe(); renderAll(); changed(); if (window.MergeTown) window.MergeTown.refresh(); }
+      }, '지금 입을래요', '나중에'), 350);
+    }
     else if (b.dataset.mong) { r = C.buyMong(st, b.dataset.mong, t); msg = '몽돌이 소품을 샀어요! 마을에서 보세요'; }
     else if (b.dataset.mwear) { r = C.wearMong(st, b.dataset.mwear === '-' ? null : b.dataset.mwear, t); msg = b.dataset.mwear === '-' ? '소품을 벗겼어요' : '몽돌이에게 씌웠어요'; }
     else if (b.dataset.filler) { r = C.buyFiller(st, b.dataset.filler, t); msg = '마을 장식을 샀어요! 마을 [꾸미기]에서 놓아요'; }
@@ -1217,9 +1302,10 @@
     return `<h2>설정</h2>
       ${tg('sfx', '효과음')}
       ${st.settings.sfx ? vol('vol', '효과음 크기') : ''}
-      ${tg('bgm', '배경음악', '가야금·피리 곡 · 지역·낮밤마다 달라요')}
+      ${tg('bgm', '배경음악', st.settings.bgmStyle === 'east' ? '가야금·피리 곡 · 지역·낮밤마다 달라요' : '잔잔한 피아노 곡 4개를 차례로 들려줘요')}
+      ${st.settings.bgm ? `<div class="row"><span>배경음악 종류</span><span class="seg">${[['piano', '피아노'], ['east', '동양풍']].map(([k, n]) => `<button type="button" class="seg-b${(st.settings.bgmStyle === 'east' ? 'east' : 'piano') === k ? ' on' : ''}" data-bstyle="${k}" aria-pressed="${(st.settings.bgmStyle === 'east' ? 'east' : 'piano') === k}">${n}</button>`).join('')}</span></div>` : ''}
       ${st.settings.bgm ? vol('bgmVol', '배경음악 크기') : ''}
-      ${st.settings.bgm ? tg('quietNight', '조용한 밤 모드', '늘 잔잔한 밤 곡만') : ''}
+      ${st.settings.bgm ? tg('quietNight', '조용한 밤 모드', st.settings.bgmStyle === 'east' ? '늘 잔잔한 밤 곡만' : "'고요한 밤' 한 곡만") : ''}
       ${tg('alwaysDay', '마을 늘 낮', '해 지면 켜지는 등불·밤 덮개 끄기')}
       ${tg('autoKeep', '자동 합치기: 부탁 물건 남기기', '부탁 카드에 필요한 물건은 안 합쳐요')}
       ${F.canVibrate() ? tg('vib', '진동') : ''}
@@ -1321,6 +1407,9 @@
         syncFx();
         F.sfx('pick'); if (k === 'vib') F.vibrate(20);
         re(); renderAll(); changed();
+      } else if (b.dataset.bstyle) {
+        st.settings.bgmStyle = b.dataset.bstyle === 'east' ? 'east' : 'piano';
+        syncFx(); F.sfx('pick'); re(); changed();
       } else if (b.dataset.sync) {
         syncAction(b.dataset.sync, re);
       } else if (b.dataset.backups) {
@@ -1639,6 +1728,8 @@
   const isNight = () => { const h = new Date().getHours(); return h >= 19 || h < 6; };
   function musicCtx() {
     const qn = !!st.settings.quietNight, night = qn || isNight();
+    // 피아노(기본): 화면·지역·낮밤과 상관없이 곡 4개를 차례로 이어서 (조용한 밤 모드면 '고요한 밤'만)
+    if (st.settings.bgmStyle !== 'east') return [qn ? 'piano_quiet' : 'piano', false];
     if (!$('talk').classList.contains('hide') && talkSong) return [talkSong, false];
     if (!$('town').classList.contains('hide')) {
       if (qn) return ['board_night', false];
@@ -1854,7 +1945,7 @@
     get state() { return st; }, renderAll, renderNav, apply, tap, deliver, layout, changed, toast, say, talk, flash, floatTag, center, cellEl, itEl,
     artImg, esc, josa, setBg, clearUndo, restartAnim, openBag, syncPush, sync, STAR, faceSrc, faceHTML, react, quiet,
     openMenu, openDaily, openBook, openEvent, openLetters, openSettings, openSheet, closeSheet, dailyEventTick, mmss,
-    openShop, openAuto, runAuto, musicTick, autoAfter, arcIn, countUp, bump,
+    openShop, openAuto, runAuto, askYesNo, musicTick, autoAfter, arcIn, countUp, bump,
     get busy() { return busy; }
   };
 })();

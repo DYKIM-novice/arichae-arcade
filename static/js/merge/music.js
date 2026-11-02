@@ -5,6 +5,9 @@
    - 같은 곡을 다시 돌 때 '변주': 가끔 이웃 음 · 꾸밈음 · 북 무늬 A/B · 펼친화음 무늬 바꾸기 (씨앗 고정 → 같은 자리에선 늘 같은 변주)
    - 밤(night): 북 빼고 조금 느리게 · 조용하게
    - play(id, {night}) 는 몇 번 불러도 같으면 그대로 · 소리를 처음 켤 때(unlock) wake()
+   - 피아노(기본): MUSIC.lists.piano 곡 4개(약 5분씩)를 차례로 이어 연주 · 끝나면 첫 곡 · 곡 사이 3초 살며시 줄었다 다음 곡 머리
+     · form 은 공백으로 나눈 구간 + 변주 번호 + 조옮김 ('A2+2') · 반복마다 왼손 무늬·옥타브·겹침음이 바뀌어 같은 곡 안에서도 덜 반복돼요
+     · 지금 곡 번호는 이 기기에 기억 (다음에 열면 그 곡 처음부터)
    - node 에서도 읽혀요 (악보 읽기·검사만: midi · compile · check → tools/merge_test.js) */
 (function (root) {
   'use strict';
@@ -40,10 +43,27 @@
   }
   const compiled = {};
   // 곡 전체: form 차례대로 마디를 이어 붙인 줄 (timeline)
+  const FORM_TOK = /^([A-Z])([0-3]?)([+-]\d{1,2})?$/;
+  function compilePiano(id, song) {
+    const secs = {}, timeline = [], seen = {};
+    toks(song.form).forEach((x) => {
+      const m = FORM_TOK.exec(x); if (!m) return;
+      const k = m[1], v = Number(m[2] || 0), tr = Number(m[3] || 0);
+      if (!song[k]) return;
+      if (!secs[k]) secs[k] = parseSection(song, song[k]);
+      const occ = seen[k] | 0; seen[k] = occ + 1;
+      const nb = secs[k].bars.length;
+      secs[k].bars.forEach((notes, b) => timeline.push({ sec: k, bar: b, nb, occ, v, tr, notes, chord: secs[k].chords[b] }));
+    });
+    const pool = {};
+    timeline.forEach((x) => x.notes.forEach((n) => { pool[n.m + x.tr] = 1; }));
+    return { id, song, timeline, piano: true, scale: Object.keys(pool).map(Number).sort((a, b) => a - b) };
+  }
   function compile(id) {
     if (compiled[id]) return compiled[id];
     const song = MUS.songs[id];
     if (!song) return null;
+    if (song.piano) { compiled[id] = compilePiano(id, song); return compiled[id]; }
     const secs = {};
     const form = String(song.form || 'A').split('');
     form.forEach((k) => { if (!secs[k]) secs[k] = parseSection(song, song[k]); });
@@ -63,6 +83,19 @@
   function check(id) {
     const song = MUS.songs[id], err = [];
     if (!song) return ['없는 곡 ' + id];
+    if (song.piano) {
+      const used = {};
+      toks(song.form).forEach((x) => { const m = FORM_TOK.exec(x); if (!m) err.push(`${id}: form '${x}'`); else if (!song[m[1]]) err.push(`${id}: 구간 ${m[1]} 없음`); else used[m[1]] = 1; });
+      Object.keys(used).forEach((k) => {
+        const sec = song[k], ch = toks(sec.chords), tk = toks(sec.mel);
+        if (tk.length !== ch.length * song.spb) err.push(`${id}.${k}: 칸 ${tk.length} ≠ 마디 ${ch.length} × ${song.spb}`);
+        tk.forEach((x) => { if (x !== '-' && x !== '.' && isNaN(midi(x))) err.push(`${id}.${k}: 음 '${x}'`); });
+        ch.forEach((x) => { if (!MUS.chords[x]) err.push(`${id}.${k}: 화음 '${x}'`); });
+      });
+      if (!(song.lh || []).length) err.push(`${id}: 왼손 무늬 없음`);
+      (song.lh || []).forEach((q) => { const t = toks(q); if (t.length !== song.spb || t.some((x) => x !== '.' && !(Number(x) >= 0 && Number(x) <= 7))) err.push(`${id}: 왼손 '${q}'`); });
+      return err;
+    }
     const form = String(song.form || 'A').split('');
     form.forEach((k) => {
       const sec = song[k];
@@ -85,7 +118,46 @@
   }
   const stepSec = (song, night) => 60 / (song.bpm * (night ? 0.85 : 1)) / 2;
 
-  if (isNode) { module.exports = { midi, compile, check, lengthSec, hash }; return; }
+  // 피아노 마디 하나 → steps[s] = [{ k: 'piano', m, d(칸), v, dt(사람 손 같은 아주 작은 어긋남) }]
+  //  변주 v: 0 기본 · 1 왼손 흐르게 + 선율 아래 옥타브 · 2 선율 한 옥타브 위(너무 높으면 그대로) + 왼손 성기게 · 3 선율 아래 화음 음 겹침
+  //  구간 안에서 셈여림이 둥글게(가운데가 조금 크게) · 마디 첫 음 살짝 강하게 · 왼손은 페달처럼 마디 끝까지 울려요
+  const pianoChord = {};
+  function planPiano(p, bi) {
+    const c = p.c, song = c.song, spb = song.spb, bar = c.timeline[bi % c.timeline.length];
+    const rnd = seeded(hash(c.id + ':' + bi));
+    const steps = [];
+    for (let i = 0; i < spb; i++) steps.push([]);
+    const tr = (song.tr || 0) + bar.tr;
+    if (!pianoChord[bar.chord]) pianoChord[bar.chord] = (MUS.chords[bar.chord] || MUS.chords.C).map(midi);
+    const cm = pianoChord[bar.chord].map((x) => x + tr);
+    const edge = bar.sec === 'I' || bar.sec === 'Z';
+    const arc = 0.84 + 0.16 * Math.sin(Math.PI * (bar.bar + 0.5) / bar.nb);
+    const mv = (song.vel || 1) * arc * (edge ? 0.85 : 1) * (p.night ? 0.9 : 1);
+    const v = bar.v;
+    const hi = c.scale.length ? c.scale[c.scale.length - 1] : 84;
+    bar.notes.forEach((n) => {
+      let m = n.m + bar.tr;
+      if (v === 2 && hi + 12 <= 89) m += 12;
+      const vel = 0.42 * mv * (n.s === 0 ? 1.06 : 1) * (0.94 + rnd() * 0.1);
+      steps[n.s].push({ k: 'piano', m, d: n.d + 0.6, v: vel, dt: 0 });
+      if (v === 1) steps[n.s].push({ k: 'piano', m: m - 12, d: n.d + 0.6, v: vel * 0.38, dt: 0.012 });
+      if (v === 3) {   // 아래 3~9반음 안의 화음 음
+        let best = null;
+        cm.forEach((x) => { for (let o = -2; o <= 3; o++) { const y = x + o * 12; if (y <= m - 3 && y >= m - 9 && (best == null || y > best)) best = y; } });
+        if (best != null) steps[n.s].push({ k: 'piano', m: best, d: n.d + 0.6, v: vel * 0.42, dt: 0.01 });
+      }
+    });
+    const lh = song.lh || ['0 . 1 . 2 . 3 .'];
+    const pat = toks(lh[(v + (bar.occ > 1 ? 1 : 0)) % lh.length]);
+    pat.forEach((x, i) => {
+      if (x === '.') return;
+      const idx = Number(x), m = idx < 4 ? cm[idx] : cm[idx - 4] + 12;
+      steps[i].push({ k: 'piano', m, d: spb - i + 1.5, v: (idx === 0 ? 0.24 : 0.17) * mv * (0.92 + rnd() * 0.12), dt: (rnd() - 0.5) * 0.014 });
+    });
+    return steps;
+  }
+
+  if (isNode) { module.exports = { midi, compile, check, lengthSec, hash, planPiano: (id, bi) => planPiano({ c: compile(id) }, bi) }; return; }
 
   /* ---------- 재생 (브라우저) ---------- */
   const F = root.MergeFx;
@@ -95,6 +167,7 @@
 
   // 마디 하나의 할 일 (변주 포함) → steps[s] = [ {kind, ...} ]
   function planBar(p, bi) {
+    if (p.c.piano) return planPiano(p, bi);
     const c = p.c, song = c.song, spb = song.spb, total = c.timeline.length;
     const pos = bi % total, pass = Math.floor(bi / total);
     const bar = c.timeline[pos];
@@ -140,7 +213,8 @@
   }
   function fire(p, ev, t) {
     const I = F.inst, out = p.gain, sd = p.dur;
-    if (ev.k === 'flute') I.flute(out, t, ev.m, ev.d * sd * 0.98, 0.34 * ev.v);
+    if (ev.k === 'piano') I.piano(out, t + (ev.dt || 0), ev.m, ev.d * sd, ev.v);
+    else if (ev.k === 'flute') I.flute(out, t, ev.m, ev.d * sd * 0.98, 0.34 * ev.v);
     else if (ev.k === 'haegeum') I.haegeum(out, t, ev.m, ev.d * sd * 0.98, 0.62 * ev.v);
     else if (ev.k === 'pluck') I.pluck(out, t, ev.m, 0.4 * ev.v);
     else if (ev.k === 'grace') I.pluck(out, t - 0.06, ev.m, ev.v, 0.08, true);
@@ -148,16 +222,45 @@
     else if (ev.k === 'arp') I.pluck(out, t, ev.m, ev.v, null, true);
     else if (ev.k === 'drum') I.drum(out, t, ev.d, ev.v);
   }
-  function makePlayer(ctx, dest, id, night, t0) {
-    const c = compile(id);
+  const PKEY = 'arichae_merge_piano';
+  const LIST_GAP = 3;   // 곡 사이 (초)
+  function listStart(id) {
+    const L = MUS.lists[id];
+    let i = 0;
+    try { const v = JSON.parse(localStorage.getItem(PKEY) || 'null'); if (v && v.list === id && v.i >= 0 && v.i < L.length) i = v.i | 0; } catch (e) { /* 처음부터 */ }
+    return i;
+  }
+  function listSave(p) { try { localStorage.setItem(PKEY, JSON.stringify({ list: p.list, i: p.li })); } catch (e) { /* 무시 */ } }
+  function makePlayer(ctx, dest, id, night, t0, li) {
+    const L = MUS.lists && MUS.lists[id];
+    const i0 = L ? (li != null ? li : listStart(id)) % L.length : 0;
+    const c = compile(L ? L[i0] : id);
     if (!c) return null;
     const gain = ctx.createGain();
     gain.connect(dest);
-    return { key: id + (night ? '~n' : ''), id, c, night: !!night, gain, t: t0, step: 0, dur: stepSec(c.song, night), plan: null, endAt: 0 };
+    const pl = { key: id + (night ? '~n' : ''), id, c, night: !!night, gain, t: t0, step: 0, dur: stepSec(c.song, L ? false : night), plan: null, endAt: 0 };
+    if (L) { pl.list = id; pl.li = i0; pl.night = false; }
+    return pl;
+  }
+  // 목록 재생: 곡이 끝나면 3초 동안 살며시 줄였다가 다음 곡 머리부터
+  function nextPiece(p) {
+    const L = MUS.lists[p.list], t = p.t;
+    try {
+      p.gain.gain.cancelScheduledValues(t);
+      p.gain.gain.setValueAtTime(1, t);
+      p.gain.gain.linearRampToValueAtTime(0.0001, t + LIST_GAP - 0.2);
+      p.gain.gain.setValueAtTime(0.0001, t + LIST_GAP - 0.05);
+      p.gain.gain.linearRampToValueAtTime(1, t + LIST_GAP + 0.05);
+    } catch (e) { /* 무시 */ }
+    p.li = (p.li + 1) % L.length;
+    p.c = compile(L[p.li]); p.dur = stepSec(p.c.song, false); p.step = 0; p.plan = null;
+    p.t = t + LIST_GAP;
+    if (!p.offline) listSave(p);
   }
   function runSteps(p, until) {
-    const spb = p.c.song.spb;
     while (p.t < until && (!p.endAt || p.t < p.endAt)) {
+      if (p.list && p.step >= p.c.timeline.length * p.c.song.spb) { nextPiece(p); continue; }
+      const spb = p.c.song.spb;
       const s = p.step % spb;
       if (s === 0 || !p.plan) p.plan = planBar(p, Math.floor(p.step / spb));
       try { p.plan[s].forEach((ev) => fire(p, ev, p.t)); } catch (e) { /* 소리 실패는 무시 */ }
@@ -171,7 +274,12 @@
     if (!ac) return;
     const now = ac.currentTime;
     S.players.forEach((p) => {
-      if (p.t < now - 0.25) { const k = Math.ceil((now - p.t) / p.dur); p.t += k * p.dur; p.step += k; p.plan = null; }   // 숨었다 돌아오면 박자 그대로 이어서
+      if (p.t < now - 0.25) {
+        let k = Math.ceil((now - p.t) / p.dur);
+        if (p.list) k = Math.min(k, Math.max(0, p.c.timeline.length * p.c.song.spb - p.step));   // 곡 끝을 넘지 않게 (다음 곡은 처음부터)
+        p.t += k * p.dur; p.step += k; p.plan = null;
+        if (p.t < now - 0.25) p.t = now + 0.05;
+      }   // 숨었다 돌아오면 박자 그대로 이어서
       runSteps(p, now + 0.2);
     });
     S.players = S.players.filter((p) => {
@@ -219,7 +327,7 @@
     if (S.want) switchTo(S.want);
   }
   function play(id, opts) {
-    if (!MUS.songs[id]) return;
+    if (!MUS.songs[id] && !(MUS.lists && MUS.lists[id])) return;
     S.want = id + (opts && opts.night ? '~n' : '');
     wake();
   }
@@ -230,7 +338,8 @@
     const sr = 44100, ctx = new OAC(2, Math.floor(sr * (sec || 6)), sr);
     const g = F.buildGraph(ctx);
     g.bgm.gain.value = 0.4 * Math.pow(0.6, 1.6);
-    const p = makePlayer(ctx, g.music, id, night, 0.05);
+    const p = makePlayer(ctx, g.music, id, night, 0.05, 0);
+    p.offline = true;
     p.gain.gain.value = 1;
     runSteps(p, sec || 6);
     const t0 = performance.now();
@@ -241,5 +350,8 @@
     return { peak: +pk.toFixed(3), rms: +Math.sqrt(ss / d.length).toFixed(4), renderMs: Math.round(performance.now() - t0), nan: d.some((x) => x !== x) };
   }
 
-  root.MergeMusic = { play, wake, stop: stopAll, midi, compile, check, lengthSec, measure, get current() { return S.cur ? S.cur.key : ''; }, get want() { return S.want; } };
+  root.MergeMusic = { play, wake, stop: stopAll, midi, compile, check, lengthSec, measure,
+    get current() { return S.cur ? S.cur.key : ''; }, get want() { return S.want; },
+    _plan: (id, bi) => planPiano({ c: compile(id) }, bi),   // 시험·미리 듣기용
+    get piece() { const p = S.cur; return p && p.list ? { i: p.li, id: p.c.id, title: p.c.song.title, bar: Math.floor(p.step / p.c.song.spb), bars: p.c.timeline.length } : null; } };
 })(typeof window !== 'undefined' ? window : globalThis);
