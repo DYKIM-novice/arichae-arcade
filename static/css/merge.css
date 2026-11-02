@@ -890,3 +890,50 @@ body.big-text #foot .info-box.idle .info-txt p { font-size: 14px; }
 .gd-acts { display: flex; gap: 8px; margin-top: 8px; }
 .gd-acts .btn { flex: 1; margin: 0; min-height: 40px; font-size: 16px; }
 @media (max-width: 380px) { .gd-grid .gd-step { width: 40px; height: 40px; } .gd-grid { grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); } }
+
+/* ---------- 판 재미 요소 (2026-11-02): 충전 링 · 거품 · 그물 · 상자 · 부탁 종류 ---------- */
+/* 충전 링: 남은 횟수만큼 체인 색 · 쉬는 동안은 회색 시계 링이 다시 차올라요 (fx 요소 · 터치 막지 않음) */
+.it.gen .gring { position: absolute; inset: -3px; border-radius: 13px; pointer-events: none;
+  background: conic-gradient(var(--cc) calc(var(--p) * 1%), rgba(160,140,120,.18) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3.5px)); }
+.it.gen .gring.rest { background: conic-gradient(#9aa7b4 calc(var(--p) * 1%), rgba(160,140,120,.18) 0); }
+.it.gen.resting::before { content: 'z'; position: absolute; right: 4px; top: 12px; font-size: 11px; color: #7d8a96; animation: zz 1.8s infinite; pointer-events: none; z-index: 2; }
+@keyframes zz { 0% { opacity: 0; transform: translateY(4px); } 50% { opacity: 1; } 100% { opacity: 0; transform: translate(4px, -8px); } }
+/* 거품 속 물건 */
+.it.bub img { width: 70%; height: 70%; opacity: .9; }
+.it.bub .bub-glass { position: absolute; inset: 2px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle at 32% 28%, rgba(255,255,255,.95) 0 9%, rgba(255,255,255,0) 18%), radial-gradient(circle, rgba(190,235,255,.12) 55%, rgba(150,215,245,.55) 72%, rgba(120,195,235,.75) 76%, rgba(255,255,255,0) 79%);
+  animation: bubB 2.2s ease-in-out infinite; }
+@keyframes bubB { 50% { transform: scale(1.05, .97); } }
+.it.bub .bub-t { position: absolute; left: 1px; top: 1px; min-width: 18px; height: 15px; border-radius: 8px; background: #6fb6dc; color: #fff; font-size: 10px; line-height: 15px; font-style: normal; text-align: center; padding: 0 3px; pointer-events: none; }
+.it.bub:not(.arc):not(.pop):not(.mpop):not(.born):not(.wig1) { animation: bubFloat 2.6s ease-in-out infinite; }
+@keyframes bubFloat { 50% { transform: translateY(-2px); } }
+/* 그물에 걸린 물건 */
+.it.netted img { filter: saturate(.75) brightness(.95) drop-shadow(0 2px 1px rgba(90,50,30,.18)); }
+.net-ov { position: absolute; inset: 2px; border-radius: 10px; pointer-events: none; border: 2px solid rgba(150,120,80,.6);
+  background: repeating-linear-gradient(45deg, transparent 0 9px, rgba(130,100,65,.45) 9px 10.2px), repeating-linear-gradient(-45deg, transparent 0 9px, rgba(130,100,65,.45) 9px 10.2px); }
+.info-ic.net-ic { position: relative; }
+/* 상자 */
+.it.box .boxsvg { width: 82%; height: 82%; filter: drop-shadow(0 2px 1px rgba(90,50,30,.2)); pointer-events: none; }
+.it.box .box-t { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); font-style: normal; font-size: 10px; line-height: 14px; padding: 0 4px; border-radius: 7px; background: rgba(90,60,40,.78); color: #fff; white-space: nowrap; pointer-events: none; }
+.it.box.ready { background: radial-gradient(circle, rgba(255,238,170,.8), transparent 70%); }
+.it.box.ready .box-t { background: var(--green); }
+@keyframes boxReady { 30% { transform: rotate(-6deg) scale(1.05); } 60% { transform: rotate(6deg) scale(1.05); } 80% { transform: none; } }
+.info-ic .boxsvg { width: 100%; height: 100%; }
+.bslot .boxsvg { width: 80%; height: 80%; }
+.oc-box .boxsvg { width: 17px; height: 17px; }
+/* 부탁 종류 */
+.oc-tag.rush { background: #ef7d3a; white-space: nowrap; }
+.oc-tag.rush b { font-weight: 400; }
+.oc-tag.mix { background: #6c7fb8; max-width: calc(100% - 34px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oc-tag.gift { background: #e46f8c; }
+.oc.rush { border-color: #ffd0a8; }
+.oc-rew .x2 { color: #d9601e; }
+.oc-key { font-size: 12px; }
+/* 옷장 묶음 */
+.sh-cat { margin: 8px 2px 4px; font-size: 14px; font-weight: 400; color: var(--ink); }
+.sh-cat small { font-size: 11px; color: var(--ink2); }
+.sh-wears { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; }
+@media (prefers-reduced-motion: reduce) { .it.bub, .it.bub .bub-glass, .it.box.ready, .it.gen.resting::before { animation: none; } }
+.it.box.ready:not(.arc):not(.pop):not(.born):not(.wig1) { animation: boxReady 1.1s ease-in-out infinite; }
+body.tw-decoing #toast { bottom: var(--tray-top, 240px); }

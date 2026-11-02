@@ -289,8 +289,41 @@
       bonus: [0, 0, 0, 0, 0.06, 0.12], taps: [0, 0, 0, 0, 2, 4], rest: [1, 1, 1, 1, 0.85, 0.7] },
     firstEasyOrders: 2,        // 새 판 첫 부탁 2장은 1단계 물건 (첫 '고치기'까지 1~2분)
     // 자동 합치기 (merge_town.md §G · 2026-11 값 내림): 값 = 합치는 횟수 × 1 (최소 3) × 지역 배수(최대 ×2), 최대 20 · 하루 2번은 무료
-    autoMerge: { perMerge: 1, min: 3, multMax: 2, cap: 20, freeDay: 2 }
+    autoMerge: { perMerge: 1, min: 3, multMax: 2, cap: 20, freeDay: 2 },
+    // 판 재미 요소 (merge_town.md §B 7·8·9·10·14 '개편 직후')
+    //  bubble: 3단계 이상 합치기에서 가끔 같은 물건이 거품 속에 하나 더 → 하루 3번 무료 · 소라별 · 동전으로 터뜨려 갖거나, 시간이 지나면 엽전으로
+    //          동전 값 = 그 물건 판매값 × 2 (팔기보다 조금 비싸게 · 3단계 8 · 4단계 16) · 소라별 1~3
+    //  net: 부탁을 건네면 가끔 판 위쪽에 '그물에 걸린 물건' (지금 지역 부탁 단계) → 바로 옆 칸에서 합치거나 같은 물건을 겹치면 풀려요 (한 번에 2개까지)
+    //  box: 선물 상자(5분) · 할머니의 보물 궤짝(20분) → 시간이 되면 무료로 · 열쇠 1개나 소라별로 바로 열어요
+    //  orders: 묶음 부탁(MIXES · 두 체인 섞기 · 가장 높은 단계는 하나 낮게) · 반짝 손님(30분 · 동전 2배 + 열쇠 1 · 시간이 지나면 벌칙 없이 다른 부탁으로) · 선물 상자 부탁
+    fun: {
+      bubble: { chance: 0.08, minTier: 3, ms: 90000, freeDay: 3, coinMul: 2, gems: [1, 1, 1, 1, 2, 2, 3, 3, 3] },
+      net: { chance: 0.25, max: 2, after: 2, rows: 3 },
+      box: {
+        gift: { name: '선물 상자', ms: 5 * 60000, items: [2, 3], tiers: [1, 3], coin: 0.5, gems: 2 },
+        chest: { name: '할머니의 보물 궤짝', ms: 20 * 60000, items: [3, 4], tiers: [2, 4], wild: 0.35, ss: 0.5, gems: 4 }
+      },
+      orders: { mix: 0.22, rush: 0.12, rushMs: 30 * 60000, rushMult: 2, rushKeys: 1, gift: 0.12, after: 3 },
+      questKeys: 1                 // 오늘의 부탁을 다 하면 열쇠 1개 (보자기와 함께)
+    }
   };
+
+  // 묶음 부탁 (두 체인을 섞은 부탁 · 부탁하는 사람의 이야기에 맞게) · 그 체인이 다 열려 있고 지금 지역 부탁 체인이면 나와요
+  const MIXES = [
+    { who: 'juni', title: '할머니께 드릴 선물', chains: ['a', 'd'] },
+    { who: 'juni', title: '바닷가 소풍 도시락', chains: ['a', 'b'] },
+    { who: 'juni', title: '보물 상자 꾸미기', chains: ['a', 'g'] },
+    { who: 'mina', title: '떡집 다과 한 상', chains: ['b', 'c'] },
+    { who: 'mina', title: '꽃떡 잔칫상', chains: ['b', 'd'] },
+    { who: 'kkotnim', title: '정원 화분 손질', chains: ['d', 'f'] },
+    { who: 'kkotnim', title: '꽃 백설기 차례', chains: ['d', 'b'] },
+    { who: 'dochi', title: '바닷마을 밥상', chains: ['e', 'f'] },
+    { who: 'dochi', title: '고깃배 돛 손질', chains: ['e', 'g'] },
+    { who: 'kang', title: '등대 밤샘 준비', chains: ['h', 'c'] },
+    { who: 'kang', title: '등불 받침 고르기', chains: ['h', 'f'] },
+    { who: 'rua', title: '그림 재료 모으기', chains: ['g', 'd'] },
+    { who: 'rua', title: '색실 등 만들기', chains: ['g', 'h'] }
+  ];
 
   // 상점 (merge_town.md §F · 판 화면 [상점] · 가방 속 소라별 가게는 없앴어요 → 소라별은 여기서 무지개 소라·보자기·자동 합치기 1분에)
   //  mult: 지금 지역(1~6)의 가격 배수 m · mult:true 인 것만 × m · 체인 물건 낱개·가방 칸은 고정값
@@ -321,14 +354,15 @@
       recharge: { tab: 'help', name: '발생기 바로 충전', kind: 'recharge', coins: 10, mult: true, sub: '쉬고 있는 발생기 하나' },
       hands: { tab: 'help', name: '바쁜 손 10분', kind: 'hands', coins: 40, mult: true, sub: '10분 동안 발생기 톡에 기운 0' },
       skipnow: { tab: 'help', name: '다른 부탁 바로', kind: 'skip', coins: 5, mult: true, sub: '[다른 부탁] 기다림 없애기' },
-      bag: { tab: 'help', name: '가방 한 칸', kind: 'bag', sub: '최대 20칸' }
+      bag: { tab: 'help', name: '가방 한 칸', kind: 'bag', sub: '최대 20칸' },
+      key: { tab: 'help', name: '상자 열쇠', kind: 'key', coins: 25, mult: true, multMax: 3, gems: 3, sub: '선물 상자·보물 궤짝을 바로 열어요' }
     },
     // 꾸미기 탭: 그림이 들어오면 열려요 (지금은 '곧 나와요')
     deco: [
       { name: '건물 다른 모양', ic: '🏠', note: '각 30×m' },
       { name: '마을 장식', ic: '🌲', note: '20×m' },
-      { name: '하윤 옷', ic: '👘', note: '300~500' },
-      { name: '몽돌 소품', ic: '🕶️', note: '120' }
+      { name: '하윤 옷', ic: '👘', note: '80~300' },
+      { name: '몽돌 소품', ic: '🕶️', note: '90~120' }
     ],
     dealPool: ['wild', 'bj1', 'bj2', 'en2', 'en3', 'auto1m', 'hands'],
     dealOff: [0.3, 0.4, 0.5],
@@ -587,18 +621,53 @@
     tapCoins: [1, 3]                                       // 지은 건물 처음 톡 (하루 한 번씩) 엽전
   };
 
-  // 하윤 옷 (merge_town.md §H · 옷 한 벌 = 전신 그림 1장 · 얼굴 칸 = 그 그림 위쪽(face)) · 기본 옷은 기존 얼굴 그림(기쁨·놀람)
-  //  옷은 철과 상관없이 일 년 내내 상점에 있어요 (season 을 주면 그 달에만 · 지금은 쓰지 않아요)
+  // 하윤 옷장 (merge_town.md §H · art_tests/merge/outfits → tools/merge_art.py outfits)
+  //  art = 걷는 하윤 전신 (22벌 모두 같은 자르기 → 갈아입어도 몸 크기·발밑 그대로) · face = 대사창·말하는 칸·카드 얼굴 (가슴 위 초상)
+  //  cat = 상점 꾸미기 탭 묶음 (OUTFIT_CATS 차례) · 철과 상관없이 일 년 내내 (season 을 주면 그 달에만 · 지금은 쓰지 않아요)
+  //  값 (2026-11-02): 동전은 1지역 부탁 10~20번 ~ 중반 부탁 5~8번 · 소라별(처음 발견마다 1개)로도 살 수 있게 (동전이 적은 초반에도 한 벌)
+  const OUTFIT_CATS = [
+    { id: 'base', name: '기본 옷' },
+    { id: 'hanbok', name: '한복', note: '명절·단오·꽃놀이' },
+    { id: 'daily', name: '요즘 옷', note: '편한 옷·잠옷·비 오는 날' },
+    { id: 'chic', name: '세련된 옷', note: '도시 나들이·저녁 모임' },
+    { id: 'vacance', name: '바캉스', note: '바닷가 휴가 차림' },
+    { id: 'swim', name: '수영복', note: '반짝 해변에서' }
+  ];
   const OUTFITS = {
-    base: { name: '연두 저고리 + 앞치마', art: 'h_hayun_base', face: null },
-    trench: { name: '트렌치코트 + 베레모', art: 'h_outfit_trench', face: 'h_trench_face', coins: 500, gems: 25, sub: '세련된 옷' },
-    vacation: { name: '밀짚모자 + 꽃무늬 휴양 원피스', art: 'h_outfit_vacation', face: 'h_vacation_face', coins: 400, gems: 20, sub: '여름 바캉스 옷 · 일 년 내내' }
+    base: { name: '연두 저고리 + 앞치마', art: 'h_outfit_base', face: null, cat: 'base' },
+    hanbok_flower: { name: '꽃 화관 분홍 한복', art: 'h_outfit_hanbok_flower', face: 'h_hanbok_flower_bust', cat: 'hanbok', coins: 220, gems: 11 },
+    hanbok_dano: { name: '단오 쪽빛 한복 + 댕기', art: 'h_outfit_hanbok_dano', face: 'h_hanbok_dano_bust', cat: 'hanbok', coins: 220, gems: 11 },
+    hanbok_seolbim: { name: '색동 설빔 + 털 댕기', art: 'h_outfit_hanbok_seolbim', face: 'h_hanbok_seolbim_bust', cat: 'hanbok', coins: 240, gems: 12 },
+    pajamas: { name: '별무늬 잠옷 + 안대 머리띠', art: 'h_outfit_pajamas', face: 'h_pajamas_bust', cat: 'daily', coins: 80, gems: 4 },
+    hoodie: { name: '후드티 + 청바지', art: 'h_outfit_hoodie', face: 'h_hoodie_bust', cat: 'daily', coins: 110, gems: 6 },
+    raincoat: { name: '노란 비옷 + 장화', art: 'h_outfit_raincoat', face: 'h_raincoat_bust', cat: 'daily', coins: 110, gems: 6 },
+    summer_dress: { name: '하늘 꽃무늬 여름 원피스', art: 'h_outfit_summer_dress', face: 'h_summer_dress_bust', cat: 'daily', coins: 130, gems: 7 },
+    knit: { name: '포근한 니트 + 목도리', art: 'h_outfit_knit', face: 'h_knit_bust', cat: 'daily', coins: 130, gems: 7 },
+    cafe: { name: '카페 앞치마 + 셔츠', art: 'h_outfit_cafe', face: 'h_cafe_bust', cat: 'daily', coins: 130, gems: 7 },
+    sailor: { name: '세일러 옷 + 모자', art: 'h_outfit_sailor', face: 'h_sailor_bust', cat: 'daily', coins: 150, gems: 8 },
+    party: { name: '파스텔 튤 파티 드레스', art: 'h_outfit_party', face: 'h_party_bust', cat: 'daily', coins: 180, gems: 9 },
+    linen: { name: '미니멀 리넨 휴양 세트', art: 'h_outfit_linen', face: 'h_linen_bust', cat: 'chic', coins: 240, gems: 12 },
+    city: { name: '블라우스 + 롱스커트', art: 'h_outfit_city', face: 'h_city_bust', cat: 'chic', coins: 240, gems: 12 },
+    trench: { name: '트렌치코트 + 베레모', art: 'h_outfit_trench', face: 'h_trench_bust', cat: 'chic', coins: 260, gems: 13 },
+    evening: { name: '진주 장식 저녁 드레스', art: 'h_outfit_evening', face: 'h_evening_bust', cat: 'chic', coins: 300, gems: 15 },
+    vacation: { name: '밀짚모자 + 꽃무늬 휴양 원피스', art: 'h_outfit_vacation', face: 'h_vacation_bust', cat: 'vacance', coins: 160, gems: 8 },
+    beach: { name: '튜브 + 선캡 해변 차림', art: 'h_outfit_beach', face: 'h_beach_bust', cat: 'vacance', coins: 160, gems: 8 },
+    rashguard: { name: '래시가드 + 수영 반바지', art: 'h_outfit_rashguard', face: 'h_rashguard_bust', cat: 'swim', coins: 150, gems: 8 },
+    swim_frill: { name: '프릴 원피스 수영복', art: 'h_outfit_swim_frill', face: 'h_swim_frill_bust', cat: 'swim', coins: 160, gems: 8 },
+    swim_polka: { name: '물방울 수영복 + 챙 넓은 모자', art: 'h_outfit_swim_polka', face: 'h_swim_polka_bust', cat: 'swim', coins: 160, gems: 8 },
+    swim_chic: { name: '단정한 수영복 + 비치는 덧옷', art: 'h_outfit_swim_chic', face: 'h_swim_chic_bust', cat: 'swim', coins: 200, gems: 10 }
   };
-  // 몽돌 소품: 걷는 몽돌 그림(w_mongdol) 위에 겹쳐요 · at = [가운데 x, 가운데 y, 폭] (몽돌 그림 비율 · 왼쪽 보는 그림 기준)
+  // 몽돌 소품: 걷는 몽돌 그림(w_mongdol) 위에 겹쳐요 · at = [가운데 x, 가운데 y, 폭] (몽돌 그림 비율 · 왼쪽 보는 그림 기준 · 머리 꼭대기 ≈ y 0.02, 두 눈 가운데 ≈ x 0.39)
   const MONG_ACC = {
-    sunglasses: { name: '작은 선글라스', art: 'm_sunglasses', coins: 120, at: [0.25, 0.47, 0.34] },
-    tube: { name: '수영 튜브', art: 'm_tube', coins: 120, at: [0.58, 0.8, 0.62] },
-    hat: { name: '몽돌 모자', deco: 'mongdol_hat', at: [0.24, 0.2, 0.26] }     // 출석 7일 선물 (그림 없이 코드로 그려요)
+    sunglasses: { name: '작은 선글라스', art: 'm_sunglasses', coins: 120, at: [0.385, 0.35, 0.42] },
+    tube: { name: '수영 튜브', art: 'm_tube', coins: 120, at: [0.55, 0.8, 0.62] },
+    sailor_hat: { name: '세일러 모자', art: 'm_sailor_hat', coins: 90, at: [0.4, 0.0, 0.36] },
+    flower_crown: { name: '꽃 화관', art: 'm_flower_crown', coins: 90, at: [0.4, 0.02, 0.42] },
+    knit_hat: { name: '니트 모자', art: 'm_knit_hat', coins: 90, at: [0.4, 0.04, 0.38] },
+    rain_hat: { name: '비옷 모자', art: 'm_rain_hat', coins: 90, at: [0.4, 0.05, 0.44] },
+    party_hat: { name: '파티 고깔', art: 'm_party_hat', coins: 90, at: [0.42, -0.1, 0.22] },
+    scarf: { name: '분홍 목도리', art: 'm_scarf', coins: 90, at: [0.4, 0.62, 0.3] },
+    hat: { name: '몽돌 모자', deco: 'mongdol_hat', at: [0.4, 0.04, 0.26] }     // 출석 7일 선물 (그림 없이 코드로 그려요)
   };
 
   // 마을 사람 선물·우정 (merge_town.md §I) · loves = 최애 물건 2개 · 선물 하루 한 사람당 3번
@@ -874,7 +943,7 @@
     '판이 복잡하면 오른쪽 아래 🔨 자동 합치기! 부탁에 쓸 물건은 남겨 둬요.'
   ];
 
-  const API = { CHAINS, GENS, VILLAGERS, AREAS, STORY_ORDERS, LETTERS, SECRETS, DAILY, EVENTS, EVENT_REF_MONDAY, EVENT_FROM_AREA, BOARD, BAL, SHOP, MUSIC, START, STORY, TIPS, TOWN, OUTFITS, MONG_ACC, FRIEND, SAVE_KEY: 'arichae_merge_v1', SYNC_KEY: 'arichae_merge_sync', VERSION: 5 };
+  const API = { CHAINS, GENS, VILLAGERS, AREAS, STORY_ORDERS, LETTERS, SECRETS, DAILY, EVENTS, EVENT_REF_MONDAY, EVENT_FROM_AREA, BOARD, BAL, SHOP, MUSIC, START, STORY, TIPS, TOWN, OUTFITS, OUTFIT_CATS, MONG_ACC, FRIEND, MIXES, SAVE_KEY: 'arichae_merge_v1', SYNC_KEY: 'arichae_merge_sync', VERSION: 6 };
   if (typeof module === 'object' && module.exports) module.exports = API;
   else root.MergeData = API;
 })(typeof window !== 'undefined' ? window : globalThis);

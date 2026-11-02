@@ -448,14 +448,14 @@ test('판이 꽉 차 있으면 새 발생기는 선물함으로 · 6지역(등�
   st.board = st.board.map(() => ({ k: 'item', c: 'a', t: 1 }));
   st.stars = 999;
   D.AREAS[0].tasks.forEach((t) => C.doTask(st, t.id, T0, seeded(1)));
-  assert.deepStrictEqual(st.gifts, [{ k: 'gen', g: 'gen_e' }]);
+  assert.deepStrictEqual(st.gifts[0], { k: 'gen', g: 'gen_e' }, '발생기가 먼저'); assert.strictEqual(st.gifts[1].k, 'box', '지역 완성 보물 궤짝도 선물함에');
   D.AREAS[1].tasks.forEach((t) => C.doTask(st, t.id, T0, seeded(1)));
-  assert.strictEqual(st.gifts.length, 3); assert.ok(st.unlocked.indexOf('c') >= 0 && st.unlocked.indexOf('f') >= 0);
+  assert.strictEqual(st.gifts.filter((x) => x.k === 'gen').length, 3); assert.strictEqual(st.gifts.filter((x) => x.k === 'box').length, 2); assert.ok(st.unlocked.indexOf('c') >= 0 && st.unlocked.indexOf('f') >= 0);
   D.AREAS[2].tasks.forEach((t) => C.doTask(st, t.id, T0, seeded(1)));
   assert.strictEqual(st.area, 3); assert.strictEqual(st.stars, 999 - 83);
-  assert.ok(st.unlocked.indexOf('g') >= 0, '4지역: 체인 G'); assert.strictEqual(st.gifts[3].g, 'gen_g');
+  assert.ok(st.unlocked.indexOf('g') >= 0, '4지역: 체인 G'); assert.strictEqual(st.gifts.filter((x) => x.k === 'gen')[3].g, 'gen_g');
   D.AREAS[3].tasks.forEach((t) => C.doTask(st, t.id, T0, seeded(1)));
-  assert.ok(st.unlocked.indexOf('h') >= 0, '5지역: 체인 H'); assert.strictEqual(st.gifts[4].g, 'gen_h');
+  assert.ok(st.unlocked.indexOf('h') >= 0, '5지역: 체인 H'); assert.strictEqual(st.gifts.filter((x) => x.k === 'gen')[4].g, 'gen_h');
   D.AREAS[4].tasks.forEach((t) => C.doTask(st, t.id, T0, seeded(1)));
   let last;
   D.AREAS[5].tasks.forEach((t) => { last = C.doTask(st, t.id, T0, seeded(1)); assert.ok(last.ok, t.id); });
@@ -1289,11 +1289,11 @@ test('짓기 → 모양 고르기: 하나는 무료 · 나머지는 동전(30 ×
   assert.strictEqual(C.setLook(st, 'r1_sign', 1, T0).reason, 'gone', '장식은 모양이 하나');
 });
 test('하윤 옷 사기·입기 (동전·소라별 · 여름 옷도 일 년 내내 · 사면 바로 입지 않고 물어봐요 · 사기/입기/입는 중) · 몽돌 소품 · 마을 장식 사서 놓기 · 지은 건물 톡 엽전(하루 한 번)', () => {
-  const st = emptyState(seeded(3)); st.coins = 620; st.gems = 30;
+  const st = emptyState(seeded(3)); st.coins = D.OUTFITS.trench.coins + D.MONG_ACC.sunglasses.coins; st.gems = D.OUTFITS.vacation.gems + 10;
   const nov = new Date(2026, 10, 1).getTime(), jul = new Date(2026, 6, 1).getTime();
   assert.strictEqual(C.wearOutfit(st, 'trench', nov).reason, 'locked');
   assert.deepStrictEqual(['base', 'trench', 'vacation'].map((k) => C.outfitState(st, k, nov)), ['worn', 'buy', 'buy'], '여름 옷도 11월에 사기');
-  assert.ok(C.buyOutfit(st, 'trench', 'coins', nov).ok); assert.strictEqual(st.coins, 120); assert.strictEqual(st.outfit, 'base', '사기만 · 입을지는 물어봐요');
+  assert.ok(C.buyOutfit(st, 'trench', 'coins', nov).ok); assert.strictEqual(st.coins, D.MONG_ACC.sunglasses.coins); assert.strictEqual(st.outfit, 'base', '사기만 · 입을지는 물어봐요');
   assert.deepStrictEqual(['base', 'trench'].map((k) => C.outfitState(st, k, nov)), ['worn', 'wear'], '산 옷은 입기 · 입는 중은 입은 한 벌만');
   assert.ok(C.wearOutfit(st, 'trench', nov).ok);
   assert.deepStrictEqual(['base', 'trench'].map((k) => C.outfitState(st, k, nov)), ['wear', 'worn']);
@@ -1452,6 +1452,188 @@ test('되살리기: 지금 기록은 이 폰 보관함에 · 고른 기록이 �
   assert.strictEqual(bad.ok, false); assert.strictEqual(S.backups(ad).length, 1, '못 읽으면 보관도 안 해요');
   const nv = S.restoreServerBackup(ad, cur, JSON.stringify({ v: D.VERSION + 1, board: [] }), T0, seeded(1));
   assert.strictEqual(nv.ok, false); assert.strictEqual(nv.newer, true);
+});
+console.log('판 재미 · 옷장 22벌 (2026-11-02)');
+test('옷장: 22벌 · 묶음 5개(+기본) · 일 년 내내 · 전신·초상 그림 · 값은 초반 수입에 맞게 (가장 싼 옷 ≤ 100 · 소라별로도)', () => {
+  const ks = Object.keys(D.OUTFITS);
+  assert.strictEqual(ks.length, 22);
+  const cats = D.OUTFIT_CATS.map((c) => c.id);
+  assert.deepStrictEqual(D.OUTFIT_CATS.map((c) => c.name), ['기본 옷', '한복', '요즘 옷', '세련된 옷', '바캉스', '수영복']);
+  const fs = require('fs');
+  const town = path.join(__dirname, '..', 'static', 'img', 'merge', 'town');
+  ks.forEach((k) => {
+    const o = D.OUTFITS[k];
+    assert.ok(cats.indexOf(o.cat) >= 0, k);
+    assert.ok(!o.season, k + ' 일 년 내내');
+    assert.ok(fs.existsSync(path.join(town, o.art + '.webp')), o.art);
+    if (k !== 'base') {
+      assert.ok(o.coins > 0 && o.coins <= 300 && o.gems > 0 && o.gems <= 15, k + ' 값');
+      assert.ok(fs.existsSync(path.join(town, o.face + '.webp')), o.face);
+      assert.strictEqual(C.outfitState(C.newState(T0, seeded(1)), k, new Date(2026, 0, 5).getTime()), 'buy', k + ' 1월에도');
+    }
+  });
+  ['hanbok', 'daily', 'chic', 'vacance', 'swim'].forEach((c) => assert.ok(ks.some((k) => D.OUTFITS[k].cat === c), c));
+  assert.ok(Math.min(...ks.filter((k) => k !== 'base').map((k) => D.OUTFITS[k].coins)) <= 100, '동전 적은 초반에도 한 벌');
+  // 몽돌 소품 8개 그림
+  Object.keys(D.MONG_ACC).filter((k) => D.MONG_ACC[k].art).forEach((k) => assert.ok(fs.existsSync(path.join(town, D.MONG_ACC[k].art + '.webp')), k));
+  assert.strictEqual(Object.keys(D.MONG_ACC).filter((k) => D.MONG_ACC[k].art).length, 8);
+  // 사기 → 입기 흐름 그대로 (사기만 · 입기는 따로)
+  const st = emptyState(seeded(3)); st.coins = 80;
+  assert.strictEqual(C.buyOutfit(st, 'hoodie', 'coins', T0).reason, 'coins');
+  assert.ok(C.buyOutfit(st, 'pajamas', 'coins', T0).ok); assert.strictEqual(st.coins, 0); assert.strictEqual(st.outfit, 'base');
+  assert.strictEqual(C.outfitState(st, 'pajamas', T0), 'wear');
+  assert.ok(C.wearOutfit(st, 'pajamas', T0).ok); assert.strictEqual(C.outfitState(st, 'pajamas', T0), 'worn');
+  // 옛 저장(옷 이름이 없어진 것)은 기본으로
+  const old = JSON.parse(C.serialize(st)); old.outfit = 'nosuch'; old.owned.outfits.push('nosuch');
+  const back = C.deserialize(JSON.stringify(old), T0, seeded(1));
+  assert.strictEqual(back.outfit, 'base'); assert.deepStrictEqual(back.owned.outfits, ['base', 'pajamas']);
+});
+test('거품: 3단계 이상 합치기에서 가끔 · 못 옮김·못 팔기·가방 안 됨 · 하루 3번 무료 · 소라별·동전 · 시간이 지나면 엽전', () => {
+  const st = emptyState(seeded(1));
+  st.board[0] = item('a', 2); st.board[1] = item('a', 2);
+  const r = C.move(st, 0, 1, T0);
+  assert.strictEqual(C.maybeBubble(st, r, T0, () => 0.99), null, '운이 없으면 없음');
+  const b = C.maybeBubble(st, r, T0, () => 0);
+  assert.ok(b && st.board[b.at].k === 'bubble'); assert.deepStrictEqual([st.board[b.at].c, st.board[b.at].t], ['a', 3]);
+  assert.strictEqual(C.maybeBubble(st, r, T0, () => 0), null, '한 번에 하나만');
+  const low = emptyState(); low.board[0] = item('a', 1); low.board[1] = item('a', 1);
+  assert.strictEqual(C.maybeBubble(low, C.move(low, 0, 1, T0), T0, () => 0), null, '2단계 결과는 거품 없음');
+  const i = b.at;
+  assert.strictEqual(C.move(st, i, 30, T0).kind, 'none', '거품은 못 옮겨요');
+  st.board[40] = item('b', 1);
+  assert.strictEqual(C.move(st, 40, i, T0).reason, 'bubble', '거품 위로 바꾸기 안 됨');
+  assert.strictEqual(C.sell(st, i, T0).ok, false); assert.strictEqual(C.toBag(st, i, T0).ok, false);
+  assert.ok(!C.orderStatus(st, { need: [{ c: 'a', t: 3 }] }).cells.includes(i), '부탁에 안 써요');
+  const bi = C.bubbleInfo(st, st.board[i], T0);
+  assert.strictEqual(bi.free, 3); assert.strictEqual(bi.coins, 8); assert.strictEqual(bi.gems, 1);
+  st.coins = 5; assert.strictEqual(C.popBubble(st, i, 'coins', T0).reason, 'coins', '동전 모자람');
+  assert.ok(C.popBubble(st, i, 'free', T0).ok); assert.deepStrictEqual(st.board[i], item('a', 3)); assert.strictEqual(st.coins, 5);
+  // 하루 무료 3번
+  for (let k = 0; k < 2; k++) { st.board[i] = { k: 'bubble', c: 'a', t: 3, until: T0 + 9e4 }; assert.ok(C.popBubble(st, i, 'free', T0).ok); }
+  st.board[i] = { k: 'bubble', c: 'a', t: 3, until: T0 + 9e4 };
+  assert.strictEqual(C.popBubble(st, i, 'free', T0).reason, 'limit');
+  assert.ok(C.popBubble(st, i, 'free', T0 + 864e5).ok, '다음 날 다시');
+  st.gems = 1; st.board[i] = { k: 'bubble', c: 'a', t: 3, until: T0 + 9e4 };
+  assert.ok(C.popBubble(st, i, 'gems', T0 + 864e5).ok); assert.strictEqual(st.gems, 0);
+  // 시간이 다 되면 엽전
+  st.board[i] = { k: 'bubble', c: 'a', t: 6, until: T0 + 1000 };
+  assert.strictEqual(C.funTick(st, T0, seeded(1)).coins.length, 0);
+  const ft = C.funTick(st, T0 + 1000, seeded(1));
+  assert.strictEqual(ft.coins.length, 1); assert.deepStrictEqual(st.board[i], item('cn', 2), '높은 단계는 엽전 꾸러미');
+  // 저장 왕복 (거품 그대로)
+  st.board[i] = { k: 'bubble', c: 'a', t: 3, until: T0 + 9e4 }; st.bag[0] = { k: 'bubble', c: 'a', t: 3, until: 1 };
+  const back = C.deserialize(C.serialize(st), T0, seeded(1));
+  assert.strictEqual(back.board[i].k, 'bubble'); assert.strictEqual(back.bag[0], null, '가방에 거품은 없어요');
+});
+test('그물: 부탁을 건네면 가끔 판 위쪽에 · 바로 옆에서 합치면 풀림 · 같은 물건을 겹치면 다음 단계로 풀림 · 2개까지', () => {
+  const st = emptyState(seeded(4)); st.stats.delivered = 5;
+  const n1 = C.maybeNet(st, T0, () => 0);
+  assert.ok(n1 && n1.at < 3 * 7, '위쪽 3줄'); assert.strictEqual(st.board[n1.at].k, 'net');
+  const t = st.board[n1.at].t; assert.ok(t >= 2 && t <= 4, '1지역 부탁 단계');
+  assert.ok(C.maybeNet(st, T0, () => 0)); assert.strictEqual(C.maybeNet(st, T0, () => 0), null, '2개까지');
+  assert.strictEqual(C.maybeNet(emptyState(), T0, () => 0), null, '처음 몇 번은 없음');
+  // 바로 옆에서 합치기
+  const s2 = emptyState(); s2.board[8] = { k: 'net', c: 'b', t: 4 }; s2.board[9] = item('a', 1); s2.board[20] = item('a', 1);
+  assert.strictEqual(C.move(s2, 8, 30, T0).kind, 'none', '그물은 못 옮겨요');
+  assert.strictEqual(C.orderStatus(s2, { need: [{ c: 'b', t: 4 }] }).ready, false, '걸린 물건은 부탁에 못 써요');
+  assert.strictEqual(C.sell(s2, 8, T0).ok, false);
+  const m = C.move(s2, 20, 9, T0);
+  assert.strictEqual(m.kind, 'merge'); assert.deepStrictEqual(m.freed.map((f) => f.i), [8]); assert.deepStrictEqual(s2.board[8], item('b', 4));
+  // 같은 물건 겹치기
+  const s3 = emptyState(); s3.board[3] = { k: 'net', c: 'd', t: 3 }; s3.board[40] = item('d', 3); s3.board[41] = item('d', 2);
+  assert.strictEqual(C.move(s3, 41, 3, T0).reason, 'net', '다른 물건은 안 돼요');
+  const r = C.move(s3, 40, 3, T0);
+  assert.strictEqual(r.kind, 'merge'); assert.ok(r.netMerge); assert.deepStrictEqual(s3.board[3], item('d', 4)); assert.strictEqual(s3.board[40], null);
+  // 건네기에서 그물 (운 좋을 때)
+  const s4 = emptyState(seeded(2)); s4.stats.delivered = 5; s4.board[60] = item('a', 2);
+  s4.orders = [{ id: 'q', who: 'juni', need: [{ c: 'a', t: 2 }], coins: 3, stars: 1, at: T0 }];
+  const d = C.deliver(s4, 'q', T0, () => 0.01);
+  assert.ok(d.ok && d.net && s4.board[d.net.at].k === 'net');
+  const back = C.deserialize(C.serialize(s4), T0, seeded(1)); assert.strictEqual(back.board[d.net.at].k, 'net');
+});
+test('상자: 선물 상자 5분·보물 궤짝 20분 · 시간이 되면 무료 · 열쇠·소라별로 바로 · 옮기기 가능·팔기 안 됨 · 지역 완성·오늘의 부탁·반짝 손님·상점', () => {
+  const st = emptyState(seeded(5)); st.coins = 0; st.gems = 0;
+  st.board[10] = C.makeBox('gift', T0);
+  assert.strictEqual(C.itemName(st.board[10]), '선물 상자');
+  let bi = C.boxInfo(st, st.board[10], T0); assert.strictEqual(bi.ready, false); assert.strictEqual(bi.leftMs, 5 * 60000);
+  assert.strictEqual(C.openBox(st, 10, 'time', T0, seeded(1)).reason, 'wait');
+  assert.strictEqual(C.openBox(st, 10, 'key', T0, seeded(1)).reason, 'keys');
+  assert.strictEqual(C.openBox(st, 10, 'gems', T0, seeded(1)).reason, 'gems');
+  assert.strictEqual(C.sell(st, 10, T0).ok, false, '상자는 못 팔아요');
+  assert.strictEqual(C.move(st, 10, 11, T0).kind, 'move', '상자는 옮길 수 있어요');
+  st.keys = 1;
+  const r = C.openBox(st, 11, 'key', T0, seeded(1));
+  assert.ok(r.ok); assert.strictEqual(st.keys, 0); assert.ok(r.placed.length >= 2); assert.strictEqual(st.board[11] === null || st.board[11].k !== 'box', true);
+  r.placed.forEach((p) => { if (p.cell.k === 'item' && p.cell.c !== 'cn') assert.ok(p.cell.t >= 1 && p.cell.t <= 3); });
+  st.board[20] = C.makeBox('chest', T0);
+  assert.strictEqual(C.boxInfo(st, st.board[20], T0).leftMs, 20 * 60000);
+  const r2 = C.openBox(st, 20, 'time', T0 + 20 * 60000, seeded(2));
+  assert.ok(r2.ok); assert.strictEqual(r2.how, 'time'); assert.ok(r2.placed.length >= 3);
+  st.gems = 4; st.board[30] = C.makeBox('chest', T0);
+  assert.ok(C.openBox(st, 30, 'gems', T0, seeded(3)).ok); assert.strictEqual(st.gems, 0);
+  // 가방·저장 왕복
+  st.board[30] = C.makeBox('gift', T0); assert.ok(C.toBag(st, 30, T0).ok);
+  const back = C.deserialize(C.serialize(st), T0, seeded(1)); assert.ok(back.bag.some((c) => c && c.k === 'box'));
+  // 오늘의 부탁 → 열쇠 1
+  const q = emptyState(); C.dailyTouch(q, T0); q.daily.claimed = false;
+  q.daily.q.forEach((x) => { if (x.kind === 'stat') q.stats[x.stat] = 999; if (x.kind === 'chain') q.daily.del[x.c] = 9; if (x.kind === 'tier') q.daily.maxT = 9; });
+  assert.ok(C.claimQuests(q, T0, seeded(1)).ok); assert.strictEqual(q.keys, 1);
+  // 상점 열쇠 (동전 · 값 확인)
+  const sh = emptyState(); sh.coins = 25;
+  const k = C.shopBuy(sh, { id: 'key' }, T0, seeded(1)); assert.ok(k.ok); assert.strictEqual(sh.keys, 1); assert.strictEqual(sh.coins, 0);
+});
+test('부탁 여러 모양: 묶음 부탁(이야기에 맞는 사람·두 체인) · 반짝 손님(동전 2배+열쇠 · 30분 지나면 벌칙 없이 바뀜) · 선물 상자 부탁', () => {
+  const st = soAll(emptyState(seeded(6))); st.area = 2; st.unlocked = ['a', 'b', 'c', 'd', 'e', 'f']; st.orderSeq = 10;
+  let mix = 0, rush = 0, gift = 0;
+  for (let i = 0; i < 300; i++) {
+    st.orders = [];
+    const o = C.makeOrder(st, T0, seeded(900 + i));
+    const lv = D.AREAS[2].orders.tiers;
+    o.need.forEach((x) => assert.ok(x.t >= lv[0] && x.t <= lv[1]));
+    if (o.title) {
+      mix++;
+      const m = D.MIXES.find((x) => x.title === o.title);
+      assert.ok(m && m.who === o.who, '묶음 부탁은 그 이야기의 사람'); assert.strictEqual(o.need.length, 2);
+      assert.deepStrictEqual(o.need.map((x) => x.c).sort(), m.chains.slice().sort());
+    }
+    if (o.rush) { rush++; assert.strictEqual(o.rush, T0 + 30 * 60000); assert.strictEqual(o.keys, 1); }
+    if (o.box) { gift++; assert.strictEqual(o.box, 'gift'); assert.ok(!o.rush); }
+  }
+  assert.ok(mix > 20 && rush > 10 && gift > 10, `mix ${mix} rush ${rush} gift ${gift}`);
+  // 새 판 처음 몇 장은 보통 부탁
+  const fresh = C.newState(T0, seeded(1));
+  fresh.orders.forEach((o) => assert.ok(!o.rush && !o.title && !o.box));
+  // 반짝 손님 건네기 → 동전 2배 + 열쇠 · 30분 지나면 사라지고 새 부탁 (벌칙 없음)
+  const s2 = emptyState(seeded(7));
+  s2.board[5] = item('a', 3);
+  const ro = { id: 'r1', who: 'juni', need: [{ c: 'a', t: 3 }], coins: 12, stars: 1, at: T0, rush: T0 + 1800000, keys: 1 };
+  s2.orders = [ro];
+  const d = C.deliver(s2, 'r1', T0, seeded(1)); assert.ok(d.ok); assert.strictEqual(s2.keys, 1); assert.strictEqual(d.keys, 1);
+  s2.orders.push({ id: 'r2', who: 'mina', need: [{ c: 'b', t: 3 }], coins: 12, stars: 1, at: T0, rush: T0 + 1000, keys: 1 });
+  const coins0 = s2.coins, stars0 = s2.stars;
+  const ft = C.funTick(s2, T0 + 1000, seeded(2));
+  assert.deepStrictEqual(ft.rushGone.map((o) => o.id), ['r2']); assert.ok(!s2.orders.some((o) => o.id === 'r2'));
+  assert.strictEqual(s2.orders.filter((o) => !o.story && !o.ev).length, D.BAL.ordersShown, '새 부탁으로 채움');
+  assert.strictEqual(s2.coins, coins0); assert.strictEqual(s2.stars, stars0, '벌칙 없음');
+  // 선물 상자 부탁 → 판에 상자
+  const s3 = emptyState(seeded(8)); s3.board[5] = item('a', 3);
+  s3.orders = [{ id: 'g1', who: 'juni', need: [{ c: 'a', t: 3 }], coins: 6, stars: 1, at: T0, box: 'gift' }];
+  const g = C.deliver(s3, 'g1', T0, () => 0.99); assert.ok(g.box && s3.board[g.box.at].k === 'box');
+  // 저장 왕복: 부탁 모양 그대로
+  s3.orders.push({ id: 'z', who: 'kang', need: [{ c: 'h', t: 3 }], coins: 6, stars: 1, at: T0, rush: T0 + 5, keys: 1, title: '등대 밤샘 준비' });
+  const back = C.deserialize(C.serialize(s3), T0, seeded(1)); const z = back.orders.find((o) => o.id === 'z');
+  assert.ok(z && z.rush && z.title);
+});
+test('충전식 발생기: 남은 횟수·쉬는 시간 (충전 링 값)', () => {
+  const st = emptyState(seeded(9)); st.settings.easy = true; st.board[0] = { k: 'gen', g: 'gen_c' };
+  const ch0 = C.chargeInfo(st, 'gen_c', T0); assert.strictEqual(ch0.left, ch0.max);
+  for (let i = 0; i < ch0.max; i++) assert.ok(C.tapGen(st, 0, T0, seeded(i)).ok);
+  const ch = C.chargeInfo(st, 'gen_c', T0 + 1000); assert.strictEqual(ch.left, 0); assert.ok(ch.restMs > 0 && ch.restMs <= C.genUpInfo(st, 'gen_c').restMs);
+});
+test('옛 저장(열쇠·거품 기록 없음)도 그대로 읽어요', () => {
+  const st = C.newState(T0, seeded(1)); const o = JSON.parse(C.serialize(st)); delete o.keys; delete o.fun;
+  const back = C.deserialize(JSON.stringify(o), T0, seeded(1));
+  assert.strictEqual(back.keys, 0); assert.deepStrictEqual(back.fun, { bday: '', bused: 0 });
 });
 // 서버와 주고받기 (가짜 fetch · 비동기)
 const asyncTests = [];

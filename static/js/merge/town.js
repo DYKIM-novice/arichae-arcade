@@ -452,6 +452,14 @@
       gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(0.7, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
       q.fillStyle = gr; q.beginPath(); q.arc(0, 0, r, 0, 6.283); q.fill(); q.restore();
     }
+    // 노을·밤: 안개도 지도와 같은 빛으로 (안개는 밤 덮개 뒤에 그려져서, 안 하면 밤에도 하얗게 빛나 보여요)
+    const ph = phase();
+    if (ph !== 'day') {
+      q.setTransform(1, 0, 0, 1, 0, 0);
+      q.globalCompositeOperation = 'source-atop';
+      q.fillStyle = ph === 'night' ? 'rgba(24,30,78,.42)' : 'rgba(255,140,150,.16)';
+      q.fillRect(0, 0, w, h);
+    }
     q.globalCompositeOperation = 'source-over';
     return fc;
   }
@@ -563,7 +571,8 @@
     const bob = w.moving ? Math.abs(Math.sin((t / 400 + w.phase) * Math.PI)) * 3 : 0;
     const hop = w.hop > t ? Math.abs(Math.sin((w.hop - t) / 160)) * 16 : 0;
     g.fillStyle = 'rgba(60,40,30,.2)';
-    g.beginPath(); g.ellipse(p.x, p.y, ww * 0.32 * s, ww * 0.1 * s, 0, 0, 6.283); g.fill();
+    const sw = w.who === 'hayun' ? Math.min(ww, w.h * 0.42) : ww;   // 하윤 옷 그림은 모자 챙·튜브까지 담은 넓은 캔버스 → 그림자는 몸 폭으로
+    g.beginPath(); g.ellipse(p.x, p.y, sw * 0.32 * s, sw * 0.1 * s, 0, 0, 6.283); g.fill();
     g.save();
     g.translate(p.x, p.y - (bob + hop) * s);
     if (w.flip !== (w.who === 'mongdol')) g.scale(-1, 1);   // 몽돌 그림은 왼쪽을 봐요
@@ -848,7 +857,7 @@
     F.sfx('open');
     $('town').classList.remove('hide');
     shell();
-    deco = false; placing = null; hold = null; pick = null; drawer = false;
+    deco = false; placing = null; hold = null; pick = null; drawer = false; trayToast(false);
     resize();
     // 이 화면을 연 뒤 다시 들어오면 보던 자리 · 새로 열면 지금 지역 섬을 화면에 맞춰요 (옛 저장의 카메라는 안 써요)
     const c = sessCam && isOpen(areaAt(sessCam.x, sessCam.y)) ? sessCam : null;
@@ -869,6 +878,7 @@
     stop();
     $('town').classList.add('hide');
     $('town').innerHTML = '';
+    deco = false; placing = null; trayToast(false);
     cv = null;
     F.sfx('close');
     U.renderAll();
@@ -1048,6 +1058,7 @@
             const gens = r.given.map((x) => D.GENS[x.cell.g].name), lines = [];
             if (r.uncovered.length) lines.push(`모래더미 ${r.uncovered.length}칸이 걷혔어요`);
             if (gens.length) lines.push(`새 발생기: ${gens.join(' · ')}${r.given.some((x) => x.at < 0) ? ' (선물함)' : ''}`);
+            if (r.box) lines.push(`선물: 할머니의 보물 궤짝${r.box.at < 0 ? ' (선물함)' : ' (판에서 시간이 되면 열려요)'}`);
             const next = r.nextArea;
             banner(`<b>${esc(area.name)}</b><span>복원 완료!</span>${lines.map((l) => `<small>${esc(l)}</small>`).join('')}
               <button type="button" class="btn main" data-tw="next">${next ? `다음 지역: ${esc(next.name)} →` : '마을 둘러보기'}</button>`);
@@ -1117,16 +1128,25 @@
   function setDeco(on) {
     deco = on; placing = null;
     const tr = $('tw-tray');
-    if (on) { tr.innerHTML = trayHTML(); tr.classList.remove('hide'); closeDrawer(); U.toast('꾸미기: 건물을 톡 → 모양 바꾸기'); }
+    if (on) { tr.innerHTML = trayHTML(); tr.classList.remove('hide'); closeDrawer(); }
     else { tr.classList.add('hide'); }
+    trayToast(on);
+    if (on) U.toast('꾸미기: 건물을 톡 → 모양 바꾸기');
     $('tw-deco').classList.toggle('on', on);
     dirty(); F.sfx('pick');
   }
-  function renderTray() { if (deco) $('tw-tray').innerHTML = trayHTML(); }
+  function renderTray() { if (deco) { $('tw-tray').innerHTML = trayHTML(); trayToast(true); } }
+  // 꾸미기 칸이 열려 있으면 알림(토스트)을 그 위로 (알림이 장식 칸을 가려 톡이 막히지 않게)
+  function trayToast(on) {
+    const tr = $('tw-tray');
+    document.body.classList.toggle('tw-decoing', !!on);
+    if (on && tr) document.documentElement.style.setProperty('--tray-top', Math.round(innerHeight - tr.getBoundingClientRect().top + 8) + 'px');
+  }
   function placeAtWorld(p) {
     const res = C.placeDeco(st(), placing, p.x, p.y, now());
     if (!res.ok) return;
-    placing = null; F.sfx('drop'); U.changed(); dirty(); renderTray();
+    placing = null; F.sfx('drop'); F.vibrate(10); U.changed(); dirty(); renderTray();
+    U.toast('놓았어요! 장식을 다시 톡 하면 옮겨요');
   }
 
   /* ---------- 조작: 끌기 · 두 손가락 확대 · 휠 · 톡 ---------- */

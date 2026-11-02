@@ -2,13 +2,15 @@
    - 상태(st)는 그냥 객체 하나 → 저장은 save.js 가 JSON 으로 (v 필드로 옛 저장 변환: MIGRATE)
    - 모든 함수는 now(ms)·rng(0~1 함수)를 받아요 → 시험에서 시각·운을 정할 수 있어요
    - 판 칸: null | {k:'item', c:'a', t:3} | {k:'gen', g:'gen_a'} | {k:'wild'}(무지개 소라)
+            | {k:'bubble', c, t, until}(거품 속 물건 · 못 옮김) | {k:'net', c, t}(그물에 걸린 물건 · 못 옮김) | {k:'box', b:'gift'|'chest', open}(상자 · 옮길 수 있음)
    - st.cover[i] = 모래더미 겹 수 (0 = 열린 칸) · st.bag = 가방 칸 배열(null = 빈칸) · st.gifts = 선물함(자리가 없을 때 받은 것)
    - 복원: st.area = 지금 지역 번호 · st.tasks[작업 id] = 끝낸 시각 · st.story[장면 id] = 본 장면 */
 (function (root) {
   'use strict';
 
   const D = (typeof module === 'object' && module.exports) ? require('./data.js') : root.MergeData;
-  const { CHAINS, GENS, AREAS, BOARD, BAL, START, VILLAGERS, STORY_ORDERS, SECRETS, DAILY, EVENTS, LETTERS, SHOP, TOWN, OUTFITS, MONG_ACC, FRIEND } = D;
+  const { CHAINS, GENS, AREAS, BOARD, BAL, START, VILLAGERS, STORY_ORDERS, SECRETS, DAILY, EVENTS, LETTERS, SHOP, TOWN, OUTFITS, MONG_ACC, FRIEND, MIXES } = D;
+  const FUN = BAL.fun;
   const N = BOARD.cols * BOARD.rows;
   const COLS = BOARD.cols;
 
@@ -29,12 +31,13 @@
     if (!cell) return '';
     if (cell.k === 'gen') return GENS[cell.g] ? GENS[cell.g].name : '';
     if (cell.k === 'wild') return '무지개 소라';
+    if (cell.k === 'box') return (FUN.box[cell.b] || FUN.box.gift).name;
     return (CHAINS[cell.c] && CHAINS[cell.c].tiers[cell.t - 1]) || '';
   }
   // 판매값: 체인 물건 2^(단계-1) · 보조 물건은 단계만큼 · 무지개 소라 5 · 발생기는 못 팔아요
   function sellValue(x) {
     if (typeof x === 'number') return Math.pow(2, x - 1);
-    if (!x || x.k === 'gen') return 0;
+    if (!x || x.k === 'gen' || x.k === 'box' || x.k === 'bubble' || x.k === 'net') return 0;
     if (x.k === 'wild') return 5;
     return isAux(x.c) ? x.t : Math.pow(2, x.t - 1);
   }
@@ -75,6 +78,7 @@
       boost: { autoMs: 0, handsMs: 0, autoTok: 0, fday: '', fused: 0 },
       // 마을 짓기 (v4 · merge_town.md §A·§H·§I): 건물 모양 · 가진 모양/옷/몽돌 소품 · 입은 옷 · 지도 카메라 · 건물 톡 날짜 · 우정
       look: {}, owned: { looks: {}, outfits: ['base'], mong: [] }, outfit: 'base', mongAcc: null, cam: null, tapDay: {}, friend: {}, friendAll: '', fillerSeq: 0,   // fday·fused = 오늘 쓴 하루 무료 자동 합치기   // 자동 합치기 1분 · 바쁜 손 남은 시간(앱을 연 동안만 줄어요) · 무료 자동 합치기
+      keys: 0, fun: { bday: '', bused: 0 },   // 상자 열쇠 · 거품 하루 무료 터뜨리기 (날짜 · 쓴 횟수)
       createdAt: now, updatedAt: now
     };
     board.forEach((cell) => { if (cell && cell.k === 'item') st.found[itemId(cell)] = true; });
@@ -252,6 +256,22 @@
     if (covered(st, to) || covered(st, from)) return { kind: 'none', reason: 'covered' };
     const a = st.board[from], b = st.board[to];
     if (!a) return { kind: 'none' };
+    if (stuck(a)) return { kind: 'none', reason: a.k };
+    // 그물에 걸린 물건 위에 같은 물건을 겹치면 둘이 합쳐져 다음 단계로 풀려요
+    if (b && b.k === 'net') {
+      if (a.k !== 'item' || a.c !== b.c || a.t !== b.t || a.t >= maxTier(a.c)) return { kind: 'none', reason: 'net' };
+      st.updatedAt = now;
+      const cell = { k: 'item', c: a.c, t: a.t + 1 };
+      st.board[to] = cell; st.board[from] = null;
+      const first = markFound(st, cell);
+      if (first) st.gems += BAL.firstFindGems;
+      st.stats.merges++;
+      st.stats.best[cell.c] = Math.max(st.stats.best[cell.c] || 0, cell.t);
+      if (st.daily && !isAux(cell.c)) st.daily.maxT = Math.max(st.daily.maxT | 0, cell.t);
+      const peeled = peel(st, to), freed = unnet(st, to);
+      return { kind: 'merge', at: to, cell, first, max: cell.t >= maxTier(cell.c), peeled, freed, netMerge: true };
+    }
+    if (b && b.k === 'bubble') return { kind: 'none', reason: 'bubble' };
     st.updatedAt = now;
     if (!b) { st.board[to] = a; st.board[from] = null; return { kind: 'move', at: to }; }
     if (canMerge(a, b)) {
@@ -262,12 +282,133 @@
       st.stats.merges++;
       st.stats.best[cell.c] = Math.max(st.stats.best[cell.c] || 0, cell.t);
       if (st.daily && !isAux(cell.c)) st.daily.maxT = Math.max(st.daily.maxT | 0, cell.t);   // 오늘의 부탁 'n단계 만들기'
-      const peeled = peel(st, to);
-      return { kind: 'merge', at: to, cell, first, max: cell.t >= maxTier(cell.c), peeled };
+      const peeled = peel(st, to), freed = unnet(st, to);
+      return { kind: 'merge', at: to, cell, first, max: cell.t >= maxTier(cell.c), peeled, freed };
     }
     st.board[to] = a; st.board[from] = b;
     return { kind: 'swap', at: to };
   }
+  // 거품·그물 칸은 손으로 옮길 수 없어요 (상자는 옮길 수 있어요)
+  const stuck = (c) => !!c && (c.k === 'bubble' || c.k === 'net');
+  // 합친 칸 바로 옆(위·아래·왼·오른) 그물을 풀어요 → 걸려 있던 물건이 내 것이 돼요
+  function unnet(st, at) {
+    const out = [];
+    const p = rc(at);
+    [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(([dr, dc]) => {
+      const r = p.r + dr, c = p.c + dc;
+      if (r < 0 || c < 0 || r >= BOARD.rows || c >= COLS) return;
+      const i = r * COLS + c, x = st.board[i];
+      if (x && x.k === 'net') { st.board[i] = { k: 'item', c: x.c, t: x.t }; markFound(st, st.board[i]); out.push({ i, cell: st.board[i] }); }
+    });
+    return out;
+  }
+
+  /* ---------- 판 재미: 거품 · 그물 · 상자 (BAL.fun) ---------- */
+  const funDay = (st, now) => { if (!st.fun || typeof st.fun !== 'object') st.fun = { bday: '', bused: 0 }; const d = dayKey(now); if (st.fun.bday !== d) { st.fun.bday = d; st.fun.bused = 0; } return st.fun; };
+  // 합치기 뒤 가끔: 같은 물건이 거품 속에 하나 더 (3단계 이상 · 이벤트·보조 물건은 빼요 · 빈칸이 있을 때)
+  function maybeBubble(st, r, now, rng) {
+    const B = FUN.bubble;
+    if (!r || r.kind !== 'merge' || !r.cell || r.cell.t < B.minTier || isAux(r.cell.c) || isEvent(r.cell.c)) return null;
+    if (st.board.some((x) => x && x.k === 'bubble')) return null;      // 한 번에 하나만
+    if (rng() >= B.chance) return null;
+    const at = nearestEmpty(st, r.at, rng);
+    if (at < 0) return null;
+    st.board[at] = { k: 'bubble', c: r.cell.c, t: r.cell.t, until: now + B.ms };
+    st.updatedAt = now;
+    return { at, cell: st.board[at] };
+  }
+  function bubbleInfo(st, cell, now) {
+    const B = FUN.bubble, f = funDay(st, now);
+    const sv = Math.pow(2, cell.t - 1);
+    return { leftMs: Math.max(0, cell.until - now), free: Math.max(0, B.freeDay - f.bused), coins: Math.max(4, sv * B.coinMul), gems: B.gems[Math.min(B.gems.length - 1, cell.t - 1)] | 0,
+      turnsInto: { k: 'item', c: 'cn', t: cell.t >= 6 ? 2 : 1 } };
+  }
+  // 거품 터뜨려 갖기: how = 'free' | 'gems' | 'coins'
+  function popBubble(st, idx, how, now) {
+    const cell = st.board[idx];
+    if (!cell || cell.k !== 'bubble') return { ok: false, reason: 'gone' };
+    const bi = bubbleInfo(st, cell, now);
+    let price = 0, pay = null;
+    if (how === 'free') { if (bi.free <= 0) return { ok: false, reason: 'limit' }; st.fun.bused++; }
+    else if (how === 'gems' || how === 'coins') {
+      pay = how; price = how === 'gems' ? bi.gems : bi.coins;
+      if (st[pay] < price) return { ok: false, reason: pay, price, short: price - st[pay] };
+      st[pay] -= price;
+    } else return { ok: false, reason: 'gone' };
+    st.board[idx] = { k: 'item', c: cell.c, t: cell.t };
+    markFound(st, st.board[idx]);
+    st.updatedAt = now;
+    return { ok: true, at: idx, cell: st.board[idx], price, pay, how };
+  }
+  // 부탁을 건네면 가끔: 판 위쪽 빈칸에 그물에 걸린 물건 (지금 지역 부탁 단계 · 열린 체인)
+  function maybeNet(st, now, rng) {
+    const NT = FUN.net;
+    if ((st.stats.delivered | 0) < NT.after) return null;
+    if (st.board.filter((x) => x && x.k === 'net').length >= NT.max) return null;
+    if (rng() >= NT.chance) return null;
+    const spots = [];
+    for (let i = 0; i < NT.rows * COLS; i++) if (isFree(st, i)) spots.push(i);
+    if (!spots.length) return null;
+    const area = AREAS[orderLevel(st)];
+    let chains = area.chains.filter((c) => st.unlocked.indexOf(c) >= 0);
+    if (!chains.length) chains = shopChains(st);
+    if (!chains.length) return null;
+    const c = pick(rng, chains);
+    const t = Math.max(2, Math.min(maxTier(c) - 1, rint(rng, area.orders.tiers[0], area.orders.tiers[1])));
+    const at = pick(rng, spots);
+    st.board[at] = { k: 'net', c, t };
+    st.updatedAt = now;
+    return { at, cell: st.board[at] };
+  }
+  // 상자 (b = 'gift' 선물 상자 · 'chest' 할머니의 보물 궤짝) · open = 저절로 열리는 시각
+  const makeBox = (b, now) => ({ k: 'box', b, open: now + FUN.box[b].ms });
+  function boxInfo(st, cell, now) {
+    const def = FUN.box[cell.b] || FUN.box.gift;
+    const leftMs = Math.max(0, cell.open - now);
+    return { name: def.name, ready: leftMs <= 0, leftMs, totalMs: def.ms, keys: st.keys | 0, gems: def.gems };
+  }
+  // 상자 열기: how = 'time'(시간이 됐을 때 · 무료) | 'key'(열쇠 1) | 'gems'(소라별)
+  function openBox(st, idx, how, now, rng) {
+    const cell = st.board[idx];
+    if (!cell || cell.k !== 'box') return { ok: false, reason: 'gone' };
+    const bi = boxInfo(st, cell, now), def = FUN.box[cell.b] || FUN.box.gift;
+    let price = 0, pay = null;
+    if (!bi.ready) {
+      if (how === 'key') { if ((st.keys | 0) < 1) return { ok: false, reason: 'keys' }; st.keys--; }
+      else if (how === 'gems') { pay = 'gems'; price = def.gems; if (st.gems < price) return { ok: false, reason: 'gems', price, short: price - st.gems }; st.gems -= price; }
+      else return { ok: false, reason: 'wait', leftMs: bi.leftMs };
+    }
+    st.board[idx] = null;
+    const area = AREAS[orderLevel(st)];
+    let chains = area.chains.filter((c) => st.unlocked.indexOf(c) >= 0);
+    if (!chains.length) chains = shopChains(st);
+    const gifts = [];
+    const n = rint(rng, def.items[0], def.items[1]);
+    for (let k = 0; k < n; k++) { const c = pick(rng, chains); gifts.push({ k: 'item', c, t: Math.min(maxTier(c), rint(rng, def.tiers[0], def.tiers[1])) }); }
+    if (def.coin && rng() < def.coin) gifts.push({ k: 'item', c: 'cn', t: 1 });
+    if (def.wild && rng() < def.wild) gifts.push({ k: 'wild' });
+    if (def.ss && rng() < def.ss) gifts.push({ k: 'item', c: 'ss', t: 1 });
+    const placed = gifts.map((g) => Object.assign({ cell: g }, giveCell(st, g, rng, idx)));
+    st.updatedAt = now;
+    return { ok: true, b: cell.b, name: def.name, how: bi.ready ? 'time' : how, price, pay, placed };
+  }
+  // 시간 흐름: 거품이 시간이 다 되면 엽전으로 · 반짝 손님은 시간이 지나면 벌칙 없이 다른 부탁으로
+  function funTick(st, now, rng) {
+    const out = { coins: [], rushGone: [], added: [] };
+    for (let i = 0; i < N; i++) {
+      const x = st.board[i];
+      if (x && x.k === 'bubble' && x.until <= now) { st.board[i] = bubbleInfo(st, x, now).turnsInto; out.coins.push({ at: i, from: x, cell: st.board[i] }); }
+    }
+    const gone = st.orders.filter((o) => o.rush && o.rush <= now);
+    if (gone.length) {
+      st.orders = st.orders.filter((o) => gone.indexOf(o) < 0);
+      out.rushGone = gone;
+      out.added = fillOrders(st, now, rng || Math.random);
+    }
+    if (out.coins.length || gone.length) st.updatedAt = now;
+    return out;
+  }
+
   // 힌트: 합칠 수 있는 짝 하나
   function findPair(st) {
     const seen = {};
@@ -285,6 +426,7 @@
   function sell(st, idx, now) {
     const cell = st.board[idx];
     if (!cell || cell.k === 'gen') return { ok: false, reason: cell ? 'gen' : 'empty' };
+    if (stuck(cell) || cell.k === 'box') return { ok: false, reason: cell.k };
     const coins = sellValue(cell);
     st.board[idx] = null;
     st.coins += coins;
@@ -345,6 +487,7 @@
   function toBag(st, idx, now) {
     const cell = st.board[idx];
     if (!cell) return { ok: false, reason: 'empty' };
+    if (stuck(cell)) return { ok: false, reason: cell.k };
     const slot = st.bag.indexOf(null);
     if (slot < 0) return { ok: false, reason: 'full' };
     st.bag[slot] = cell;
@@ -412,27 +555,46 @@
     if (st.orders.some((o) => !o.story && !o.ev && now - o.at > BAL.orderStuckMs)) hi = Math.max(lo, hi - 1);   // 막힘 방지
     const n = rint(rng, area.orders.items[0], area.orders.items[1]);
     const easy = (st.area | 0) === 0 && (st.orderSeq | 0) < (BAL.firstEasyOrders | 0);   // 새 판 첫 부탁 2장은 1단계 (첫 고치기까지 빨리)
-    const need = [];
-    for (let i = 0; i < n; i++) {
-      const c = i === 0 ? lead : pick(rng, chains);
-      const tr = Math.min(maxTier(c), rint(rng, lo, hi));
-      const t = easy ? 1 : tr;
-      need.push({ c, t });
+    const FO = FUN.orders, fancy = !easy && (st.orderSeq | 0) >= FO.after;   // 새 판 처음 몇 장은 보통 부탁만
+    let need = [], who = null, title = null;
+    // 묶음 부탁: 두 체인을 섞어요 (부탁하는 사람 이야기에 맞는 것 · 두 물건이라 가장 높은 단계는 하나 낮게)
+    const usedWho = st.orders.map((o) => o.who);
+    const mixes = fancy ? MIXES.filter((m) => m.chains.every((c) => chains.indexOf(c) >= 0) && usedWho.indexOf(m.who) < 0) : [];
+    if (mixes.length && rng() < FO.mix) {
+      const m = pick(rng, mixes);
+      need = m.chains.map((c) => ({ c, t: Math.max(1, Math.min(maxTier(c), rint(rng, lo, Math.max(lo, hi - 1)))) }));
+      who = m.who; title = m.title;
+    } else {
+      for (let i = 0; i < n; i++) {
+        const c = i === 0 ? lead : pick(rng, chains);
+        const tr = Math.min(maxTier(c), rint(rng, lo, hi));
+        const t = easy ? 1 : tr;
+        need.push({ c, t });
+      }
+      who = villagerFor(lead, usedWho, rng);
     }
     need.sort((x, y) => (x.c < y.c ? -1 : x.c > y.c ? 1 : x.t - y.t));
     const sum = need.reduce((s, x) => s + sellValue(x.t), 0);
     const tsum = need.reduce((s, x) => s + x.t, 0);
-    const who = villagerFor(lead, st.orders.map((o) => o.who), rng);
     st.orderSeq++;
     const line = Math.floor(rng() * 3);
-    const bonus = rng() < BAL.orderBonus ? clone(pick(rng, BAL.bonusPool)) : null;
-    return {
-      id: 'o' + st.orderSeq, who, need,
-      coins: Math.ceil(sum * BAL.orderCoinMult),
+    let bonus = rng() < BAL.orderBonus ? clone(pick(rng, BAL.bonusPool)) : null;
+    let coins = Math.ceil(sum * BAL.orderCoinMult);
+    // 반짝 손님 (30분 · 동전 2배 + 열쇠) · 선물 상자 부탁 — 한 번에 하나씩만 (반짝 손님은 카드에 1장까지)
+    let rush = 0, box = null, keys = 0;
+    const kind = fancy ? rng() : 1;
+    if (kind < FO.rush && !st.orders.some((o) => o.rush)) { rush = now + FO.rushMs; coins = Math.ceil(coins * FO.rushMult); keys = FO.rushKeys; }
+    else if (kind < FO.rush + FO.gift) { box = 'gift'; bonus = null; }
+    const o = {
+      id: 'o' + st.orderSeq, who, need, coins,
       stars: 1 + Math.floor(tsum / 4),
       line, bonus,
       at: now, story: false
     };
+    if (title) o.title = title;
+    if (rush) { o.rush = rush; o.keys = keys; }
+    if (box) o.box = box;
+    return o;
   }
   // 일반 부탁은 늘 3장 (이야기 부탁·이벤트 부탁은 그 밖에 따로)
   function fillOrders(st, now, rng) {
@@ -526,6 +688,7 @@
     st.stars += order.stars;
     st.starsEarned += order.stars;
     st.stats.delivered++;
+    if (order.keys) st.keys = (st.keys | 0) + order.keys;
     st.orders.splice(k, 1);
     if (order.story) st.sos[order.story] = now;
     const friendUps = order.ev ? [] : addFriend(st, order.who, FRIEND.deliverPts, now, rng);   // 부탁 건네기도 우정 +2
@@ -537,12 +700,15 @@
     if (order.ev && st.ev && st.ev.id === order.ev) evRewards = addEventPoints(st, order.pts | 0, now, rng);
     let bonus = null;
     if (order.bonus) bonus = Object.assign({ cell: order.bonus }, giveCell(st, clone(order.bonus), rng, s.cells.find((i) => i >= 0)));
+    let boxGot = null;
+    if (order.box) boxGot = Object.assign({ cell: makeBox(order.box, now) }, giveCell(st, makeBox(order.box, now), rng, s.cells.find((i) => i >= 0)));
+    const net = order.ev || order.story ? null : maybeNet(st, now, rng);
     // 건넨 자리의 다음 부탁은 늘 맨 오른쪽 끝으로 (나머지는 왼쪽으로 한 칸씩) → 앞쪽에 다른 사람이 와요
     const added = fillOrders(st, now, rng);
     if (order.ev) { const eo = eventOrderFill(st, now, rng); if (eo) added.push(eo); }
     added.forEach((o) => { const j = st.orders.indexOf(o); if (j >= 0) { st.orders.splice(j, 1); st.orders.push(o); } });
     st.updatedAt = now;
-    return { ok: true, order, cells: s.cells, bag: s.bag, coins: order.coins, stars: order.stars, added, bonus, story: order.story || null, evRewards, friendUps };
+    return { ok: true, order, cells: s.cells, bag: s.bag, coins: order.coins, stars: order.stars, added, bonus, story: order.story || null, evRewards, friendUps, keys: order.keys | 0, box: boxGot, net };
   }
   function skipOrder(st, orderId, now, rng) {
     const wait = (st.skipAt || 0) + BAL.skipCooldownMs - now;
@@ -604,6 +770,7 @@
     if (kind === 'auto1m') { st.boost.autoMs += SHOP.auto1mMs; return { kind }; }
     if (kind === 'hands') { st.boost.handsMs += SHOP.handsMs; return { kind }; }
     if (kind === 'token') { st.boost.autoTok = (st.boost.autoTok | 0) + 1; return { kind }; }
+    if (kind === 'key') { st.keys = (st.keys | 0) + 1; return { kind }; }
     const cell = clone(what);
     return Object.assign({ cell }, giveCell(st, cell, rng || Math.random));
   }
@@ -836,6 +1003,7 @@
       (next.open.gens || []).forEach((g) => { out.given.push(Object.assign({ cell: { k: 'gen', g } }, giveCell(st, { k: 'gen', g }, rng || Math.random))); });
       // 새 지역 난이도로 주문 하나씩 바꾸지 않고, 다음에 생기는 주문부터 새 난이도
     }
+    out.box = Object.assign({ cell: makeBox('chest', now) }, giveCell(st, makeBox('chest', now), rng || Math.random));   // 지역 완성 선물: 할머니의 보물 궤짝 (발생기 다음)
     return out;
   }
 
@@ -928,8 +1096,9 @@
     if (qi.claimed) return { ok: false, reason: 'claimed' };
     if (!qi.all) return { ok: false, reason: 'notyet' };
     st.daily.claimed = true;
+    st.keys = (st.keys | 0) + (FUN.questKeys | 0);
     st.updatedAt = now;
-    return Object.assign({ ok: true, cell: DAILY.questReward }, giveCell(st, clone(DAILY.questReward), rng || Math.random));
+    return Object.assign({ ok: true, cell: DAILY.questReward, keys: FUN.questKeys | 0 }, giveCell(st, clone(DAILY.questReward), rng || Math.random));
   }
   function attendInfo(st, now) {
     const att = st.daily.att;
@@ -1300,7 +1469,9 @@
     if (!c || typeof c !== 'object') return false;
     if (c.k === 'gen') return !!GENS[c.g];
     if (c.k === 'wild') return true;
-    return c.k === 'item' && !!CHAINS[c.c] && c.t >= 1 && c.t <= maxTier(c.c);
+    if (c.k === 'box') return !!FUN.box[c.b] && isFinite(c.open);
+    if (c.k === 'bubble') return !!CHAINS[c.c] && c.t >= 1 && c.t <= maxTier(c.c) && isFinite(c.until);
+    return (c.k === 'item' || c.k === 'net') && !!CHAINS[c.c] && c.t >= 1 && c.t <= maxTier(c.c);
   }
   // 옛 저장 변환 (v 가 오를 때 여기에 한 단계씩 추가)
   const MIGRATE = {
@@ -1365,7 +1536,10 @@
       st.cam = null;                                          // 옛 지도의 카메라 자리는 버려요
       st.v = 5;
       return st;
-    }
+    },
+    // v5 → v6: 형식은 그대로 (거품·그물·상자·옷장이 새로 생김) · 버전만 올려서
+    //   배포 직후 옛 화면(v5 코드)이 새 저장을 '더 새 버전'으로 알아보고 덮어쓰지 않게 해요
+    5: (st) => { st.v = 6; return st; }
   };
   function deserialize(str, now, rng) {
     let st;
@@ -1385,14 +1559,18 @@
     if (!Array.isArray(st.cover) || st.cover.length !== N) st.cover = new Array(N).fill(0);
     st.cover = st.cover.map((v, i) => (st.board[i] ? 0 : Math.max(0, Math.min(3, v | 0))));
     if (!Array.isArray(st.bag)) st.bag = [];
-    st.bag = st.bag.slice(0, BAL.bagMax).map((c) => (validCell(c) ? c : null));
+    st.bag = st.bag.slice(0, BAL.bagMax).map((c) => (validCell(c) && !stuck(c) ? c : null));
     while (st.bag.length < BAL.bagStart) st.bag.push(null);
-    st.gifts = (Array.isArray(st.gifts) ? st.gifts : []).filter((c) => c && validCell(c));
+    st.gifts = (Array.isArray(st.gifts) ? st.gifts : []).filter((c) => c && validCell(c) && !stuck(c));
+    st.keys = Math.max(0, Math.min(999, Number(st.keys) | 0));
+    if (!st.fun || typeof st.fun !== 'object' || Array.isArray(st.fun)) st.fun = { bday: '', bused: 0 };
+    if (typeof st.fun.bday !== 'string') st.fun.bday = '';
+    st.fun.bused = Math.max(0, st.fun.bused | 0);
     st.area = Math.max(0, Math.min(AREAS.length, Number(st.area) | 0));
     if (!Array.isArray(st.unlocked)) st.unlocked = START.chains.slice();
     st.unlocked = st.unlocked.filter((c) => CHAINS[c] && !isAux(c));
     st.orders = (Array.isArray(st.orders) ? st.orders : []).filter((o) => o && Array.isArray(o.need) && o.need.length && o.need.every((n) => CHAINS[n.c] && n.t >= 1 && n.t <= maxTier(n.c)));
-    st.orders.forEach((o) => { if (o.bonus && !validCell(o.bonus)) o.bonus = null; });
+    st.orders.forEach((o) => { if (o.bonus && !validCell(o.bonus)) o.bonus = null; if (o.box && !FUN.box[o.box]) delete o.box; if (o.rush && !isFinite(o.rush)) delete o.rush; });
     ['genLv', 'sos', 'placed', 'thx'].forEach((k) => { if (!st[k] || typeof st[k] !== 'object' || Array.isArray(st[k])) st[k] = {}; });
     st.sec = Object.assign({ letters: {}, gulls: {}, bottleDay: '', title: '' }, st.sec && typeof st.sec === 'object' ? st.sec : {});
     st.daily = Object.assign(def.daily, st.daily && typeof st.daily === 'object' ? st.daily : {});
@@ -1448,7 +1626,8 @@
     bottleToday, secretsIn, secretCounts, findSecret, GULL_TOTAL, LETTER_TOTAL,
     dailyTouch, questInfo, claimQuests, attendInfo, claimAttend,
     weekStart, currentEvent, eventInfo, eventTick, endEvent, makeEventOrder, placeDeco, thanksLine, collection,
-    serialize, deserialize, summary, MIGRATE, hudShown
+    serialize, deserialize, summary, MIGRATE, hudShown,
+    stuck, unnet, maybeBubble, bubbleInfo, popBubble, maybeNet, makeBox, boxInfo, openBox, funTick
   };
   if (typeof module === 'object' && module.exports) module.exports = API;
   else root.MergeCore = API;

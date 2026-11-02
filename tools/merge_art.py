@@ -11,6 +11,7 @@
 - 마을 짓기(merge_town.md): art_tests/merge/town/ → static/img/merge/town/ (투명 webp · 긴 변 건물 512 · 장식 384 · 인물 300)
     python tools/merge_art.py town      # 마을 그림만 (map_r3 처럼 이름 일부만 줘도 돼요)
   · 건물·장식·공용(b_ c_ d_): 밑에 남은 모래 받침을 지워요 (변형 3장이 같게) · 옅은 길 자국도
+  · 하윤 옷장(outfits/ 22벌 + 초상 + 몽돌 소품):  python tools/merge_art.py outfits
   · 걷는 인물(w_ h_): 발밑 그림자 지우기 · 미나 다리 다시 그리기 · 하윤 옷마다 얼굴 칸 그림(h_*_face)도
     python tools/merge_art.py map       # 이어진 섬 지도(town2/town_map_v3.jpg)만 → map_lo · map_<열>_<행> 조각 · map_land
   · (옛) 바탕(map_r*): 바다 색을 6장 모두 같게 + 가장자리를 같은 바다색으로 → 2×3 으로 붙여도 이음매가 안 보여요
@@ -486,13 +487,66 @@ def town_face(im):
     return sq.resize((256, 256), Image.LANCZOS)
 
 
+OUTFIT_SRC = SRC / "outfits"     # 하윤 옷장 22벌 (640×1000 고정 캔버스 · 신발 바닥 y=984 · 몸 가운데 x=320) + *_bust 512² 초상 + 몽돌 소품 m_*
+OUTFIT_H = 520                     # 걷는 하윤 그림 높이 (모든 옷이 같은 자르기 → 갈아입어도 몸 크기·발밑이 그대로)
+
+
+def outfits(only=""):
+    """art_tests/merge/outfits → town/h_outfit_<옷>.webp (전신, 22벌 같은 상자로 잘라요) · town/h_<옷>_bust.webp (대사창·말하는 칸 얼굴 256²)
+    · town/m_<소품>.webp (몽돌 소품, 긴 변 256)"""
+    if not OUTFIT_SRC.is_dir():
+        return 0
+    TOWN_OUT.mkdir(parents=True, exist_ok=True)
+    total = 0
+    bodies = [f for f in sorted(OUTFIT_SRC.glob("h_outfit_*.png")) if not f.stem.endswith("_bust")]
+    # 모든 옷의 보이는 곳을 합친 상자 (모자 챙·튜브까지) → 한 상자로 잘라야 옷마다 몸 크기·발밑이 같아요
+    box = None
+    for f in bodies:
+        bb = Image.open(f).getchannel("A").point(lambda v: 255 if v > 16 else 0).getbbox()
+        if bb:
+            box = bb if box is None else (min(box[0], bb[0]), min(box[1], bb[1]), max(box[2], bb[2]), max(box[3], bb[3]))
+    if box:
+        cx = 320   # 몸 가운데를 그림 가운데로 (좌우 같은 폭)
+        half = max(cx - box[0], box[2] - cx) + 4
+        box = (cx - half, max(0, box[1] - 4), cx + half, min(1000, box[3] + 4))
+    for f in bodies:
+        name = f.stem
+        if only and only not in ("outfits", "h_") and only not in name:
+            continue
+        im = Image.open(f).convert("RGBA").crop(box)
+        k = OUTFIT_H / im.height
+        out = im.resize((round(im.width * k), OUTFIT_H), Image.LANCZOS)
+        dst = TOWN_OUT / f"{name}.webp"
+        out.save(dst, "WEBP", quality=84, method=6)
+        total += dst.stat().st_size
+        bust = OUTFIT_SRC / f"{name}_bust.png"
+        if bust.is_file():
+            b = Image.open(bust).convert("RGBA").resize((256, 256), Image.LANCZOS)
+            bd = TOWN_OUT / (name.replace("h_outfit_", "h_") + "_bust.webp")
+            b.save(bd, "WEBP", quality=86, method=6)
+            total += bd.stat().st_size
+        print(f"town/{name:24s} {out.width}x{out.height} + bust")
+    for f in sorted(OUTFIT_SRC.glob("m_*.png")):
+        if only and only not in ("outfits", "m_") and only not in f.stem:
+            continue
+        out = fit_long(trim(Image.open(f).convert("RGBA")), 256)
+        dst = TOWN_OUT / f"{f.stem}.webp"
+        out.save(dst, "WEBP", quality=84, method=6)
+        total += dst.stat().st_size
+        print(f"town/{f.stem:24s} {out.width}x{out.height}")
+    return total
+
+
 def town(only=""):
     TOWN_OUT.mkdir(parents=True, exist_ok=True)
     total = 0
+    in_wardrobe = {f.stem for f in OUTFIT_SRC.glob("*.png")} if OUTFIT_SRC.is_dir() else set()
     for src in sorted(TOWN_SRC.glob("*")):
         name = src.stem
         if name.endswith("_src") or name.startswith("map_r") or (only and only != "town" and only not in name):
             continue   # map_r1~6(지역별 섬 6장)은 옛 지도 · 지금은 이어진 지도 town_map_tiles()
+        if name in in_wardrobe or name == "h_hayun_base":
+            continue   # 옷장(outfits/)에 같은 그림이 있으면 그쪽 규격으로 (outfits())
         im = Image.open(src)
         q = 82
         if name.startswith("map_"):
@@ -518,6 +572,7 @@ def town(only=""):
         out.save(dst, "WEBP", quality=q, method=6)
         total += dst.stat().st_size
         print(f"town/{name:22s} {out.width}x{out.height} {dst.stat().st_size // 1024}KB")
+    total += outfits(only)
     if not only or only in ("town", "map", "map_"):
         town_map_tiles()
     print(f"마을 합계 {total // 1024}KB → {TOWN_OUT}")
@@ -527,6 +582,10 @@ def main():
     only = sys.argv[1] if len(sys.argv) > 1 else ""
     if only == "map":           # 이어진 섬 지도 조각만
         town_map_tiles()
+        write_list()
+        return
+    if only == "outfits":       # 하윤 옷장 + 몽돌 소품만
+        outfits(only)
         write_list()
         return
     if only == "town" or only.startswith(("b_", "c_", "d_", "w_", "h_", "m_", "map_")):
