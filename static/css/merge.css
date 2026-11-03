@@ -232,8 +232,8 @@ img { -webkit-user-drag: none; user-select: none; }
 .sand.pop { animation: pop .45s; }
 
 /* 충전식 발생기 */
-.it.gen .gcharge { position: absolute; left: -3px; top: -4px; background: var(--cc); color: #fff; border-radius: 999px; font-size: 10px; padding: 0 5px; line-height: 15px; box-shadow: 0 1px 0 rgba(0,0,0,.15); }
-.it.gen .gcharge.rest { background: #8f8f8f; }
+.it.gen .gcharge { position: absolute; left: 2px; bottom: 2px; max-width: calc(100% - 4px); overflow: hidden; background: var(--cc); color: #fff; border-radius: 999px; font-size: 10px; padding: 0 4px; line-height: 14px; box-shadow: 0 1px 0 rgba(0,0,0,.15); pointer-events: none; z-index: 1; font-variant-numeric: tabular-nums; letter-spacing: -.3px; }   /* 칸 안 왼쪽 아래 (옆 칸으로 안 넘치게) */
+.it.gen .gcharge.rest { background: #8f8f8f; font-size: 9px; padding: 0 3px; letter-spacing: -.5px; }
 .it.gen.resting img { filter: grayscale(.7) opacity(.7); }
 
 /* 주문 덤 */
@@ -241,7 +241,9 @@ img { -webkit-user-drag: none; user-select: none; }
 .oc-bonus .ph { width: 17px; height: 17px; font-size: 0; }
 
 /* 알림 버튼 */
-#toast.has-b { pointer-events: auto; padding-right: 6px; }
+#toast.has-b { padding-right: 6px; }
+#toast.has-b .toast-m { pointer-events: none; }
+#toast.has-b.on .toast-b { pointer-events: auto; }   /* 보일 때 단추만 톡 · 몸통·사라진 알림은 늘 통과 (판 아랫줄 톡 가로채기 방지) */
 .toast-b { margin-left: 8px; border: 0; border-radius: 999px; background: var(--gold); color: var(--ink); padding: 4px 12px; font-size: 14px; }
 
 /* 시트: 가방 · 설정 */
@@ -893,10 +895,11 @@ body.big-text #foot .info-box.idle .info-txt p { font-size: 14px; }
 
 /* ---------- 판 재미 요소 (2026-11-02): 충전 링 · 거품 · 그물 · 상자 · 부탁 종류 ---------- */
 /* 충전 링: 남은 횟수만큼 체인 색 · 쉬는 동안은 회색 시계 링이 다시 차올라요 (fx 요소 · 터치 막지 않음) */
-.it.gen .gring { position: absolute; inset: -3px; border-radius: 13px; pointer-events: none;
-  background: conic-gradient(var(--cc) calc(var(--p) * 1%), rgba(160,140,120,.18) 0);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3.5px)); }
-.it.gen .gring.rest { background: conic-gradient(#9aa7b4 calc(var(--p) * 1%), rgba(160,140,120,.18) 0); }
+.it.gen .gring { position: absolute; inset: 1px; width: calc(100% - 2px); height: calc(100% - 2px); pointer-events: none; overflow: visible; }
+.it.gen .gring rect, .it.gen .gring path { fill: none; stroke-width: 7; stroke-linecap: round; }
+.it.gen .gring .gr-bg { stroke: rgba(120,100,80,.16); }
+.it.gen .gring .gr-fg { stroke: var(--cc); }
+.it.gen .gring.rest .gr-fg { stroke: #9aa7b4; }
 .it.gen.resting::before { content: 'z'; position: absolute; right: 4px; top: 12px; font-size: 11px; color: #7d8a96; animation: zz 1.8s infinite; pointer-events: none; z-index: 2; }
 @keyframes zz { 0% { opacity: 0; transform: translateY(4px); } 50% { opacity: 1; } 100% { opacity: 0; transform: translate(4px, -8px); } }
 /* 거품 속 물건 */
@@ -937,3 +940,27 @@ body.big-text #foot .info-box.idle .info-txt p { font-size: 14px; }
 @media (prefers-reduced-motion: reduce) { .it.bub, .it.bub .bub-glass, .it.box.ready, .it.gen.resting::before { animation: none; } }
 .it.box.ready:not(.arc):not(.pop):not(.born):not(.wig1) { animation: boxReady 1.1s ease-in-out infinite; }
 body.tw-decoing #toast { bottom: var(--tray-top, 240px); }
+/* 되돌리기 단추 알림: 아래 정보 칸 자리에 딱 맞춰서 (판·아래 단추를 덮지 않게 · release_checklist 17) */
+#toast.on-info { background: rgba(75,58,53,.97); left: var(--ti-l); top: var(--ti-t); bottom: auto; width: var(--ti-w); height: var(--ti-h); max-width: none; transform: translateY(8px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 6px 10px; border-radius: 16px;
+  white-space: normal; text-align: center; font-size: 14.5px; line-height: 1.3; overflow: hidden; word-break: keep-all; }
+#toast.on-info.on { transform: none; }
+#toast.on-info .toast-m { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+#toast.on-info .toast-b { margin: 0; min-height: 30px; padding: 4px 16px; flex: none; }
+body.big-text #toast.on-info { font-size: 15.5px; }
+/* 설정 맨 아래 만든 사람·출처 (피아노 음원 CC-BY 표시 · 늘 보이게) */
+.set-credit { margin: 12px 4px 2px; text-align: center; font-size: 12.5px; line-height: 1.45; color: var(--ink2); word-break: keep-all; }
+.set-credit b { font-weight: 400; color: var(--ink); }
+body.big-text .set-credit { font-size: 14px; }
+/* 충전 발생기: 별 단계는 칸 안 아래 가운데 대신 오른쪽 아래 (왼쪽 아래 남은 횟수와 안 겹치게) */
+.it.gen .gcharge ~ .glv { left: auto; right: 2px; bottom: 1px; transform: none; }
+body.big-text .it.gen .gcharge:not(.rest) { font-size: 11px; line-height: 15px; }
+/* 발생기 꾹 누르기: 2초 동안 칸 테두리가 차오르고 → 꺼내는 동안 반짝 (판 밖 겹침 없음 · 터치 통과) */
+.hold-ring { position: fixed; z-index: 34; pointer-events: none; }
+.hold-ring svg { width: 100%; height: 100%; overflow: visible; display: block; }
+.hold-ring path { fill: none; stroke: var(--gold); stroke-width: 7; stroke-linecap: round; stroke-dasharray: 100 100; stroke-dashoffset: 100; animation: holdFill var(--hold, 1780ms) linear forwards; filter: drop-shadow(0 0 3px rgba(245,193,66,.8)); }
+@keyframes holdFill { to { stroke-dashoffset: 0; } }
+.hold-ring.go path { animation: holdGo .5s ease-in-out infinite alternate; stroke-dashoffset: 0; stroke: #ffb21f; }
+@keyframes holdGo { from { opacity: 1; } to { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .hold-ring.go path { animation: none; } }
+#board { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }

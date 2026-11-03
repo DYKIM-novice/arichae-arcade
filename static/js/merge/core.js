@@ -162,6 +162,11 @@
   }
   // 발생기 톡 (화면 규칙): 고른 칸이 이 발생기면 꺼내기, 아니면 고르기만 (기운 안 씀 · 끌어서 옮긴 뒤에도 같음)
   function genTap(selIdx, idx) { return selIdx === idx && idx >= 0 ? 'spawn' : 'select'; }
+  // 꾹 누르기 연속 꺼내기: 2초 꾹 → 첫 물건 · 그다음은 0.35초부터 조금씩 빨라져요(가장 빠르면 0.17초)
+  //  손을 떼거나 · 끌기 거리만큼 움직이거나 · 기운/충전이 떨어지거나 · 판이 차면 멈춰요 (하나마다 기운은 평소대로)
+  const HOLD_MS = 2000;
+  function holdGap(k) { return Math.max(170, Math.round(350 * Math.pow(0.94, Math.max(0, k | 0)))); }
+  function holdStop(r) { return !r || !r.ok ? (r && r.reason) || 'stop' : ''; }
   function tapGen(st, idx, now, rng) {
     const g = st.board[idx];
     if (!g || g.k !== 'gen') return { ok: false, reason: 'notgen' };
@@ -1627,6 +1632,7 @@
     dailyTouch, questInfo, claimQuests, attendInfo, claimAttend,
     weekStart, currentEvent, eventInfo, eventTick, endEvent, makeEventOrder, placeDeco, thanksLine, collection,
     serialize, deserialize, summary, MIGRATE, hudShown,
+    HOLD_MS, holdGap, holdStop,
     stuck, unnet, maybeBubble, bubbleInfo, popBubble, maybeNet, makeBox, boxInfo, openBox, funTick
   };
   if (typeof module === 'object' && module.exports) module.exports = API;

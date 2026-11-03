@@ -1033,6 +1033,32 @@ test('발생기 톡: 처음 톡은 고르기만(기운 그대로) · 고른 발�
   assert.ok(tapUI(10).ok, '고른 채로 계속 톡하면 계속 나와요'); assert.strictEqual(st.energy, e0 - 2);
   sel = 3; assert.strictEqual(tapUI(10), null, '다른 걸 골랐다 오면 고르기부터'); assert.strictEqual(st.energy, e0 - 2);
 });
+test('발생기 꾹 누르기: 2초 뒤 연속 꺼내기 · 점점 빨라지되 0.17초 아래로는 안 · 하나마다 기운 1 · 기운/판이 다하면 멈춤', () => {
+  assert.strictEqual(C.HOLD_MS, 2000);
+  assert.strictEqual(C.holdGap(0), 350);
+  for (let k = 1; k < 40; k++) { assert.ok(C.holdGap(k) <= C.holdGap(k - 1), '점점 빨라져요'); assert.ok(C.holdGap(k) >= 170, '너무 빠르지 않게'); }
+  assert.strictEqual(C.holdGap(99), 170);
+  // 연속 꺼내기 흉내: 기운이 3이면 3개 나오고 멈춤 (이유 energy)
+  const st = emptyState(seeded(4)); const gid = Object.keys(D.GENS).find((g) => !D.GENS[g].charge && !D.GENS[g].ev);
+  st.board[10] = { k: 'gen', g: gid }; st.energy = 3;
+  const items0 = st.board.filter((x) => x && x.k === 'item').length;
+  let made = 0, why = '';
+  for (let k = 0; k < 20 && !why; k++) { const r = C.tapGen(st, 10, T0, seeded(10 + k)); why = C.holdStop(r); if (!why) made++; }
+  assert.strictEqual(made, 3); assert.strictEqual(why, 'energy'); assert.strictEqual(st.energy, 0);
+  assert.ok(st.board.filter((x) => x && x.k === 'item').length >= items0 + 3);
+  // 판이 꽉 차면 멈춤 (이유 full)
+  const s2 = emptyState(seeded(5)); s2.board[10] = { k: 'gen', g: gid }; s2.energy = 999;
+  for (let k = 0; k < s2.board.length; k++) { if (!s2.board[k]) s2.board[k] = { k: 'item', c: 'a', t: 1 + (k % 5) }; if (s2.cover) s2.cover[k] = 0; }
+  assert.strictEqual(C.holdStop(C.tapGen(s2, 10, T0, seeded(6))), 'full');
+  // 충전 발생기는 충전이 다하면 멈춤
+  const cg = Object.keys(D.GENS).find((g) => D.GENS[g].charge);
+  const s3 = emptyState(seeded(7)); s3.board[10] = { k: 'gen', g: cg }; s3.energy = 999;
+  let n3 = 0, w3 = '';
+  for (let k = 0; k < 60 && !w3; k++) { const r = C.tapGen(s3, 10, T0, seeded(20 + k)); w3 = C.holdStop(r); if (!w3) n3++; }
+  assert.strictEqual(n3, C.chargeTaps(s3, cg)); assert.strictEqual(w3, 'rest');
+  // 짧은 톡 규칙은 그대로 (꾹 누르기와 별개)
+  assert.strictEqual(C.genTap(-1, 10), 'select');
+});
 test('상점 살 때 묻는 말: 받침에 맞춘 을/를 · 동전/소라별 · 하기 말', () => {
   assert.strictEqual(C.buyAsk('가방 한 칸', 120, 'coins'), '가방 한 칸을 동전 120개에 살까요?');
   assert.strictEqual(C.buyAsk('작은 선글라스', 120, 'coins'), '작은 선글라스를 동전 120개에 살까요?');

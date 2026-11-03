@@ -105,7 +105,9 @@
         // 충전 링: 남은 횟수만큼 체인 색으로 차 있어요 · 쉬는 동안은 회색 시계 링이 다시 차올라요
         const tot = (C.genUpInfo(st, cell.g) || {}).restMs || 1;
         const p = ch.restMs ? 1 - ch.restMs / tot : ch.left / Math.max(1, ch.max);
-        cost += `<i class="gring${ch.restMs ? ' rest' : ''}" style="--p:${Math.round(Math.max(0, Math.min(1, p)) * 100)}"></i>`;
+        // 칸 모서리를 따라 도는 얇은 진행 테두리 (칸 안쪽에만 · 둥근 모서리 맞춤 · 12시 방향부터 시계방향)
+        const pc = Math.round(Math.max(0, Math.min(1, p)) * 100);
+        cost += `<svg class="gring${ch.restMs ? ' rest' : ''}" viewBox="0 0 100 100" aria-hidden="true"><rect class="gr-bg" x="5" y="5" width="90" height="90" rx="18"/><path class="gr-fg" pathLength="100" stroke-dasharray="${pc} 100" d="M50 5H77A18 18 0 0 1 95 23V77A18 18 0 0 1 77 95H23A18 18 0 0 1 5 77V23A18 18 0 0 1 23 5Z"/></svg>`;
       }
       const lv = C.genLevel(st, cell.g);
       if (lv) cost += `<span class="glv">${lv > 3 ? '★' + lv : '★'.repeat(lv)}</span>`;   // 4·5단계는 짧게 (칸이 좁아요)
@@ -630,16 +632,17 @@
     return r;
   }
 
-  function spawn(i) {
+  // hold = 꾹 누르기 연속 꺼내기 중: 멈출 때 창을 띄우지 않고 부드러운 알림만 · 성공하면 true
+  function spawn(i, hold) {
     const g = itEl(i);
     restartAnim(g, 'tap');
     const r = C.tapGen(st, i, now(), rng);
     if (!r.ok) {
-      F.sfx('bad'); F.vibrate(30);
-      if (r.reason === 'full') toast('자리가 없어요 · 합치거나 가방에 넣어 보세요');
+      F.sfx('bad'); F.vibrate(hold ? 15 : 30);
+      if (r.reason === 'full') toast(hold ? '판이 꽉 차서 멈췄어요 · 합치거나 가방에 넣어 보세요' : '자리가 없어요 · 합치거나 가방에 넣어 보세요');
       else if (r.reason === 'rest') toast(`${josa(D.GENS[st.board[i].g].name, '은', '는')} 쉬는 중 · ${mmss(r.waitMs)} 뒤에 다시`);
-      else if (r.reason === 'energy') openEnergy();
-      return;
+      else if (r.reason === 'energy') { if (hold) toast('기운이 다 떨어져서 멈췄어요 · 위의 ⚡ 를 눌러 채워요'); else openEnergy(); }
+      return false;
     }
     renderBoard();
     const el = itEl(r.at);
@@ -657,6 +660,7 @@
     renderHud(); renderOrders(); renderInfo();
     changed();
     autoAfter(r.at, 360);
+    return true;
   }
   // 물건이 a 에서 b 칸으로 포물선을 그리며 톡 (발생기·보자기·상점·가방)
   function arcIn(el, a, b, delay) {
@@ -697,9 +701,9 @@
     }
     const cell = st.board[i];
     if (!cell) { if (sel >= 0) { sel = -1; tipIdx++; renderBoard(); renderInfo(); } return; }
-    // 상자: 처음 톡 = 고르기(남은 시간) · 열 수 있을 때 한 번 더 톡 = 열기
+    // 상자: '열기!'(시간 다 됨)는 톡 한 번에 열기 · 아직이면 고르기(남은 시간·열쇠·소라별 안내)
     if (cell.k === 'box') {
-      if (sel === i && C.boxInfo(st, cell, now()).ready) { openAt(i, 'time'); return; }
+      if (C.boxInfo(st, cell, now()).ready) { openAt(i, 'time'); return; }
       sel = i; F.sfx('pick'); renderBoard(); renderInfo(); return;
     }
     // 고른 물건을 같은 물건이 걸린 그물에 톡 → 겹쳐서 풀기
@@ -761,6 +765,41 @@
     setTimeout(() => { ghostHide(); busy = false; apply(from, to); }, 130);
   }
 
+  /* ---------- 발생기 꾹 누르기 (2초) → 손을 뗄 때까지 연속 꺼내기 ----------
+     짧은 톡은 그대로(처음 톡 = 고르기) · 끌기 거리만큼 움직이면 취소 · 기운/충전이 떨어지거나 판이 차면 멈춤 (C.HOLD_MS · C.holdGap) */
+  let holdEl = null;
+  function holdRing(i, mode) {   // mode: 'fill'(2초 차오름) | 'go'(꺼내는 중) | null(치우기)
+    if (!mode) { if (holdEl) { holdEl.remove(); holdEl = null; } return; }
+    const r = cellEl(i).getBoundingClientRect();
+    if (!holdEl) {
+      holdEl = document.createElement('div');
+      holdEl.className = 'hold-ring';
+      holdEl.innerHTML = '<svg viewBox="0 0 100 100" aria-hidden="true"><path pathLength="100" d="M50 4H76A20 20 0 0 1 96 24V76A20 20 0 0 1 76 96H24A20 20 0 0 1 4 76V24A20 20 0 0 1 24 4Z"/></svg>';
+      document.body.appendChild(holdEl);
+    }
+    Object.assign(holdEl.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+    holdEl.style.setProperty('--hold', (C.HOLD_MS - 220) + 'ms');
+    holdEl.classList.toggle('go', mode === 'go');
+  }
+  function holdArm(d) {
+    const c = st.board[d.i];
+    if (!c || c.k !== 'gen') return;
+    d.holdT = setTimeout(() => { if (drag === d && !d.on) holdRing(d.i, 'fill'); }, 220);   // 짧은 톡에는 안 보이게 조금 뒤에
+    d.holdGo = setTimeout(() => holdRun(d, 0), C.HOLD_MS);
+  }
+  function holdCancel(d) {
+    if (!d) return;
+    clearTimeout(d.holdT); clearTimeout(d.holdGo); clearTimeout(d.holdNext);
+    holdRing(-1, null);
+  }
+  function holdRun(d, k) {
+    if (drag !== d || d.on || !st.board[d.i] || st.board[d.i].k !== 'gen') { holdCancel(d); return; }
+    if (!d.held) { d.held = true; sel = d.i; holdRing(d.i, 'go'); }
+    if (!spawn(d.i, true)) { holdCancel(d); renderBoard(); renderInfo(); return; }
+    F.vibrate(10);
+    d.holdNext = setTimeout(() => holdRun(d, k + 1), C.holdGap(k));
+  }
+
   const board = $('board');
   board.addEventListener('pointerdown', (e) => {
     F.unlock();
@@ -770,14 +809,18 @@
     if (!c) return;
     const i = Number(c.dataset.i);
     if (!st.board[i]) { tap(i); return; }
-    drag = { i, x0: e.clientX, y0: e.clientY, on: false, id: e.pointerId, over: -1 };
+    // 손가락 톡은 살짝 밀려도 톡 (손가락 10px · 마우스 8px 넘게 움직여야 끌기)
+    drag = { i, x0: e.clientX, y0: e.clientY, on: false, id: e.pointerId, over: -1, th: e.pointerType === 'touch' ? 100 : 64 };
     try { board.setPointerCapture(e.pointerId); } catch (err) { /* 무시 */ }
+    holdArm(drag);
   });
   board.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
-    if (!drag.on && dx * dx + dy * dy > 64 && C.stuck(st.board[drag.i])) return;   // 거품·그물은 못 옮겨요 (손을 떼면 톡)
-    if (!drag.on && dx * dx + dy * dy > 64) {
+    if (!drag.on && dx * dx + dy * dy > drag.th && C.stuck(st.board[drag.i])) return;   // 거품·그물은 못 옮겨요 (손을 떼면 톡)
+    if (drag.held) return;   // 연속 꺼내는 중에는 손가락이 조금 움직여도 끌기로 바뀌지 않아요 (떼면 멈춤)
+    if (!drag.on && dx * dx + dy * dy > drag.th) {
+      holdCancel(drag);   // 끌기 = 꾹 누르기 취소
       drag.on = true;
       sel = drag.i; renderBoard(); renderInfo();
       ghostShow(drag.i);
@@ -792,6 +835,8 @@
   function endDrag(e, cancel) {
     if (!drag || e.pointerId !== drag.id) return;
     const d = drag; drag = null;
+    holdCancel(d);
+    if (d.held) { renderBoard(); renderInfo(); return; }   // 꾹 누르기로 꺼냈으면 손을 뗄 때 톡은 없어요
     if (!d.on) { if (!cancel) tap(d.i); return; }
     if (d.over >= 0) cellEl(d.over).classList.remove('over', 'can');
     const lift = ghost.offsetHeight * 0.35;
@@ -812,6 +857,7 @@
     setTimeout(() => {
       ghostHide(); busy = false;
       if (target !== d.i) apply(d.i, target);
+      else if (!cancel && st.board[d.i] && st.board[d.i].k === 'box' && C.boxInfo(st, st.board[d.i], now()).ready) openAt(d.i, 'time');   // 손가락이 밀려 끌기가 됐어도 제자리면 '열기!'
       else { F.sfx('drop'); renderBoard(); }
     }, target !== d.i ? 120 : 200);
   }
@@ -1021,11 +1067,27 @@
   function toast(msg, btn, onBtn) {
     if (!msg) return;
     const t = $('toast');
-    t.innerHTML = esc(msg) + (btn ? ` <button type="button" class="toast-b">${esc(btn)}</button>` : '');
+    t.innerHTML = btn ? `<span class="toast-m">${esc(msg)}</span><button type="button" class="toast-b">${esc(btn)}</button>` : esc(msg);
     t.classList.toggle('has-b', !!btn);
-    t.onclick = btn ? (e) => { if (e.target.closest('.toast-b')) { t.classList.remove('on'); onBtn(); } } : null;
+    // 단추가 있는 알림(되돌리기)은 판 위가 아니라 아래 정보 칸 자리에 딱 맞춰 띄워요
+    // (판 맨 아랫줄 가운데 칸 위에 떠 있던 단추 알림이 — 사라진 뒤에도 — 톡을 가로채던 문제 · tools/merge_hitcheck.py)
+    const info = $('info'), ir = btn && info && info.offsetParent ? info.getBoundingClientRect() : null;
+    t.classList.toggle('on-info', !!(ir && ir.width > 80 && ir.height > 40));
+    if (t.classList.contains('on-info')) {
+      t.style.setProperty('--ti-l', Math.round(ir.left) + 'px'); t.style.setProperty('--ti-t', Math.round(ir.top) + 'px');
+      t.style.setProperty('--ti-w', Math.round(ir.width) + 'px'); t.style.setProperty('--ti-h', Math.round(ir.height) + 'px');
+    }
+    t.onclick = btn ? (e) => { if (e.target.closest('.toast-b')) { hideToast(); onBtn(); } } : null;
     t.classList.add('on');
-    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), btn ? 5000 : 2200);
+    clearTimeout(toastT); toastT = setTimeout(hideToast, btn ? 5000 : 2200);
+  }
+  // 알림 닫기: 보이지 않는 알림이 톡을 받지 않게 단추 표시도 같이 걷어요
+  function hideToast() {
+    const t = $('toast');
+    clearTimeout(toastT);
+    t.classList.remove('on');
+    t.onclick = null;
+    toastT = setTimeout(() => { t.classList.remove('has-b', 'on-info'); }, 300);
   }
   let sheetKind = '';
   function openSheet(html, onClick, kind) {
@@ -1474,7 +1536,8 @@
       ${bkList().length ? '<button type="button" class="btn" data-backups="1">이전 기록 되살리기</button>' : ''}
       <button type="button" class="btn" data-sbackups="1">서버 기록 되살리기</button>
       <button type="button" class="btn warn" data-reset="1">${confirmReset ? '정말 처음부터 할까요? 한 번 더 누르면 지워져요' : '처음부터 하기'}</button>
-      <button type="button" class="btn" data-close="1">닫기</button>`;
+      <button type="button" class="btn" data-close="1">닫기</button>
+      ${(() => { const cr = (MU && MU.credit) || (D.MUSIC && D.MUSIC.credit) || ''; return cr ? `<p class="set-credit"><b>만든 사람·출처</b><br>${esc(cr)}</p>` : ''; })()}`;
   }
   // 이전 기록 되살리기: 덮어쓰기 전에 보관해 둔 기록 (save.js backupRaw)
   const WHY = { migrate: '새 버전으로 바꾸기 전', broken: '읽지 못한 기록', newer: '더 새 버전의 기록', reset: '처음부터 하기 전',

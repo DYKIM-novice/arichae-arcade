@@ -377,7 +377,7 @@
     auto1mMs: 60000
   };
 
-  // 배경음악 악보 (merge_town.md ★BGM · 재생기는 js/merge/music.js · 파일·내려받기 없음, 직접 작곡)
+  // 배경음악 악보 (merge_town.md ★BGM · 재생기는 js/merge/music.js · 악보는 직접 작곡 · 피아노 소리만 녹음 음원 static/audio/piano/, 없으면 합성음)
   //  한 칸 = 8분음 · '.' 쉼 · '-' 앞 음 늘임 · '|' 는 마디 표시(읽을 때 무시) · 음 이름은 C4 = 가운데 도
   //  spb = 마디 칸 수 (8 = 4/4 · 6 = 6/8 뱃노래) · bpm = 4분음 기준 (6/8 은 8분음 하나 = 60/bpm/2 초)
   //  form: 구간 차례 (반복할 때마다 '변주': 가끔 이웃 음 · 꾸밈음 · 북 무늬 A/B 교대 · 씨앗 고정)
@@ -399,6 +399,8 @@
     //  form: 구간 차례 (공백으로) · 'A1' = 변주 1 · 'A2+2' = 변주 2 를 온음 위로 · 변주: 0 기본 · 1 왼손 흐르게+아래 옥타브 겹침 · 2 선율 한 옥타브 위+왼손 성기게 · 3 아래 화음 겹침
     //  I = 머리(왼손만) · Z = 끝맺음 · lh = 왼손 무늬(0~3 화음 음 · 4~7 한 옥타브 위 · . 쉼) · 화면·지역·낮밤과 상관없이 이어서 흘러요
     lists: { piano: ['p_morning', 'p_market', 'p_sunset', 'p_night'], piano_quiet: ['p_night'] },
+    // 피아노 음원 출처 (CC-BY 3.0 → 설정의 만든 사람/출처 줄에 꼭 보여 줘야 해요 · 파일 목록은 music.js PIANO)
+    credit: '피아노 음원: Salamander Grand Piano (Alexander Holm, CC-BY 3.0)',
     songs: {
       // 피아노 1 · 아침 바다 (다장조 · 잔잔하게 내려오는 베이스)
       p_morning: { piano: true, title: '아침 바다', bpm: 72, spb: 8, tr: 0, vel: 0.9,
