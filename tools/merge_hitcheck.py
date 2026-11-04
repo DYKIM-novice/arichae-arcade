@@ -6,10 +6,10 @@
 - 폰처럼(터치 · is_mobile · 주소창 있는 높이) 340×600, 360×640, 378×660, 390×740, 412×915 와 '글씨 크게' 로 열어서
   판의 모든 칸 가운데(+ 아래쪽 네 귀퉁이 근처)를 elementFromPoint 로 찍어 그 칸이 맞는지 봐요 (다른 것이 덮으면 실패)
 - 맨 아랫줄 발생기를 진짜 터치로 톡(고르기 · 기운 그대로) → 한 번 더 톡 → 기운이 줄어드는지도 봐요
-- 되돌리기 단추 알림(팔기·자동 합치기 뒤)이 떠 있을 때와 사라진 뒤에도 판을 덮지 않는지
-  (2026-11-03 '아랫줄 가운데 칸이 안 눌려요'의 진짜 원인 · release_checklist 17)
+- 알림(팔기·자동 합치기 뒤의 긴 알림 포함)이 떠 있을 때와 사라진 뒤에도 판을 덮지 않는지
+  (2026-11-03 '아랫줄 가운데 칸이 안 눌려요' · release_checklist 17 · 되돌리기 기능은 2026-11-04 에 뺐어요)
 - 맨 아랫줄 7칸마다 특수 칸(선물 상자 열기!/기다림 · 보물 궤짝 열기!/기다림 · 거품 · 그물)을 놓고
-  배지(☰·마을·가방·상점)와 알림(단추 알림·보통 알림)을 띄운 채 elementFromPoint + 진짜 터치 톡 →
+  배지(☰·마을·가방·상점)와 알림(긴 알림·보통 알림)을 띄운 채 elementFromPoint + 진짜 터치 톡 →
   '열기!'는 한 번에 열림 · 기다림은 고르기+남은 시간 · 거품/그물은 고르기+안내 가 맞는지
 - 판이 꽉 찼을 때 '열기!' → 하나는 제자리, 남는 물건은 가방 선물함 + 알림
 - 충전 발생기(찻잎 선반·등 공방 상자)의 충전 테두리·남은 횟수/쉬는 시간 표시가 칸 안에만 있는지 (옆 칸으로 안 넘침 · 글자 안 잘림)
@@ -81,7 +81,7 @@ SETUP = """([i, make, toastKind]) => { const U = MergeUI, st = U.state, now = Da
   st.board[i] = (new Function('now', 'return ' + make))(now);
   U.renderAll();
   (""" + BADGES + """)();
-  if (toastKind === 'undo') U.toast('모래알 팔았어요 (+1)', '되돌리기', () => {}); else U.toast('시험 알림 · 아랫줄 가운데 위');
+  if (toastKind === 'long') U.toast('자동으로 12번 합쳤어요 · 동전 30'); else U.toast('모래알 팔았어요 (+1)');
   const c = U.cellEl(i), q = c.getBoundingClientRect(), bad = [];
   for (const [fx, fy] of [[.5, .5], [.5, .85], [.25, .85], [.75, .85], [.5, .15]]) {
     const h = document.elementFromPoint(q.left + q.width * fx, q.top + q.height * fy);
@@ -111,7 +111,7 @@ def special_checks(page):
             if popups_open(page):
                 close_popups(page)
                 page.evaluate("() => { const a = document.querySelector('.ask'); if (a) a.remove(); }")
-            toast_kind = "undo" if (si + ci) % 2 == 0 else "plain"   # 칸마다 두 알림을 번갈아
+            toast_kind = "long" if (si + ci) % 2 == 0 else "plain"   # 칸마다 두 알림을 번갈아
             r = page.evaluate(SETUP, [i, make, toast_kind])
             page.wait_for_timeout(120)
             page.touchscreen.tap(r["x"], r["y"])
@@ -261,12 +261,16 @@ def main():
                     page.touchscreen.tap(tap["x"], tap["y"])
                     page.wait_for_timeout(500)
                     tapped = first_same and page.evaluate("() => document.querySelector('#hud').textContent") != e0
-                # 되돌리기 단추 알림이 떠 있을 때 · 사라진 뒤(5초+)에도 판 칸을 덮지 않는지 (배지도 띄운 채)
+                # 알림이 떠 있을 때 · 사라진 뒤에도 판 칸을 덮지 않는지 (배지도 띄운 채) · 340 폭에서 화면 밖으로 안 넘치는지
                 close_popups(page)
                 page.evaluate(BADGES)
-                page.evaluate("() => MergeUI.toast('모래알 팔았어요 (+1)', '되돌리기', () => {})")
+                page.evaluate("() => MergeUI.toast('자동으로 12번 합쳤어요 · 동전 30')")
+                page.wait_for_timeout(300)
                 r_on = page.evaluate(CHECK)
-                page.wait_for_timeout(5600)
+                tq = page.evaluate("() => { const q = document.getElementById('toast').getBoundingClientRect(); return q.left >= 0 && q.right <= innerWidth + 0.5; }")
+                if not tq:
+                    r_on["bad"].append({"알림": "화면 밖으로 넘침"})
+                page.wait_for_timeout(2700)
                 r_after = page.evaluate(CHECK)
                 sp = special_checks(page)
                 fb = full_board_open(page)
@@ -276,7 +280,7 @@ def main():
                 fails += not ok
                 tag = f"{w}x{h}{' 글씨크게' if big else ''}"
                 print(f"{'OK ' if ok else 'BAD'} {tag:16s} 칸 {r['n']} · 가려진 칸 {len(r['bad'])} · 판 아래 {r['boardBottom']} / 판 칸 아래 {r['wrapBottom']} / 아래 칸 위 {r['footTop']} · 아랫줄 발생기 톡 {tapped}")
-                print(f"     되돌리기 알림 중 가려진 칸 {len(r_on['bad'])} · 사라진 뒤 {len(r_after['bad'])} · 아랫줄 특수 칸 {len(SPECIALS) * 7 - len(sp)}/{len(SPECIALS) * 7} · 꽉 찬 판 열기 {fb}")
+                print(f"     알림 중 가려진 칸 {len(r_on['bad'])} · 사라진 뒤 {len(r_after['bad'])} · 아랫줄 특수 칸 {len(SPECIALS) * 7 - len(sp)}/{len(SPECIALS) * 7} · 꽉 찬 판 열기 {fb}")
                 print(f"     충전 표시 칸 밖 {len(cin)} · 꾹 누르기 실패 {len(hd)}")
                 for b in r["bad"][:5] + r_on["bad"][:3] + r_after["bad"][:3] + sp[:6] + cin[:4] + hd:
                     print("     ", b)

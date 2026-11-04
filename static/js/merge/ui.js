@@ -3,7 +3,7 @@
    - 주문 카드: 얼굴 · 원하는 물건(있으면 초록 체크) · 보상 · [건네기] · ↻ 다른 부탁
    - 규칙은 전부 MergeCore(core.js) 에 맡기고, 여기는 그리기·움직임·소리만 해요
    - 2단계: 모래더미 칸 · 아래 [마을]/[가방] 버튼 · 이야기 대사창(talk) · 서버 저장 동기화
-   - 3단계(일부): 가방(끌어 넣기)·선물함·소라별 가게 · 팔기(5초 되돌리기) · 되돌리기 ↶ · 보조 물건 쓰기 · 충전식 발생기
+   - 3단계(일부): 가방(끌어 넣기)·선물함·소라별 가게 · 팔기 · 보조 물건 쓰기 · 충전식 발생기
    - 4~6단계: 얼굴 그림(기본·기쁨) · 건네기 반응(기쁨 얼굴 통통 + 하트 + 고맙다는 말풍선) · 이야기 부탁(금색) · 이벤트 부탁
      · ☰ 메뉴(매일 출석·오늘의 부탁·도감·주간 이벤트·편지와 앨범·설정) · 발생기 강화 · 배경음·소리 크기·글씨·움직임 줄이기 · 오프라인
    - 마을 개편 1단계(merge_town.md): 배경음악(music.js · 화면마다 곡 고르기 musicTick) · 손맛(빨려 들어가 펑 · 포물선 · 숫자 올라감)
@@ -44,7 +44,6 @@
   let tipIdx = Math.floor(Math.random() * D.TIPS.length);
   const shown = C.hudShown(st);   // 동전·별이 날아가는 동안 숫자는 도착할 때 올라요 (늦어도 2.5초 뒤엔 진짜 값 · core.js hudShown)
   let infoMsg = null;    // 정보 칸에 잠깐 띄우는 말
-  let undoSnap = null, undoT = 0;   // 되돌리기 (마지막 행동 1번)
 
   /* ---------- 그림 조각 ---------- */
   function artImg(id, label, cls) {
@@ -324,7 +323,6 @@
       }, 700 + k * 450));
       if (r.story && D.STORY[r.story]) setTimeout(() => talk(D.STORY[r.story], (skipped) => { st.story[r.story] = skipped && !st.story[r.story] ? 'skip' : true; changed(); renderAll(); if (window.MergeTown) window.MergeTown.resume(); }), 1500);
       if (r.friendUps && r.friendUps.length && window.MergeTown) setTimeout(() => window.MergeTown.friendUps(r.friendUps), r.story ? 2600 : 1300);   // 우정 +2 로 단계가 오르면
-      clearUndo();
       renderBoard(); renderOrders(); renderInfo(); renderNav();
       if (r.bonus) {
         if (r.bonus.at >= 0) {
@@ -608,14 +606,12 @@
 
   // from → to 적용 (끌기·톡톡 공통)
   function apply(from, to) {
-    const snap = C.snapshot(st);
     const r = C.move(st, from, to, now());
     if (r.kind === 'none') {
       const msg = { covered: '모래더미예요 · 옆에서 합치면 벗겨져요', net: '그물에 걸린 물건이에요 · 같은 물건을 겹치거나 바로 옆에서 합치면 풀려요', bubble: '거품 속 물건이에요 · 톡 해서 꺼내요' }[r.reason];
       if (msg) { F.sfx('bad'); toast(msg); renderBoard(); }
       return r;
     }
-    setUndo(snap);
     sel = r.kind === 'swap' ? to : r.at;
     const bub = r.kind === 'merge' ? C.maybeBubble(st, r, now(), rng) : null;   // 가끔 같은 물건이 거품 속에 하나 더
     renderBoard();
@@ -656,7 +652,6 @@
       arcIn(itEl(r.extra.at), a, c2, 120);
       setTimeout(() => { floatTag('덤 하나 더!', c2.x, c2.y - c2.h * 0.6, true); F.sfx('spawn'); }, 420);
     }
-    clearUndo();
     renderHud(); renderOrders(); renderInfo();
     changed();
     autoAfter(r.at, 360);
@@ -931,7 +926,6 @@
     }
     const r = C.popBubble(st, i, how, now());
     if (!r.ok) { shopFail(r); return; }
-    clearUndo();
     renderBoard();
     const p = center(cellEl(i));
     restartAnim(itEl(i), 'mpop');
@@ -955,7 +949,7 @@
     }
     const r = C.openBox(st, i, how, now(), rng);
     if (!r.ok) { if (r.reason === 'keys') { F.sfx('bad'); toast('열쇠가 없어요 · 반짝 손님·오늘의 부탁·상점 [도우미]에서 얻어요'); } else if (r.reason === 'wait') { F.sfx('bad'); toast(`${mmss(r.leftMs)} 뒤에 열려요`); } else shopFail(r); return; }
-    clearUndo(); sel = -1;
+    sel = -1;
     const p = center(cellEl(i));
     F.sfx('discover'); F.jingle && F.jingle('attend'); F.vibrate([12, 30, 12]);
     renderBoard();
@@ -987,7 +981,7 @@
     const p = center(cellEl(i));
     const r = C.useItem(st, i, now(), rng);
     if (!r.ok) { F.sfx('bad'); return; }
-    clearUndo(); sel = -1;
+    sel = -1;
     F.vibrate(16);
     if (r.kind === 'gift') {
       F.sfx('discover');
@@ -1009,14 +1003,12 @@
     renderAll(); changed();
   }
   function putInBag(i) {
-    const snap = C.snapshot(st);
     const cell = st.board[i];
     if (cell && cell.k === 'gen') { F.sfx('bad'); toast('발생기는 판에 두어요'); return; }
     if (C.stuck(cell)) { F.sfx('bad'); toast(cell.k === 'net' ? '그물에 걸려서 못 넣어요' : '거품 속 물건은 먼저 꺼내요'); return; }
     const p = center(cellEl(i));
     const r = C.toBag(st, i, now());
     if (!r.ok) { F.sfx('bad'); toast(r.reason === 'full' ? '가방이 가득 찼어요 · 가방에서 칸을 늘릴 수 있어요' : ''); return; }
-    setUndo(snap);
     sel = -1;
     F.fly(cellPic(cell), p, center($('btn-bag')), { ms: 420, size: p.w, s1: 0.4, onEach: () => restartAnim($('btn-bag'), 'bump') });
     F.sfx('drop');
@@ -1032,63 +1024,26 @@
       (b) => { if (b.dataset.sure) { closeSheet(); sellAt(i, true); } });
       return;
     }
-    const snap = C.snapshot(st);
     const p = center(cellEl(i));
     const r = C.sell(st, i, now());
     if (!r.ok) return;
-    setUndo(snap, `${C.itemName(r.cell)} 팔았어요 (+${r.coins})`);
+    toast(`${C.itemName(r.cell)} 팔았어요 (+${r.coins})`);
     sel = -1;
     F.sfx('coin');
     F.fly(artImg('coin', ''), p, center($('hud-coin')), { count: Math.min(4, Math.max(1, Math.ceil(r.coins / 8))), ms: 520, size: 26, onEach: () => bump('hud-coin') });
     renderAll(); changed();
   }
-  // 되돌리기: 옮기기·합치기·팔기·가방 넣기 뒤 (뽑기·건네기·고치기를 하면 사라져요)
-  function setUndo(snap, msg) {
-    undoSnap = snap;
-    $('btn-undo').classList.remove('hide');
-    clearTimeout(undoT);
-    undoT = setTimeout(clearUndo, 15000);
-    if (msg) toast(msg, '되돌리기', doUndo);
-  }
-  function clearUndo() { undoSnap = null; clearTimeout(undoT); $('btn-undo').classList.add('hide'); }
-  function doUndo() {
-    if (!undoSnap || busy) return;
-    C.restore(st, undoSnap);
-    clearUndo();
-    sel = -1;
-    F.sfx('swap');
-    toast('되돌렸어요');
-    renderAll(); changed();
-  }
-  $('btn-undo').addEventListener('click', () => { F.unlock(); doUndo(); });
 
   /* ---------- 알림 · 시트 ---------- */
   let toastT = 0;
-  function toast(msg, btn, onBtn) {
+  function toast(msg) {
     if (!msg) return;
     const t = $('toast');
-    t.innerHTML = btn ? `<span class="toast-m">${esc(msg)}</span><button type="button" class="toast-b">${esc(btn)}</button>` : esc(msg);
-    t.classList.toggle('has-b', !!btn);
-    // 단추가 있는 알림(되돌리기)은 판 위가 아니라 아래 정보 칸 자리에 딱 맞춰 띄워요
-    // (판 맨 아랫줄 가운데 칸 위에 떠 있던 단추 알림이 — 사라진 뒤에도 — 톡을 가로채던 문제 · tools/merge_hitcheck.py)
-    const info = $('info'), ir = btn && info && info.offsetParent ? info.getBoundingClientRect() : null;
-    t.classList.toggle('on-info', !!(ir && ir.width > 80 && ir.height > 40));
-    if (t.classList.contains('on-info')) {
-      t.style.setProperty('--ti-l', Math.round(ir.left) + 'px'); t.style.setProperty('--ti-t', Math.round(ir.top) + 'px');
-      t.style.setProperty('--ti-w', Math.round(ir.width) + 'px'); t.style.setProperty('--ti-h', Math.round(ir.height) + 'px');
-    }
-    t.onclick = btn ? (e) => { if (e.target.closest('.toast-b')) { hideToast(); onBtn(); } } : null;
+    t.textContent = msg;
     t.classList.add('on');
-    clearTimeout(toastT); toastT = setTimeout(hideToast, btn ? 5000 : 2200);
+    clearTimeout(toastT); toastT = setTimeout(hideToast, 2200);
   }
-  // 알림 닫기: 보이지 않는 알림이 톡을 받지 않게 단추 표시도 같이 걷어요
-  function hideToast() {
-    const t = $('toast');
-    clearTimeout(toastT);
-    t.classList.remove('on');
-    t.onclick = null;
-    toastT = setTimeout(() => { t.classList.remove('has-b', 'on-info'); }, 300);
-  }
+  function hideToast() { clearTimeout(toastT); $('toast').classList.remove('on'); }
   let sheetKind = '';
   function openSheet(html, onClick, kind) {
     const sh = $('sheet');
@@ -1166,7 +1121,6 @@
         if (!r.ok) { F.sfx('bad'); toast(r.reason === 'coins' ? '동전이 모자라요' : '더는 못 늘려요'); return; }
         F.sfx('deliver'); toast(`가방이 ${r.size}칸이 됐어요!`);
       } else if (b.dataset.goshop) { openShop('item'); return; }
-      clearUndo();
       re(); renderAll(); changed();
     });
   }
@@ -1410,7 +1364,6 @@
       if (!r) return;
       if (!r.ok) { shopFail(r); return; }
       if (!b.dataset.reroll) shopGot(r, label);
-      clearUndo();
       re(); renderAll(); changed();
     };
     openSheet(shopHTML(), (b) => act(b, false), 'shop');
@@ -1436,7 +1389,6 @@
     if (!r.ok) { if (r.reason === 'season') { F.sfx('bad'); toast('여름(6~8월)에 상점에 나와요'); } else shopFail(r); return true; }
     F.sfx(r.price ? 'deliver' : 'discover'); F.vibrate(12); toast(msg);
     if (r.price) { countUp('coins', st.coins); bump('hud-coin'); }
-    clearUndo();
     return true;
   }
 
@@ -1457,7 +1409,6 @@
     (b) => { if (b.dataset.go) { closeSheet(); runAuto(); } });
   }
   function runAuto() {
-    const snap = C.snapshot(st);
     const r = C.autoMergeBuy(st, now(), {});
     if (!r.ok) { F.sfx('bad'); toast(r.reason === 'coins' ? `동전이 ${r.short}개 모자라요` : '합칠 게 없어요'); return; }
     busy = true; sel = -1; clearHint();
@@ -1468,7 +1419,7 @@
     const next = () => {
       if (k >= r.steps.length) {
         busy = false;
-        setUndo(snap, `자동으로 ${r.n}번 합쳤어요${r.token ? ' (무료)' : r.price ? ` · 동전 ${r.price}` : ''}`);
+        toast(`자동으로 ${r.n}번 합쳤어요${r.token ? ' (무료)' : r.price ? ` · 동전 ${r.price}` : ''}`);
         renderAll(); changed();
         return;
       }
@@ -2073,7 +2024,7 @@
   function adopt(next, msg, why) {
     if (why) bkSave(st, why);   // 바꾸기 전 이 폰 기록을 보관 (처음 판이면 건너뜀)
     st = next;
-    sel = -1; wasReady = {}; shown.reset(st); clearUndo();
+    sel = -1; wasReady = {}; shown.reset(st);
     $('orders').innerHTML = '';
     sync.sentAt = st.updatedAt; S.setSyncInfo(store, sync);
     syncSt.conflict = false;
@@ -2180,7 +2131,7 @@
   // 시험용 손잡이 (브라우저 콘솔 · 자동 시험)
   window.MergeUI = {
     get state() { return st; }, renderAll, renderNav, apply, tap, deliver, layout, changed, toast, say, talk, flash, floatTag, center, cellEl, itEl,
-    artImg, esc, josa, setBg, clearUndo, restartAnim, openBag, syncPush, sync, STAR, faceSrc, faceHTML, react, quiet,
+    artImg, esc, josa, setBg, restartAnim, openBag, syncPush, sync, STAR, faceSrc, faceHTML, react, quiet,
     openMenu, openDaily, openBook, openEvent, openLetters, openSettings, openSheet, closeSheet, dailyEventTick, mmss,
     openShop, openAuto, runAuto, askYesNo, musicTick, autoAfter, arcIn, countUp, bump,
     get busy() { return busy; }

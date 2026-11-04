@@ -520,16 +520,6 @@
     st.updatedAt = now;
     return { ok: true, at, cell };
   }
-  /* ---------- 되돌리기 (마지막 행동 1번: 옮기기·합치기·팔기·가방) ---------- */
-  function snapshot(st) { return JSON.stringify({ board: st.board, bag: st.bag, cover: st.cover, gifts: st.gifts, coins: st.coins, gems: st.gems, boost: st.boost }); }
-  function restore(st, snap) {
-    try {
-      const s = JSON.parse(snap);
-      ['board', 'bag', 'cover', 'gifts', 'coins', 'gems', 'boost'].forEach((k) => { if (s[k] !== undefined) st[k] = s[k]; });
-      return true;
-    } catch (e) { return false; }
-  }
-
   /* ---------- 주문 ---------- */
   // 주문 난이도 = 지금 복원 중인 지역 (다 고친 뒤에는 마지막 지역)
   function orderLevel(st) { return Math.max(0, Math.min(st.area || 0, AREAS.length - 1)); }
@@ -1619,7 +1609,7 @@
     N, HOME, maxTier, isAux, itemId, itemName, sellValue, sellAsk, rc, dayKey,
     newState, regen, energyInfo, refill, refillPrice,
     covered, isFree, emptyCount, nearestEmpty, giveCell, chargeInfo, genTap, tapGen, canMerge, mergeResult, move, peel, findPair,
-    sell, useItem, bagPrice, growBag, toBag, fromBag, takeGift, snapshot, restore,
+    sell, useItem, bagPrice, growBag, toBag, fromBag, takeGift,
     shopMult, shopChains, itemCoins, shopTouch, shopBuy, shopReroll, shopFree, dealPrice, restingGens,
     autoReserve, autoPairs, autoPrice, autoFreeLeft, autoMergePlan, autoMergeBuy, autoMerge, autoChain, boostTick, setPin,
     orderLevel, makeOrder, fillOrders, orderStatus, orderGuide, deliver, skipOrder,

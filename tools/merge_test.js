@@ -1,5 +1,5 @@
 // 머지관 「소라섬 등불 이야기」 규칙 시험:  node tools/merge_test.js
-// 합치기 규칙 · 발생기/에너지 회복 · 주문 완료 · 저장/불러오기 · 복원 작업·지역 1~6·엔딩 · 모래더미 · 가방·팔기·되돌리기 · v1→v2 변환
+// 합치기 규칙 · 발생기/에너지 회복 · 주문 완료 · 저장/불러오기 · 복원 작업·지역 1~6·엔딩 · 모래더미 · 가방·팔기 · v1→v2 변환
 // · 얼굴 그림·고맙다는 말 · 이야기 부탁 · 발생기 강화 · 숨은 비밀 · 7일 출석·오늘의 부탁 · 주간 이벤트 · 도감
 'use strict';
 const assert = require('assert');
@@ -486,7 +486,7 @@ test('옆에서 합치면 한 겹씩 벗겨져요 (위·아래·왼·오른)', (
   assert.strictEqual(st.cover[14], 0); assert.strictEqual(st.cover[22], 1); assert.strictEqual(st.cover[20], 2, '옆이 아닌 칸은 그대로');
 });
 
-console.log('3단계 · 가방 · 팔기 · 되돌리기 · 보조 물건');
+console.log('3단계 · 가방 · 팔기 · 보조 물건');
 test('가방: 넣기·꺼내기 · 가득 차면 안 됨 · 동전으로 늘리기(50 → ×1.4)', () => {
   const st = emptyState();
   for (let i = 0; i < 7; i++) st.board[i] = item('b', 2);
@@ -510,25 +510,26 @@ test('가방 속 물건도 주문에 쓰여요', () => {
   assert.ok(C.deliver(st, 'x', T0, seeded(1)).ok);
   assert.strictEqual(st.board[5], null); assert.strictEqual(st.bag[2], null);
 });
-test('팔기: 2^(단계-1) 동전 · 발생기는 못 팔고 · 최고 단계는 물어봄 · 되돌리기', () => {
+test('팔기: 2^(단계-1) 동전 · 발생기는 못 팔고 · 최고 단계는 물어봄', () => {
   const st = emptyState();
   st.board[0] = item('d', 4); st.board[1] = { k: 'gen', g: 'gen_a' };
-  const snap = C.snapshot(st);
   const r = C.sell(st, 0, T0);
   assert.ok(r.ok); assert.strictEqual(r.coins, 8); assert.strictEqual(st.coins, 8); assert.strictEqual(st.board[0], null);
   assert.strictEqual(C.sell(st, 1, T0).reason, 'gen');
   assert.ok(C.sellAsk(item('d', 8))); assert.ok(!C.sellAsk(item('d', 7))); assert.ok(C.sellAsk({ k: 'wild' }));
-  assert.ok(C.restore(st, snap));
-  assert.deepStrictEqual(st.board[0], item('d', 4)); assert.strictEqual(st.coins, 0);
 });
-test('되돌리기: 합치기도 원래대로 (모래더미 포함)', () => {
-  const st = emptyState();
-  st.cover[2] = 1; st.board[0] = item('a', 1); st.board[1] = item('a', 1);
-  const snap = C.snapshot(st);
-  C.move(st, 0, 1, T0);
-  assert.strictEqual(st.cover[2], 0);
-  C.restore(st, snap);
-  assert.deepStrictEqual(st.board[0], item('a', 1)); assert.strictEqual(st.cover[2], 1);
+test('되돌리기는 없어요: 엔진에 snapshot/restore 가 없고 · 옛 저장의 되돌리기 칸은 조용히 무시', () => {
+  assert.strictEqual(C.snapshot, undefined); assert.strictEqual(C.restore, undefined);
+  const ls = memStore(); const ad = S.localAdapter(ls);
+  const st = C.newState(T0, seeded(4)); st.coins = 41; st.board[3] = item('d', 5);
+  assert.ok(S.save(ad, st));
+  const raw = JSON.parse(ls.m[D.SAVE_KEY]);
+  const blob = raw.st || raw;   // 저장 모양이 바뀌어도 맨 위·상태 둘 다에 넣어 봐요
+  raw.undo = '{"coins":0}'; raw.undoSnap = { coins: 0 }; blob.undo = '{"coins":0}'; blob.undoSnap = { coins: 0 };
+  ls.m[D.SAVE_KEY] = JSON.stringify(raw);
+  const back = S.load(ad, T0 + 1000, seeded(5));
+  assert.strictEqual(back.coins, 41); assert.deepStrictEqual(back.board[3], item('d', 5));
+  assert.ok(S.save(ad, back));
 });
 test('식혜(최대 넘겨 채움) · 엽전 · 소라별 · 보자기(물건 여러 개)', () => {
   const st = emptyState(); st.energy = 100;
@@ -1214,16 +1215,15 @@ test('자동 합치기는 부탁에 필요한 물건(단계·개수)·발생기�
   bag.bag[0] = item('a', 1); bag.board[0] = item('a', 1); bag.board[1] = item('a', 1);
   assert.strictEqual(C.autoMergePlan(bag, T0).n, 1, '가방에 있으면 판의 것은 합쳐도 돼요');
 });
-test('자동 합치기: 무료 1번(오늘의 무료)은 동전 대신 · 되돌리기는 동전도 돌려줘요 · 동전이 모자라면 안 돼요', () => {
+test('자동 합치기: 무료 1번(오늘의 무료)은 동전 대신 · 동전이 모자라면 안 돼요', () => {
   const st = noFree(emptyState(seeded(3))); st.orders = []; st.coins = 2;
   st.board[0] = item('a', 1); st.board[1] = item('a', 1);
   assert.strictEqual(C.autoMerge(st, T0).reason, 'coins');
   st.coins = 10;
-  const snap = C.snapshot(st);
   assert.ok(C.autoMerge(st, T0).ok); assert.strictEqual(st.coins, 7);
-  C.restore(st, snap); assert.strictEqual(st.coins, 10); assert.deepStrictEqual(st.board[0], item('a', 1));
+  st.board.fill(null); st.board[0] = item('a', 1); st.board[1] = item('a', 1);
   st.boost.autoTok = 1;
-  const r = C.autoMerge(st, T0); assert.ok(r.ok && r.token); assert.strictEqual(st.coins, 10); assert.strictEqual(st.boost.autoTok, 0);
+  const r = C.autoMerge(st, T0); assert.ok(r.ok && r.token); assert.strictEqual(st.coins, 7); assert.strictEqual(st.boost.autoTok, 0);
 });
 test('자동 합치기 1분: 새로 놓인 물건이 짝을 만나면 바로 합쳐지고 연쇄 · 끝나면 안 해요', () => {
   const st = emptyState(seeded(3)); st.orders = []; st.coins = 100;

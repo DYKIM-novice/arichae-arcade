@@ -917,7 +917,7 @@
       const bt = document.querySelector('#tw-bub .tw-go'); if (bt) U.restartAnim(bt, 'wig1');
       return;
     }
-    U.clearUndo(); U.changed();
+    U.changed();
     // 지역을 다 고쳤으면 다음 지역은 [다음 지역] 을 누를 때까지 안개 그대로 (짓는 연출 중에 미리 걷히지 않게)
     if (r.areaDone) { fogHold = r.nextArea ? D.AREAS.indexOf(r.doneArea) + 1 : -1; makeWalkers(); }
     closeDrawer();
