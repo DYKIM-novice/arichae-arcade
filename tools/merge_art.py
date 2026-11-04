@@ -235,6 +235,66 @@ PAINT = {
 }
 
 
+# 다리 물줄기 방향 바로잡기 (2026-11-04 · 주인 신고 '다리 3개 중 2개가 방향이 틀려요')
+#  나무 다리(b)·붉은 난간 다리(c)는 상판(널빤지·난간)이 '/' 방향인데 그림 속 물줄기도 '/'(왼쪽 아래)로 흘러
+#  물이 다리를 따라 흘러요 → 다리는 그대로 두고 모래섬+물줄기 바탕만 좌우로 뒤집어 물이 다리 밑(c 는 아치)을 지나
+#  오른쪽 아래로 흐르게 해요. 무지개 돌다리(a)는 원래 맞아요.
+#  다각형 = 다리 구조물 둘레 (출력 webp px ×2 · 폭 ref 기준)
+STREAM_SWAP = {
+    "b_r4_bridge_b": (440, [(195, 270), (205, 160), (230, 148), (258, 160), (445, 58), (448, 20), (475, 10), (500, 20), (503, 62), (652, 158), (680, 146), (708, 163),
+                            (714, 280), (714, 322), (692, 342), (655, 338), (462, 440), (464, 466), (440, 478), (408, 472), (403, 442), (245, 347), (208, 342), (196, 302)]),
+    "b_r4_bridge_c": (463, [(146, 288), (193, 172), (258, 176), (453, 58), (468, 8), (520, 10), (524, 104), (562, 124), (686, 192), (698, 162), (748, 158), (754, 234),
+                            (799, 274), (799, 380), (402, 580), (383, 560), (383, 420), (205, 402), (146, 402)]),
+}
+
+
+def _ground_cls(a):
+    r, g, b, al = [a[..., i].astype(int) for i in range(4)]
+    mx = np.maximum(np.maximum(r, g), b); mn = np.minimum(np.minimum(r, g), b)
+    lum = (r + g + b) / 3
+    water = (b > r + 12) & (g > r + 5) & (al > 10)
+    white = (lum > 215) & (mx - mn < 40) & (al > 10)
+    grass = (g > r + 8) & (g > b + 15) & (al > 10)
+    return water, white, grass
+
+
+def town_stream_swap(im, name):
+    """다리 구조물은 그대로 · 바탕(모래섬+물줄기)은 좌우로 뒤집은 그림 · 다리 사이로 보이던 풀빛엔 뒤집은 바탕(물)이 보여요"""
+    from PIL import ImageDraw
+    ref, pts = STREAM_SWAP[name]
+    a = np.array(im.convert("RGBA")); H, W = a.shape[:2]; k = W / ref
+    pm = Image.new("L", (W, H), 0); ImageDraw.Draw(pm).polygon([(x / 2 * k, y / 2 * k) for x, y in pts], fill=255)
+    poly = np.array(pm) > 127
+    polyD = ndimage.binary_dilation(poly, iterations=5)
+    water, white, grass = _ground_cls(a)
+    # 원래 물줄기 (가장 큰 물 덩어리 + 테두리 2px)
+    wm = water | white
+    lab, n = ndimage.label(ndimage.binary_closing(wm, iterations=2))
+    sm = lab == (int(np.argmax(ndimage.sum(wm, lab, range(1, n + 1)))) + 1)
+    sm = ndimage.binary_dilation(ndimage.binary_fill_holes(sm), iterations=2) & (a[..., 3] > 0)
+    out = a[:, ::-1].copy()                                    # 바탕 = 뒤집은 그림
+    q = polyD[:, ::-1] & ~poly                                 # 뒤집은 다리 자리 중 원래 다리 밖 → 원래 그림의 땅
+    qs = q & ~sm
+    out[qs] = a[qs]
+    qw = q & sm                                                # 그중 원래 물줄기 자리 → 가까운 땅
+    if qw.any():
+        _, (iy, ix) = ndimage.distance_transform_edt(qw | polyD[:, ::-1], return_indices=True)
+        out[qw] = out[iy[qw], ix[qw]]
+    keep = poly & ~grass
+    keep = ndimage.binary_opening(keep, iterations=1) | (poly & ~grass & (a[..., 3] > 200) & ~ndimage.binary_erosion(poly, iterations=2))
+    out[keep] = a[keep]
+    w2, wh2, _ = _ground_cls(out)
+    fix = poly & grass & poly[:, ::-1] & ~(w2 | wh2)           # 다리 사이 풀빛인데 바탕이 뒤집힌 다리 조각이면 원래 풀
+    out[fix] = a[fix]
+    # 다리 둘레 위쪽에 남는 옅은 테두리 지우기 (물이 없는 윗부분만)
+    zone = ndimage.binary_dilation(poly | poly[:, ::-1], iterations=6)
+    zone[int(H * 0.6):] = False
+    lum = out[..., :3].astype(int).mean(axis=2)
+    solid = ndimage.binary_dilation(out[..., 3] >= 235, iterations=2)
+    out[zone & (out[..., 3] < 235) & ((lum > 185) | ~solid), 3] = 0
+    return Image.fromarray(out)
+
+
 def finish_alpha(im, fg, al, keep):
     lab, n = ndimage.label(fg, structure=np.ones((3, 3)))
     if n > 1:
@@ -563,6 +623,8 @@ def town(only=""):
             elif name[:2] in ("b_", "c_", "d_") and name not in SAND_SKIP:
                 im = town_desand(im, name)
             out = fit_long(trim(im), {"b": 512, "c": 384, "d": 384, "m": 256, "w": 300, "h": 520}[name[0]])
+            if name in STREAM_SWAP:
+                out = town_stream_swap(out, name)
             if name.startswith("h_"):
                 f = town_face(out)
                 fd = TOWN_OUT / (name.replace("h_outfit_", "h_").replace("_base", "") + "_face.webp")

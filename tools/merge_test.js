@@ -666,7 +666,8 @@ test('마을 지도: 작업마다 짓기 자리(그 지역 box 안) · 잔해·�
       const b = T.build[t.id];
       assert.ok(b && ['B3', 'D1', 'G'].indexOf(b.kind) >= 0, '짓기 ' + t.id);
       // 안개는 지역 칸(zoneAt)마다 걷혀요 → 짓기 자리·잔해가 제 지역 칸에 있어야 지역이 열릴 때 같이 보여요
-      [b.at].concat(b.rep || [], (b.clears || []).map((c) => [c[1], c[2]])).forEach((p) => { if (p) assert.strictEqual(C.zoneAt(p[0], p[1]), ai, '제 지역 칸 ' + t.id + ' ' + p); });
+      [b.at].concat(b.rep || [], b.lookAt || [], (b.clears || []).map((c) => [c[1], c[2]])).forEach((p) => { if (p) assert.strictEqual(C.zoneAt(p[0], p[1]), ai, '제 지역 칸 ' + t.id + ' ' + p); });
+      if (b.lookAt) { assert.strictEqual(b.lookAt.length, 3, '모양마다 자리 ' + t.id); assert.deepStrictEqual(b.lookAt[0], b.at, '첫 모양 자리 = at ' + t.id); b.lookAt.forEach((p) => assert.ok(inT(p[0], p[1]), '모양 자리 ' + t.id)); }
       if (b.kind === 'B3') { ['a', 'b', 'c'].forEach((v) => assert.ok(has(b.art + '_' + v), b.art + '_' + v)); assert.strictEqual(b.looks.length, 3); }
       if (b.kind === 'D1') assert.ok(has(b.art), b.art);
       if (b.at) { assert.ok(inT(b.at[0], b.at[1]), '자리 ' + t.id); if (!b.z && !b.fx) pts.push([b.at[0], b.at[1], t.id]); }

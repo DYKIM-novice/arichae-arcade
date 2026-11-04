@@ -87,7 +87,7 @@
     const x = taskOf(id); if (!x) return { x: 0, y: 0 };
     const b = T.build[id];
     if (b.mount) { const m = mountObj(id, x.i); if (m && m.center) return { x: m.wx, y: m.wy + 34 }; }
-    if (b.at) return W(x.i, b.at);
+    if (b.at) return W(x.i, atOf(id));
     if (b.clears && b.clears.length) return W(x.i, [b.clears[0][1], b.clears[0][2]]);
     if (b.fx === 'ruin') return W(x.i, T.ruin.at);
     const lh = T.build.r6_wall;
@@ -99,6 +99,13 @@
   const preview = {};                  // 모양 고르기 중 미리보기 { taskId: k }
   let anim = null;                     // 짓기 연출 { id, t0, dur, kind }
   function dirty() { sceneVer++; }
+  // 발밑 자리: 모양마다 자리가 다르면(lookAt · 4지역 다리는 물줄기 방향이 모양마다 달라 연못 둘레 다른 곳에 놓아요) 지금 모양 자리
+  function atOf(id) {
+    const b = T.build[id];
+    if (!b.lookAt) return b.at;
+    const k = preview[id] != null ? preview[id] : C.lookOf(st(), id);
+    return b.lookAt[k] || b.at;
+  }
   function lookArt(id) {
     const b = T.build[id];
     const k = preview[id] != null ? preview[id] : C.lookOf(st(), id);
@@ -139,12 +146,12 @@
         if (b.kind === 'G') return;
         if (b.mount) { const m = mountObj(t.id, i); if (m) push(m); return; }
         const art = b.kind === 'B3' ? lookArt(t.id) : b.art;
-        const p = W(i, b.at);
-        const o = { art, wx: p.x, wy: p.y, w: b.w, kind: 'build', task: t.id, b3: b.kind === 'B3', lights: b.lights, fx: b.fx };
+        const p = W(i, atOf(t.id));
+        const o = { art, wx: p.x, wy: p.y, w: b.w, kind: 'build', task: t.id, b3: b.kind === 'B3', lights: b.lights, fx: b.fx, flip: !!b.flip };
         if (b.z) o.z = origin(i).y + b.z;
         if (b.fx === 'bob') { o.dyn = true; }
         push(o);
-        (b.rep || []).forEach((r) => { const q = W(i, r); push({ art, wx: q.x, wy: q.y, w: b.w, kind: 'build', task: t.id, rep: true }); });
+        (b.rep || []).forEach((r) => { const q = W(i, r); push({ art, wx: q.x, wy: q.y, w: b.w, kind: 'build', task: t.id, rep: true, flip: !!r[2] }); });
       });
       // 6지역 등대 자리: 무너진 등대 → (나선 계단) 비계 → (외벽) 등대
       if (a.id === 'r6' && !EDIT && !s.tasks.r6_wall && !(anim && (anim.id === 'r6_wall' || anim.id === 'r6_stairs'))) {
@@ -281,7 +288,7 @@
   }
   // 접지 그림자: 그 그림의 바닥 띠 실루엣(흐림)을 기단 바로 밑에 · 살짝 아래·옆으로 번져 테두리에 붙은 진한 그림자 (떨어진 동그라미 아님)
   let shadowDone = false;
-  const hasShadow = (o) => !o.noShadow && !o.center && o.fx !== 'bob' && o.fx !== 'pond';
+  const hasShadow = (o) => !o.noShadow && !o.center && o.fx !== 'bob';   // 연못도 접지 그림자 (돌 테두리 밑 · 움푹한 자리에 앉아 보이게)
   function groundShadow(g, o, sc) {
     if (!hasShadow(o)) return;
     const r = spriteRect(o); if (!r) return;
@@ -296,7 +303,8 @@
     const spread = 1.07;                                          // 옆으로 살짝 넓게
     const uy = u * ky / kx, W2 = f.shadow.width * u * spread;
     g.globalAlpha = light ? 0.5 : 0.78;
-    g.drawImage(f.shadow, fx - W2 / 2, top - SH_P * uy + drop, W2, f.shadow.height * uy);
+    if (o.flip) { g.save(); g.translate(fx, 0); g.scale(-1, 1); g.drawImage(f.shadow, -W2 / 2, top - SH_P * uy + drop, W2, f.shadow.height * uy); g.restore(); }
+    else g.drawImage(f.shadow, fx - W2 / 2, top - SH_P * uy + drop, W2, f.shadow.height * uy);
     g.globalAlpha = 1;
   }
   function drawSprite(g, o, sc, dy, alpha) {
@@ -323,8 +331,12 @@
     if (sc && sc !== 1) {
       const fx = (o.wx - cam.x) * s + VW / 2, fy = (o.wy - cam.y) * s + VH / 2;
       const sy = typeof sc === 'object' ? sc.y : sc, sxx = typeof sc === 'object' ? sc.x : sc;
-      g.save(); g.translate(fx, fy); g.scale(sxx, sy);
+      g.save(); g.translate(fx, fy); g.scale(o.flip ? -sxx : sxx, sy);
       g.drawImage(r.im.im || r.im, -r.w * s / 2, (r.y - o.wy) * s + (dy || 0) * s, r.w * s, r.h * s);
+      g.restore();
+    } else if (o.flip) {   // 좌우 뒤집어 놓기 (울타리처럼 같은 그림을 비탈 방향에 맞춰요 · 발밑 가운데 기준)
+      g.save(); g.translate(x + r.w * s / 2, 0); g.scale(-1, 1);
+      g.drawImage(r.im.im, -r.w * s / 2, y, r.w * s, r.h * s);
       g.restore();
     } else g.drawImage(r.im.im, x, y, r.w * s, r.h * s);
     if (o.label && !(sc && sc !== 1)) { g.save(); g.translate(x + r.w * s / 2, y + r.h * s / 2); drawLabel(g, o.label, r.w * s, r.h * s); g.restore(); }
@@ -356,7 +368,7 @@
     if (isOpen(i4) && !st().tasks.r4_pond && !EDIT) {
       const p = W(i4, T.pond.at), q = toScr(p.x, p.y);
       g.fillStyle = 'rgba(120,104,70,.55)';
-      g.beginPath(); g.ellipse(q.x, q.y, T.pond.rx * s, T.pond.ry * s, -0.15, 0, 6.283); g.fill();
+      g.beginPath(); g.ellipse(q.x, q.y, T.pond.rx * s, T.pond.ry * s, 0, 0, 6.283); g.fill();
     }
     const sc = getScene();
     const skip = (o) => o.dyn || (bounce[o.task] && o.task) || o.task === tapBounce.id;
@@ -664,7 +676,7 @@
         if (!o.lights) return;
         const r = spriteRect(o); if (!r) return;
         o.lights.forEach((l, k) => {
-          const q = toScr(r.x + r.w * l[0], r.y + r.h * l[1]);
+          const q = toScr(r.x + r.w * (o.flip ? 1 - l[0] : l[0]), r.y + r.h * l[1]);
           if (q.x < -60 || q.x > VW + 60 || q.y < -60 || q.y > VH + 60) return;
           const rad = Math.max(10, 46 * s) * (ph === 'night' ? 1 : 0.6) * (1 + (F.reduced ? 0 : Math.sin(t / 260 + k * 2 + o.wx) * 0.06));
           const gr = g.createRadialGradient(q.x, q.y, 0, q.x, q.y, rad);
@@ -730,8 +742,8 @@
       const art = b.kind === 'B3' ? lookArt(a.id) : b.art;
       const mo = b.mount ? mountObj(a.id, x.i) : null;
       if (mo) { drawSprite(g, mo, { x: sc * (k < 0.45 ? 0.94 : 1), y: sc * (k < 0.45 ? 1.06 : 1) }); return; }
-      const all = [b.at].concat(b.rep || []);
-      all.forEach((p) => { const w = W(x.i, p); drawSprite(g, { art, wx: w.x, wy: w.y, w: b.w, fx: b.fx }, { x: sc * (k < 0.45 ? 0.94 : 1), y: sc * (k < 0.45 ? 1.06 : 1) }); });
+      const all = [atOf(a.id)].concat(b.rep || []);
+      all.forEach((p, n) => { const w = W(x.i, p); drawSprite(g, { art, wx: w.x, wy: w.y, w: b.w, fx: b.fx, flip: n ? !!p[2] : !!b.flip }, { x: sc * (k < 0.45 ? 0.94 : 1), y: sc * (k < 0.45 ? 1.06 : 1) }); });
     }
   }
 
@@ -1223,7 +1235,8 @@
       const r = spriteRect(o); if (!r) continue;
       const q = toScr(r.x, r.y), w = r.w * cam.s, h = r.h * cam.s;
       if (x < q.x || y < q.y || x > q.x + w || y > q.y + h) continue;
-      if (alphaAt(r.im, (x - q.x) / w, (y - q.y) / h) > 40) return o;
+      const fx = (x - q.x) / w;
+      if (alphaAt(r.im, o.flip ? 1 - fx : fx, (y - q.y) / h) > 40) return o;
     }
     return null;
   }
@@ -1393,7 +1406,7 @@
     const o = hitSprite(x, y, () => true);
     if (!o) return null;
     const ti = o.task ? taskOf(o.task) : null;
-    if (o.kind === 'build' && ti && !o.rep) return { at: T.build[o.task].at };
+    if (o.kind === 'build' && ti && !o.rep) return { at: atOf(o.task) };
     if (o.kind === 'debris' && ti) { const c = T.build[o.task].clears.find((c) => Math.abs(W(ti.i, [c[1], c[2]]).x - o.wx) < 1); return c ? { c } : null; }
     return null;
   }
@@ -1404,7 +1417,7 @@
   }
   function editCopy() {
     const out = {};
-    Object.keys(T.build).forEach((id) => { const b = T.build[id]; out[id] = { at: b.at, clears: b.clears }; });
+    Object.keys(T.build).forEach((id) => { const b = T.build[id]; out[id] = { at: b.at, clears: b.clears }; if (b.lookAt) out[id].lookAt = b.lookAt; });
     const txt = JSON.stringify(out);
     try { navigator.clipboard.writeText(txt); U.toast('좌표를 복사했어요 (data.js TOWN.build 에 붙여요)'); } catch (e) { banner(`<textarea class="field" rows="6">${esc(txt)}</textarea>`); }
   }
