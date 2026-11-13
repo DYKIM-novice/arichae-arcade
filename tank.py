@@ -804,9 +804,13 @@ class TRoom:
     def team_count(self, team: str) -> int:
         return sum(1 for s in self.seats.values() if s.team == team)
 
+    def ready_count(self, team: str) -> int:
+        """판에 실제로 들어갈 자리 수 (AI + 연결된 사람). 끊긴 사람만 있는 팀으로 시작하면 바로 '전멸' 승리가 됨."""
+        return sum(1 for s in self.seats.values() if s.team == team and (s.ai or (s.on and s.ws is not None)))
+
     def start_check(self):
-        a = self.team_count("A")
-        b = self.team_count("B")
+        a = self.ready_count("A")
+        b = self.ready_count("B")
         if self.round is not None:
             return False, "판이 끝나면 다음 판이 시작돼요"
         if not SLOTS_OK:
@@ -986,7 +990,7 @@ async def handle(ws, msg: dict) -> None:
 
     if t == "tkpick":
         k = msg.get("kind")
-        if k in KINDS:
+        if isinstance(k, str) and k in KINDS:   # 리스트·딕셔너리 값이면 dict 조회가 TypeError → 접속이 끊김
             seat.kind = k
             room.push_lobby()
     elif t == "tkteam":
@@ -1118,7 +1122,7 @@ def _add_ai(room: TRoom, team: str, lv: str, kind) -> bool:
     s = Seat(pid, "", room.counter, ai=True, lv=lv)
     s.name = _ai_name(room, team)
     s.team = team
-    s.kind = kind if kind in KINDS else random.choice(list(KINDS))
+    s.kind = kind if (isinstance(kind, str) and kind in KINDS) else random.choice(list(KINDS))
     room.seats[pid] = s
     return True
 

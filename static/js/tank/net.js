@@ -11,6 +11,16 @@
   let ws = null, pingT = 0, retryT = 0, tries = 0, wanted = false, queue = [];
   let seat = null;
   const urlRoom = new URLSearchParams(location.search).get('room');
+  // 탭 구분: 다른 탭이 지금 쓰고 있는(최근 BEAT_LIVE_MS 안에 신호를 남긴) localStorage 자리는 가져오지 않음
+  // (같은 브라우저에서 초대 주소를 새 탭으로 열면 먼저 탭의 자리를 빼앗던 문제)
+  const TAB_KEY = 'tank_tab_v1';
+  const BEAT_LIVE_MS = 8000;
+  let tabId = '';
+  try { tabId = sessionStorage.getItem(TAB_KEY) || ''; } catch (e) { /* 무시 */ }
+  if (!tabId) {
+    tabId = Math.random().toString(36).slice(2, 10);
+    try { sessionStorage.setItem(TAB_KEY, tabId); } catch (e) { /* 무시 */ }
+  }
   try {
     const s = JSON.parse(sessionStorage.getItem(KEY) || 'null');
     if (s && s.code && s.pid && s.token && (!urlRoom || urlRoom === s.code)) seat = s;
@@ -18,7 +28,8 @@
   if (!seat) {
     try {
       const r = JSON.parse(localStorage.getItem(REJOIN_KEY) || 'null');
-      if (r && r.code && r.pid && r.token && typeof r.at === 'number' && (Date.now() - r.at <= REJOIN_TTL_MS)) {
+      const busy = !!(r && r.tab && r.tab !== tabId && typeof r.beat === 'number' && Date.now() - r.beat < BEAT_LIVE_MS);
+      if (busy) { /* 다른 탭이 쓰는 중 · 그대로 둠 */ } else if (r && r.code && r.pid && r.token && typeof r.at === 'number' && (Date.now() - r.at <= REJOIN_TTL_MS)) {
         if (!urlRoom || urlRoom === r.code) seat = { code: r.code, pid: r.pid, token: r.token, name: r.name || '' };
       } else if (r) {
         localStorage.removeItem(REJOIN_KEY);
@@ -39,7 +50,7 @@
       tries = 0;
       emit('_open');
       clearInterval(pingT);
-      pingT = setInterval(() => raw({ t: 'ping', c: Date.now() }), 2000);
+      pingT = setInterval(() => { raw({ t: 'ping', c: Date.now() }); beat(); }, 2000);
       if (seat && seat.pid) raw({ t: 'tkrejoin', room: seat.code, pid: seat.pid, token: seat.token });
       const q = queue; queue = [];
       q.forEach(raw);
@@ -51,12 +62,25 @@
         const prevName = (seat && seat.name) || '';
         seat = { code: m.code, pid: m.pid, token: m.token, name: m.name || prevName };
         try { sessionStorage.setItem(KEY, JSON.stringify(seat)); } catch (e) { /* 무시 */ }
-        try { localStorage.setItem(REJOIN_KEY, JSON.stringify({ code: seat.code, pid: seat.pid, token: seat.token, name: seat.name, at: Date.now() })); } catch (e) { /* 무시 */ }
+        saveRejoin();
       }
       emit(m.t, m);
     };
     ws.onclose = () => { clearInterval(pingT); emit('_close'); if (wanted) retry(); };
     ws.onerror = () => { /* onclose 에서 처리 */ };
+  }
+  function saveRejoin() {
+    if (!seat || !seat.pid) return;
+    const t = Date.now();
+    try { localStorage.setItem(REJOIN_KEY, JSON.stringify({ code: seat.code, pid: seat.pid, token: seat.token, name: seat.name, at: t, tab: tabId, beat: t })); } catch (e) { /* 무시 */ }
+  }
+  // 이 탭의 자리가 localStorage 자리와 같을 때만 신호 갱신 (다른 탭의 기록은 덮지 않음)
+  function beat() {
+    if (!seat || !seat.pid) return;
+    try {
+      const r = JSON.parse(localStorage.getItem(REJOIN_KEY) || 'null');
+      if (r && r.pid === seat.pid && r.code === seat.code) saveRejoin();
+    } catch (e) { /* 무시 */ }
   }
   function retry() {
     clearTimeout(retryT);
@@ -66,9 +90,15 @@
   function raw(m) { if (ws && ws.readyState === 1) { ws.send(JSON.stringify(m)); return true; } return false; }
   function send(m) { if (!raw(m)) { if (m.t !== 'tkin' && m.t !== 'tkaim') queue.push(m); connect(); } }
   function forget() {
+    const old = seat;
     seat = null;
     try { sessionStorage.removeItem(KEY); } catch (e) { /* 무시 */ }
-    try { localStorage.removeItem(REJOIN_KEY); } catch (e) { /* 무시 */ }
+    // 다른 탭이 쓰는 자리 기록은 지우지 않음
+    try {
+      const r = JSON.parse(localStorage.getItem(REJOIN_KEY) || 'null');
+      const othersLive = !!(r && r.tab && r.tab !== tabId && typeof r.beat === 'number' && Date.now() - r.beat < BEAT_LIVE_MS);
+      if (!othersLive || (old && r && r.pid === old.pid)) localStorage.removeItem(REJOIN_KEY);
+    } catch (e) { try { localStorage.removeItem(REJOIN_KEY); } catch (e2) { /* 무시 */ } }
   }
 
   window.TankNet = { connect, send, on, forget, seat: () => seat, isOpen: () => !!ws && ws.readyState === 1 };

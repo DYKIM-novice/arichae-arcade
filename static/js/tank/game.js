@@ -86,6 +86,8 @@
     $('#result').hidden = true; $('#menu').hidden = true;
     setSpecUI(G.spec);
     $('#h-zoom').classList.remove('on');
+    // 지난 판의 '마지막 발사 파워' 표시는 새 판에서 숨김
+    setStyle('#p-last', 'display', 'none');
     SND.music(false);
     resize();
     lastT = performance.now();
@@ -183,6 +185,7 @@
         if (cs.mode !== 'self') finishCamLog(t, 'early');
         const fireAt = (m.id === G.me && G.lastLocalFireAt && t - G.lastLocalFireAt < 400) ? G.lastLocalFireAt : t;
         if (m.id === G.me) G.lastLocalFireAt = 0;
+        cs.startedSid = m.sid;
         cs.mode = 'follow'; cs.sid = m.sid; cs.own = m.id;
         cs.fireAt = fireAt; cs.impactAt = 0; cs.holdUntil = 0; cs.returnStartAt = 0;
         cs.lastX = m.x; cs.lastY = m.y; cs.predX = m.x; cs.predY = m.y; cs.predT = t;
@@ -225,8 +228,10 @@
       if (e.id !== G.me) SND.SFX.fire();
       if (e.id === G.me) G.lastShotP = Math.round(G.aim.p);
       // 내 포탄(관전 시 관전 대상의 포탄) 따라가기 시작 (onEvent 에서 이미 시작되지 않았을 때만)
-      if (e.id === camOwnerId() && !(G.camState.mode === 'follow' && G.camState.sid === e.sid)) {
+      // · 받자마자(onEvent) 시작한 포탄은 그 사이 빈 화면 터치로 복귀했어도 다시 따라가지 않음
+      if (e.id === camOwnerId() && G.camState.startedSid !== e.sid) {
         const cs = G.camState;
+        cs.startedSid = e.sid;
         if (cs.mode !== 'self') finishCamLog(t, 'early');
         const fireAt = (e.id === G.me && G.lastLocalFireAt && t - G.lastLocalFireAt < 400) ? G.lastLocalFireAt : t;
         if (e.id === G.me) G.lastLocalFireAt = 0;
@@ -1530,7 +1535,7 @@
   }
   function updateCountdownDom(now) {
     const el = $('#cdn');
-    if (G.over) { el.hidden = true; return; }
+    if (G.over) { if (!el.hidden) el.hidden = true; return; }
     if (G.cdn > 0) {
       const n = Math.ceil(G.cdn / 1000);
       const myTeam = G.me && G.meta[G.me] ? G.meta[G.me].tm : null;
@@ -1541,7 +1546,7 @@
     } else if (now < G.goT) {
       if (!el.dataset.go) { el.innerHTML = '<b>출발!</b>'; el.dataset.go = '1'; SND.SFX.go(); }
       el.hidden = false;
-    } else { el.hidden = true; delete el.dataset.go; }
+    } else { if (!el.hidden) el.hidden = true; if (el.dataset.go) delete el.dataset.go; }
   }
   function drawCountdown(c, me, now) {
     updateCountdownDom(now);
@@ -1555,6 +1560,8 @@
 
   let hudCache = {};
   function setText(sel, v) { if (hudCache[sel] !== v) { hudCache[sel] = v; $(sel).textContent = v; } }
+  // 값이 바뀔 때만 style 을 씀 (매 프레임 쓰면 바로 뒤 getBoundingClientRect·offsetTop 이 강제 레이아웃)
+  function setStyle(sel, prop, v) { const key = sel + '|' + prop; if (hudCache[key] !== v) { hudCache[key] = v; $(sel).style[prop] = v; } }
   function hud(me, now) {
     const tl = Math.max(0, Math.ceil((G.tl || 0) / 1000));
     setText('#h-time', `${Math.floor(tl / 60)}:${String(tl % 60).padStart(2, '0')}`);
@@ -1586,27 +1593,26 @@
     const hud = $('.hud');
     if (hud.dataset.left !== leftTeam) { hud.dataset.left = leftTeam; if (leftTeam === 'B') hud.insertBefore($('#h-b'), $('#h-a')); else hud.insertBefore($('#h-a'), $('#h-b')); }
     setText('#h-an', String(cnt.A)); setText('#h-bn', String(cnt.B));
-    $('#h-ab').style.width = (mx.A ? 100 * hp.A / mx.A : 0) + '%';
-    $('#h-bb').style.width = (mx.B ? 100 * hp.B / mx.B : 0) + '%';
+    setStyle('#h-ab', 'width', (mx.A ? 100 * hp.A / mx.A : 0) + '%');
+    setStyle('#h-bb', 'width', (mx.B ? 100 * hp.B / mx.B : 0) + '%');
     if (me && !G.spec) {
       setText('#fuel-n', String(me.fu));
-      $('#fuel-bar').style.width = me.fu + '%';
+      setStyle('#fuel-bar', 'width', me.fu + '%');
       const curA = G.aim.a == null ? me.a : G.aim.a;
       const curP = G.aim.p == null ? me.p : G.aim.p;
       const ea = Math.round(Math.max(-30, Math.min(85, me.bt + curA)));
       setText('#aimread', `각도 ${ea}° · 파워 ${Math.round(curP)}`);
       if (window.__tankDbg) window.__tankDbg.aim = { a: Math.round(curA), p: Math.round(curP) };
       const p = curP;
-      $('#p-fill').style.height = p + '%';
+      setStyle('#p-fill', 'height', p + '%');
       const tr = $('#power .ptrack');
-      $('#p-knob').style.top = (tr.offsetTop + tr.offsetHeight * (1 - p / 100)) + 'px';
-      const pl = $('#p-last');
-      if (G.lastShotP != null) { pl.style.display = 'block'; pl.style.bottom = G.lastShotP + '%'; }
+      setStyle('#p-knob', 'top', (tr.offsetTop + tr.offsetHeight * (1 - p / 100)) + 'px');
+      if (G.lastShotP != null) { setStyle('#p-last', 'display', 'block'); setStyle('#p-last', 'bottom', G.lastShotP + '%'); }
       const cd = G.cdn > 0 ? G.cdn : me.cd;
       const fb = $('#b-fire'), cool = cd > 0;
       fb.classList.toggle('cool', cool);
       setText('#fire-t', cool ? (cd / 1000).toFixed(1) : '발사');
-      $('#fire-ring').style.strokeDashoffset = String(238.8 * (cool && G.cdn <= 0 ? cd / 5000 : 0));
+      setStyle('#fire-ring', 'strokeDashoffset', String(238.8 * (cool && G.cdn <= 0 ? cd / 5000 : 0)));
     } else if (window.__tankDbg && G.aim.a != null) {
       window.__tankDbg.aim = { a: Math.round(G.aim.a), p: Math.round(G.aim.p) };
     }
