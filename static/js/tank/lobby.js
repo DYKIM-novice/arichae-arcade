@@ -157,14 +157,119 @@
     }
   }
 
+  function textRect(el) {
+    if (!el) return null;
+    if (el.firstChild) {
+      try {
+        const rg = document.createRange();
+        rg.selectNodeContents(el);
+        const r = rg.getBoundingClientRect();
+        if (r && r.width > 0) return r;
+      } catch (e) { /* fallback */ }
+    }
+    return el.getBoundingClientRect();
+  }
+  function rectsOverlap(a, b, pad) {
+    const p = pad || 0;
+    return a.l - p < b.r && a.r + p > b.l && a.t - p < b.b && a.b + p > b.t;
+  }
+  function clearBubbles() {
+    const layer = $('#lb-bubbles');
+    if (layer) layer.innerHTML = '';
+  }
   function bubble(id, e) {
     const row = document.querySelector(`.prow[data-id="${CSS.escape(id)}"]`);
-    if (!row || !Art.EMO[e]) return;
-    row.querySelectorAll('.bubble').forEach((b) => b.remove());
+    const layer = $('#lb-bubbles');
+    if (!row || !layer || !Art.EMO[e]) return;
+    layer.querySelectorAll(`.bubble[data-id="${CSS.escape(id)}"]`).forEach((b) => b.remove());
+    const lr = layer.getBoundingClientRect();
+    const rr = row.getBoundingClientRect();
+    if (!lr.width || !rr.width) return;
+    const nmEl = row.querySelector('.nm');
+    const nr = textRect(nmEl) || rr;
+    const bw = 44, bh = 44;
+
+    const toLocal = (vx, vy) => ({ l: vx - lr.left, t: vy - lr.top, r: vx - lr.left + bw, b: vy - lr.top + bh });
+    const nmBoxes = $$('#s-lobby .prow .nm').map((el) => {
+      const r = textRect(el);
+      return { l: r.left - lr.left, t: r.top - lr.top, r: r.right - lr.left, b: r.bottom - lr.top };
+    });
+    const tagBoxes = $$('#s-lobby .prow .tag').map((el) => {
+      const r = el.getBoundingClientRect();
+      return { l: r.left - lr.left, t: r.top - lr.top, r: r.right - lr.left, b: r.bottom - lr.top };
+    });
+    const bubBoxes = Array.from(layer.querySelectorAll('.bubble')).map((el) => {
+      const r = el.getBoundingClientRect();
+      return { l: r.left - lr.left, t: r.top - lr.top, r: r.right - lr.left, b: r.bottom - lr.top };
+    });
+
+    const clampBox = (box) => {
+      const x = Math.max(4, Math.min(lr.width - bw - 4, box.l));
+      const y = Math.max(4, Math.min(lr.height - bh - 4, box.t));
+      return { l: x, t: y, r: x + bw, b: y + bh };
+    };
+    const freeOf = (box, list, pad) => !list.some((o) => rectsOverlap(box, o, pad));
+
+    // 후보: 1) 이름 바로 오른쪽 옆, 2) 이름 위, 3) 행 왼쪽 옆, 4) 이름 아래
+    const seeds = [
+      { box: toLocal(nr.right + 8, rr.top + (rr.height - bh) / 2), tail: 'tail-left' },
+      { box: toLocal(Math.max(rr.left + 6, nr.left), rr.top - bh - 6), tail: 'tail-down' },
+      { box: toLocal(rr.left + 2, rr.top + (rr.height - bh) / 2), tail: 'tail-right' },
+      { box: toLocal(nr.left, rr.bottom + 6), tail: 'tail-up' },
+    ];
+    let picked = null;
+    // 1차: 이름표·말풍선·태그 모두 안 가리는 자리
+    for (const s of seeds) {
+      const c = clampBox(s.box);
+      if (freeOf(c, nmBoxes, 2) && freeOf(c, bubBoxes, 4) && freeOf(c, tagBoxes, 1)) {
+        picked = { box: c, tail: s.tail };
+        break;
+      }
+    }
+    // 2차: 이름표·말풍선은 안 가리면서 겹치는 말풍선을 옆/위로 밀어 자리 찾기
+    if (!picked) {
+      const shifts = [
+        [0, 0], [18, 0], [36, 0], [54, 0], [-18, 0], [-36, 0],
+        [0, -18], [0, -36], [18, -18], [-18, -18], [0, 18], [0, 36]
+      ];
+      for (const s of seeds) {
+        for (const [dx, dy] of shifts) {
+          const c = clampBox({ l: s.box.l + dx, t: s.box.t + dy });
+          if (freeOf(c, nmBoxes, 2) && freeOf(c, bubBoxes, 4)) {
+            picked = { box: c, tail: dx === 0 && dy === 0 ? s.tail : 'tail-none' };
+            break;
+          }
+        }
+        if (picked) break;
+      }
+    }
+    // 3차: 정말 자리가 좁으면 말풍선끼리만은 피하고 이름 가림 최소 위치 선택
+    if (!picked) {
+      const cands = [];
+      for (const s of seeds) {
+        for (let dx = -40; dx <= 80; dx += 20) {
+          for (let dy = -36; dy <= 36; dy += 18) {
+            const c = clampBox({ l: s.box.l + dx, t: s.box.t + dy });
+            if (freeOf(c, bubBoxes, 2)) cands.push({ box: c, tail: 'tail-none' });
+          }
+        }
+      }
+      if (cands.length) {
+        const area = (a, b) => Math.max(0, Math.min(a.r, b.r) - Math.max(a.l, b.l)) * Math.max(0, Math.min(a.b, b.b) - Math.max(a.t, b.t));
+        cands.sort((x, y) => nmBoxes.reduce((s, n) => s + area(x.box, n), 0) - nmBoxes.reduce((s, n) => s + area(y.box, n), 0));
+        picked = cands[0];
+      } else {
+        picked = { box: clampBox(seeds[0].box), tail: seeds[0].tail };
+      }
+    }
+
     const b = document.createElement('div');
-    b.className = 'bubble' + (row.previousElementSibling ? '' : ' side');
+    b.className = 'bubble ' + picked.tail;
+    b.dataset.id = id;
+    b.style.left = Math.round(picked.box.l) + 'px';
+    b.style.top = Math.round(picked.box.t) + 'px';
     b.innerHTML = Art.EMO[e].svg;
-    row.appendChild(b);
+    layer.appendChild(b);
     SND.SFX.pop();
     setTimeout(() => b.classList.add('out'), 2500);
     setTimeout(() => b.remove(), 2850);
@@ -189,14 +294,16 @@
     renderLobby();
   });
   Net.on('tkround', (m) => {
+    clearBubbles();
     $('#s-join').hidden = true; $('#s-lobby').hidden = true; $('#ai-sheet').hidden = true;
     Game.start(m);
   });
   Net.on('tkemo', (m) => bubble(m.id, m.e));
-  Net.on('tkleft', () => { Net.forget(); L = null; me = null; show('#s-join'); joinArt(); });
+  Net.on('tkleft', () => { clearBubbles(); Net.forget(); L = null; me = null; show('#s-join'); joinArt(); });
   Net.on('tkerr', (m) => {
     if (m.code === 'no_room') {
       const wasIn = !!L || !!Net.seat();
+      clearBubbles();
       Net.forget(); L = null; me = null; joining = false;
       show('#s-join'); joinArt();
       $('#j-msg').textContent = wasIn && !$('#j-code').value ? (m.msg || '방이 없어졌어요') : (m.msg || '방을 찾을 수 없어요');
@@ -210,7 +317,7 @@
 
   // ---------------------------------------------------------------- 버튼
   function setup() {
-    $('#j-name').value = savedName();
+    $('#j-name').value = savedName() || ((Net.seat() && Net.seat().name) || '');
     const q = new URLSearchParams(location.search).get('room');
     if (q && /^\d{4}$/.test(q)) $('#j-code').value = q;
     $('#j-code').addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4); });
@@ -275,6 +382,7 @@
   }
   function leave() {
     SND.SFX.click();
+    clearBubbles();
     Net.send({ t: 'tkleave' });
     Net.forget(); L = null; me = null;
     show('#s-join'); joinArt();

@@ -9,6 +9,7 @@ server.py 는 이 모듈에 세 가지만 넘겨요.
 이 모드만 TANK_MAX = 16.
 """
 import asyncio
+from collections import deque
 import json
 import logging
 import math
@@ -22,7 +23,7 @@ log = logging.getLogger("tank")
 # ---------------------------------------------------------------- 수치 (설계서 2절 초안)
 TANK_MAX = 16
 TEAM_MAX = 8
-MIN_PER_TEAM = 2          # 팀당 최소 2명 (AI 포함, 1인 연습도 AI로 2대2+ 채워서 시작)
+MIN_PER_TEAM = 1          # 팀당 최소 1명 (1대1~8대8 정식 지원)
 TICK_HZ = 15
 DT = 1.0 / TICK_HZ
 TICK_MS = 1000.0 / TICK_HZ
@@ -76,7 +77,7 @@ ISLANDS = [
 ]
 BRIDGES = [(600, 500, 700, 560), (1800, 500, 1700, 560)]   # (진지 쪽 x, y, 섬 쪽 x, y) · 두께 16
 BRIDGE_T = 16
-SLOTS_L = [96, 152, 208, 264, 320, 376, 432, 488]
+SLOTS_L = [96, 176, 256, 336, 416, 496, 640, 790]
 SLOTS_R = [W - x for x in reversed(SLOTS_L)]
 BED_DEPTH = 64                     # 스폰 구간: 처음 윗면에서 64px 아래부터 밑면까지 기반암
 BED_ZONES = [(64, 520), (W - 520, W - 64)]
@@ -284,12 +285,12 @@ def edge_dist(m: bytearray, x: float, y: float, d: int, limit: int = 140) -> int
 
 
 def check_slots() -> bool:
-    """안전 슬롯 세 조건: 가장자리·하늘 여유(맵 끝 96 · 안쪽 끝 100 · 기반암), 간격 56, 경사 15° 이하."""
+    """안전 슬롯 조건: 간격 80px 이상, 경사 15° 이하, 진지(가장자리 96·안쪽 100·기반암) 또는 섬(양끝 여유 60·두께 40)."""
     ok = True
     for side, xs in (("L", SLOTS_L), ("R", SLOTS_R)):
         good = 0
         for x in xs:
-            s = surface(BASE_MASK, x, 380, 40, 400)
+            s = surface(BASE_MASK, x, 100, 100, 700)
             if s is None or s == WALL:
                 continue
             tilts = []
@@ -301,14 +302,21 @@ def check_slots() -> bool:
                 else:
                     tilts.append(abs(math.degrees(math.atan2(a - b, 2 * k["half"]))))
             m = x if x < W / 2 else W - x
-            far_edge = 96 <= m and (MAIN_W - m) >= 100
-            gx = int(x // CELL)
-            bed = BEDROCK[(int(s + BED_DEPTH + 8) // CELL) * GW + gx] == 1
-            if max(tilts) <= 15 and far_edge and bed:
+            if m < MAIN_W:
+                far_edge = 96 <= m and (MAIN_W - m) >= 100
+                gx = int(x // CELL)
+                safe = far_edge and BEDROCK[(int(s + BED_DEPTH + 8) // CELL) * GW + gx] == 1
+            else:
+                safe = (edge_dist(BASE_MASK, x, s, -1, 80) >= 60
+                        and edge_dist(BASE_MASK, x, s, 1, 80) >= 60
+                        and solid(BASE_MASK, x, s + 40))
+            if max(tilts) <= 15 and safe:
                 good += 1
-        gaps = all(b - a >= 56 for a, b in zip(xs, xs[1:]))
-        log.info("[포격전] 맵 %s 안전 슬롯 %s 진지 %d/8 통과 · 간격 %s · 기반암 %d칸", MAP_ID, side, good,
-                 "OK" if gaps else "부족", len(BED_RECTS))
+        sxs = sorted(xs)
+        min_gap = min((b - a for a, b in zip(sxs, sxs[1:])), default=0)
+        gaps = min_gap >= 80
+        log.info("[포격전] 맵 %s 안전 슬롯 %s 진지 %d/8 통과 · 최소간격 %dpx(%s) · 기반암 %d칸", MAP_ID, side, good,
+                 min_gap, "OK" if gaps else "부족", len(BED_RECTS))
         ok = ok and good >= 8 and gaps
     return ok
 
@@ -347,18 +355,124 @@ def new_code() -> str:
     raise RuntimeError("방 코드를 만들 수 없어요")
 
 
-async def _send(ws, text: str) -> None:
+class _SendState:
+    def __init__(self):
+        self.events: deque = deque()
+        self.latest_snap: Optional[str] = None
+        self.task: Optional[asyncio.Task] = None
+
+
+_SEND_STATES: Dict[object, _SendState] = {}
+
+
+async def _pump_send(ws, state: _SendState) -> None:
     try:
-        await ws.send_text(text)
-    except Exception:
-        pass
+        while (state.events or state.latest_snap is not None) and not getattr(ws, "closed", False):
+            if state.events:
+                text = state.events.popleft()
+            else:
+                text = state.latest_snap
+                state.latest_snap = None
+            try:
+                await ws.send_text(text)
+            except Exception:
+                break
+    finally:
+        state.task = None
+        if getattr(ws, "closed", False):
+            _SEND_STATES.pop(ws, None)
 
 
-def send(ws, payload) -> None:
+def send(ws, payload, is_snap: bool = False) -> None:
     if ws is None or getattr(ws, "closed", False):
         return
+    if not is_snap and isinstance(payload, dict) and payload.get("t") == "tksnap":
+        is_snap = True
     text = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    asyncio.ensure_future(_send(ws, text))
+    state = _SEND_STATES.get(ws)
+    if state is None:
+        state = _SendState()
+        _SEND_STATES[ws] = state
+    if is_snap:
+        state.latest_snap = text
+    else:
+        state.events.append(text)
+    if state.task is None or state.task.done():
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        state.task = loop.create_task(_pump_send(ws, state))
+
+
+class TokenBucket:
+    def __init__(self, rate: float, cap: Optional[float] = None, now_s: Optional[float] = None):
+        self.rate = float(rate)
+        self.cap = float(rate if cap is None else cap)
+        self.tokens = self.cap
+        self.last = time.monotonic() if now_s is None else now_s
+
+    def refill(self, now_s: float) -> None:
+        elapsed = max(0.0, now_s - self.last)
+        self.last = now_s
+        if elapsed > 0.0:
+            self.tokens = min(self.cap, self.tokens + elapsed * self.rate)
+
+    def can_take(self, now_s: float) -> bool:
+        self.refill(now_s)
+        return self.tokens >= 1.0
+
+    def take(self, now_s: float) -> bool:
+        self.refill(now_s)
+        if self.tokens >= 1.0:
+            self.tokens -= 1.0
+            return True
+        return False
+
+
+class _RateState:
+    def __init__(self, now_s: float):
+        self.total = TokenBucket(40.0, 40.0, now_s)
+        self.buckets = {
+            "tkin": TokenBucket(20.0, 20.0, now_s),
+            "tkaim": TokenBucket(20.0, 20.0, now_s),
+            "tkfire": TokenBucket(4.0, 4.0, now_s),
+            "other": TokenBucket(10.0, 10.0, now_s),
+        }
+        self.last_drop_log = -1e9
+        self.drop_streak_start = 0.0
+        self.last_drop_at = 0.0
+        self.warned_at = -1e9
+
+
+_RATE_STATES: Dict[object, _RateState] = {}
+
+
+def allow_rate(ws, msg_type: str, now_s: Optional[float] = None, room_code: str = "-", who: str = "-") -> bool:
+    t_s = time.monotonic() if now_s is None else now_s
+    st = _RATE_STATES.get(ws)
+    if st is None:
+        st = _RateState(t_s)
+        _RATE_STATES[ws] = st
+    # tkemo 는 기존 1초(EMO_GAP_MS) 검사를 유지하고 전체 합(40/초) 버킷만 적용
+    tb = None if msg_type == "tkemo" else st.buckets.get(msg_type, st.buckets["other"])
+    ok_type = True if tb is None else tb.can_take(t_s)
+    ok_total = st.total.can_take(t_s)
+    if ok_type and ok_total:
+        if tb is not None:
+            tb.tokens -= 1.0
+        st.total.tokens -= 1.0
+        return True
+    if t_s - st.last_drop_log >= 1.0:
+        st.last_drop_log = t_s
+        log.info("[포격전 %s] rate_drop %s %s", room_code, who, msg_type)
+    if st.drop_streak_start == 0.0 or (t_s - st.last_drop_at) > 1.5:
+        st.drop_streak_start = t_s
+    st.last_drop_at = t_s
+    if (t_s - st.drop_streak_start) >= 10.0 and (t_s - st.warned_at) >= 10.0:
+        st.warned_at = t_s
+        log.warning("[포격전 %s] rate_flood %s %s (%.1fs)", room_code, who, msg_type, t_s - st.drop_streak_start)
+    return False
 
 
 # ---------------------------------------------------------------- 상태
@@ -417,6 +531,7 @@ class Tank:
         self.moving = False
         self.dead_at = 0.0
         self.cause = ""
+        self.aim_at = now()
         self.shots = 0
         self.hits = 0
         self.dealt = 0
@@ -452,7 +567,7 @@ class Round:
             rng.shuffle(members)
             for s, i in zip(members, idx):
                 x = float(xs[i])
-                y = surface(self.mask, x, 380, 40, 400) or 380.0
+                y = surface(self.mask, x, 100, 100, 700) or 380.0
                 face = 1 if self.side[team] == "L" else -1
                 tk = Tank(s, x, y, face)
                 self.tanks[s.pid] = tk
@@ -534,6 +649,7 @@ class TRoom:
         self.empty_since = now()
         self.host_lost_at = 0.0
         self.notice = ""
+        self._exc_log: Dict[tuple, float] = {}
 
     # ---- 명단
     def humans(self) -> List[Seat]:
@@ -581,9 +697,10 @@ class TRoom:
                 yield s
 
     def cast(self, payload) -> None:
+        is_snap = isinstance(payload, dict) and payload.get("t") == "tksnap"
         msg = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         for s in self.viewers():
-            send(s.ws, msg)
+            send(s.ws, msg, is_snap=is_snap)
 
     def auto_team(self) -> str:
         return "A" if self.team_count("A") <= self.team_count("B") else "B"
@@ -627,12 +744,28 @@ def _attach(ws, room: TRoom, seat: Seat) -> None:
         room.host_lost_at = 0.0
 
 
+def _parse_int(val, default: Optional[int] = 0) -> Optional[int]:
+    if val is None or val == "":
+        return default
+    if isinstance(val, bool):
+        return None
+    try:
+        fv = float(val)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(fv):
+        return None
+    return int(fv)
+
+
 async def handle(ws, msg: dict) -> None:
     _ensure_loop()
     t = msg.get("t")
     cur = CONN.get(ws)
     room = ROOMS.get(cur[0]) if cur else None
     seat = room.seats.get(cur[1]) if (room and cur) else None
+    if not allow_rate(ws, str(t or ""), room_code=room.code if room else "-", who=seat.name if seat else "-"):
+        return
 
     if t == "tkjoin":
         if seat is not None:
@@ -664,19 +797,29 @@ async def handle(ws, msg: dict) -> None:
         if not room.host or room.host not in room.seats or room.seats[room.host].ai:
             room.host = seat.pid
         _attach(ws, room, seat)
-        send(ws, {"t": "tkjoined", "pid": seat.pid, "token": seat.token, "code": room.code})
+        send(ws, {"t": "tkjoined", "pid": seat.pid, "token": seat.token, "code": room.code, "name": seat.name})
         room.notice = notice
         room.push_lobby()
         return
 
     if t == "tkrejoin":
-        code = str(msg.get("room") or "")
-        room = ROOMS.get(code)
-        seat = room.seats.get(str(msg.get("pid") or "")) if room else None
-        if seat is None or seat.ai or not secrets.compare_digest(seat.token, str(msg.get("token") or "")):
+        code = msg.get("room")
+        pid = msg.get("pid")
+        tok = msg.get("token")
+        room = ROOMS.get(code) if isinstance(code, str) else None
+        seat = room.seats.get(pid) if (room and isinstance(pid, str)) else None
+        tok_ok = (
+            seat is not None
+            and not seat.ai
+            and isinstance(tok, str)
+            and len(tok) == len(seat.token)
+            and tok.isascii()
+            and secrets.compare_digest(seat.token, tok)
+        )
+        if not tok_ok:
             return err(ws, "no_room", "판이 끝났거나 방이 없어졌어요. 대기실로 다시 들어와 주세요")
         _attach(ws, room, seat)
-        send(ws, {"t": "tkjoined", "pid": seat.pid, "token": seat.token, "code": room.code, "re": 1})
+        send(ws, {"t": "tkjoined", "pid": seat.pid, "token": seat.token, "code": room.code, "name": seat.name, "re": 1})
         rd = room.round
         if rd is not None and not rd.over and seat.pid in rd.tanks and seat.st in ("play", "spec"):
             tk = rd.tanks[seat.pid]
@@ -708,11 +851,8 @@ async def handle(ws, msg: dict) -> None:
             seat.team = tm
             room.push_lobby()
     elif t == "tkemo":
-        try:
-            e = int(msg.get("e"))
-        except (TypeError, ValueError):
-            return err(ws, "bad_input")
-        if not 0 <= e < EMO_COUNT:
+        e = _parse_int(msg.get("e"), None)
+        if e is None or not 0 <= e < EMO_COUNT:
             return err(ws, "bad_input")
         tnow = now()
         if tnow - seat.last_emo < EMO_GAP_MS:
@@ -733,15 +873,15 @@ async def handle(ws, msg: dict) -> None:
     elif t == "tkin":
         if tk is None or not tk.alive or seat.st != "play":
             return
-        try:
-            d = int(msg.get("d") or 0)
-        except (TypeError, ValueError):
-            d = 0
+        d = _parse_int(msg.get("d"), 0)
+        if d is None:
+            return err(ws, "bad_input")
         _set_input(tk, clamp(d, -1, 1))
     elif t == "tkaim":
         if tk is None or not tk.alive or seat.st != "play":
             return
-        _set_aim(tk, msg.get("a"), msg.get("p"))
+        if not _set_aim(tk, msg.get("a"), msg.get("p")):
+            return err(ws, "bad_input")
     elif t == "tkfire":
         if tk is None or not tk.alive or seat.st != "play" or rd is None:
             return err(ws, "bad_input")
@@ -753,10 +893,9 @@ async def handle(ws, msg: dict) -> None:
             return err(ws, "not_round", "지금은 진행 중인 판이 없어요")
         if tk is not None and tk.alive and seat.st == "play":
             return err(ws, "bad_input")
-        try:
-            d = int(msg.get("d") or 0)
-        except (TypeError, ValueError):
-            d = 0
+        d = _parse_int(msg.get("d"), 0)
+        if d is None:
+            return err(ws, "bad_input")
         if seat.st in ("lobby", "wait"):
             seat.st = "spec"
             send(ws, rd.start_msg(seat.pid))
@@ -856,6 +995,13 @@ def _leave(room: TRoom, seat: Seat) -> None:
 
 
 def on_close(ws) -> None:
+    _RATE_STATES.pop(ws, None)
+    st = _SEND_STATES.pop(ws, None)
+    if st is not None:
+        st.events.clear()
+        st.latest_snap = None
+        if st.task is not None and not st.task.done():
+            st.task.cancel()
     cur = CONN.pop(ws, None)
     if not cur:
         return
@@ -893,16 +1039,31 @@ def _set_input(tk: Tank, d: int) -> None:
     tk.d = d
 
 
-def _set_aim(tk: Tank, a, p) -> None:
+def _apply_human_aim(tk: Tank, a: float, t: float) -> int:
+    a_clamped = clamp(round(a), tk.K["amin"], tk.K["amax"])
+    if not tk.ai:
+        dt_s = max(0.0, (t - tk.aim_at) / 1000.0)
+        max_step = dt_s * 30.0 + 6.0
+        diff = a_clamped - tk.a
+        if abs(diff) > max_step:
+            a_clamped = clamp(round(tk.a + (max_step if diff > 0 else -max_step)), tk.K["amin"], tk.K["amax"])
+        tk.aim_at = t
+    return a_clamped
+
+
+def _set_aim(tk: Tank, a, p) -> bool:
+    if isinstance(a, bool) or isinstance(p, bool):
+        return False
     try:
         a = float(a)
         p = float(p)
-    except (TypeError, ValueError):
-        return
-    if math.isnan(a) or math.isnan(p):
-        return
-    tk.a = clamp(round(a), tk.K["amin"], tk.K["amax"])
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if not (math.isfinite(a) and math.isfinite(p)):
+        return False
+    tk.a = _apply_human_aim(tk, a, now())
     tk.p = clamp(round(p), 0, 100)
+    return True
 
 
 def muzzle(tk: Tank, a: float):
@@ -926,16 +1087,19 @@ def _fire(rd: Round, tk: Tank, a, p):
         return ("bad_input", 0)
     if t < tk.cd_until:
         return ("cooldown", int(tk.cd_until - t))
+    if isinstance(a, bool) or isinstance(p, bool):
+        return ("bad_input", 0)
     try:
         a = float(a)
         p = float(p)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return ("bad_input", 0)
-    if math.isnan(a) or math.isnan(p):
+    if not (math.isfinite(a) and math.isfinite(p)):
         return ("bad_input", 0)
-    a = round(a)
-    if a < tk.K["amin"] or a > tk.K["amax"]:
+    ar = round(a)
+    if ar < tk.K["amin"] or ar > tk.K["amax"]:
         return ("angle_range", 0)
+    a = _apply_human_aim(tk, ar, t)
     p = clamp(round(p), 0, 100)
     tk.a, tk.p = a, p
     x, y, ea = muzzle(tk, a)
@@ -1183,7 +1347,8 @@ def step_shells(rd: Round) -> None:
         if boom:
             _explode(rd, sh, boom[0], boom[1])
         elif gone:
-            rd.room.cast({"t": "tkgone", "k": rd.k, "sid": sh["sid"]})
+            rd.room.cast({"t": "tkgone", "k": rd.k, "sid": sh["sid"], "own": sh["own"],
+                          "x": round(sh["x"], 1), "y": round(sh["y"], 1)})
         else:
             keep.append(sh)
     rd.shells = keep
@@ -1232,10 +1397,10 @@ def _spec_pick(room: TRoom, seat: Seat, d: int) -> None:
 
 def _end_round(rd: Round, win: str, by: str) -> None:
     rd.over = True
-    rd.result_until = now() + RESULT_MS
+    rd.result_until = now() + RESULT_MS + 2000
     alive = rd.alive_count()
     stats = [{"id": tk.pid, "n": tk.name, "tm": tk.team, "k": tk.kind, "shots": tk.shots, "hits": tk.hits,
-              "dealt": tk.dealt, "kills": tk.kills, "ffk": tk.ffk, "alive": 1 if tk.alive else 0}
+              "dealt": tk.dealt, "kills": tk.kills, "ffk": tk.ffk, "alive": 1 if tk.alive else 0, "cause": tk.cause}
              for tk in rd.tanks.values()]
     rd.result = {"t": "tkend", "k": rd.k, "win": win, "by": by, "alive": alive, "stats": stats, "back": RESULT_MS}
     rd.room.cast(rd.result)
@@ -1260,61 +1425,99 @@ def _finish_round(room: TRoom) -> None:
     room.push_lobby()
 
 
+def _log_tick_exc(room: TRoom, stage: str, exc: Exception, t: float) -> None:
+    key = (stage, type(exc).__name__)
+    last = room._exc_log.get(key, -1e9)
+    if t - last >= 5000.0:
+        room._exc_log[key] = t
+        log.exception("[포격전 %s] 틱 오류 (%s)", room.code, stage)
+
+
 def tick_round(room: TRoom, t: float) -> None:
     rd = room.round
     if rd is None:
         return
     if rd.over:
         if t >= rd.result_until:
-            _finish_round(room)
+            try:
+                _finish_round(room)
+            except Exception as exc:
+                _log_tick_exc(room, "finish", exc, t)
         return
     rd.k += 1
     playing = t >= rd.play_at
     humans_on = any(s.on for s in room.humans())
+    # 1. AI 판단 (탱크 단위 격리)
     planned = 0
-    for tk in rd.tanks.values():
-        if tk.alive and tk.ai and humans_on:
-            planned += ai_step(rd, tk, t, playing, planned < 2)
-        elif tk.ai:
-            tk.d = 0
-    for tk in rd.tanks.values():
-        if tk.alive or tk.falling:
-            if tk.alive:
-                step_tank(rd, tk, t, playing)
-            else:
-                # 죽어서 떨어지는 탱크는 계속 떨어지기만
-                if tk.cause == "fall" and tk.y < H + 400:
-                    tk.vy = min(tk.vy + GRAV * DT, 900)
-                    tk.y += tk.vy * DT
+    for tk in list(rd.tanks.values()):
+        try:
+            if tk.alive and tk.ai and humans_on:
+                planned += ai_step(rd, tk, t, playing, planned < 2)
+            elif tk.ai:
+                tk.d = 0
+        except Exception as exc:
+            _log_tick_exc(room, "ai", exc, t)
+    # 2. 탱크 단계 (탱크 단위 격리)
+    for tk in list(rd.tanks.values()):
+        try:
+            if tk.alive or tk.falling:
+                if tk.alive:
+                    step_tank(rd, tk, t, playing)
+                else:
+                    # 죽어서 떨어지는 탱크는 계속 떨어지기만
+                    if tk.cause == "fall" and tk.y < H + 400:
+                        tk.vy = min(tk.vy + GRAV * DT, 900)
+                        tk.y += tk.vy * DT
+        except Exception as exc:
+            _log_tick_exc(room, "tank", exc, t)
+    # 3. 바람 (바람을 먼저 바꾸고 → 포탄은 이 틱의 현재 바람으로)
     if playing:
-        rd.step_wind(t)          # 바람을 먼저 바꾸고 → 포탄은 이 틱의 현재 바람으로
-        step_shells(rd)
-    rd.recent_carves = [c for c in rd.recent_carves if t - c[0] < 2500]
-    # 관전 대상 자동 전환
-    for s in room.seats.values():
-        sw = getattr(s, "spec_switch_at", 0)
-        if sw and t >= sw and s.st == "spec":
-            _spec_pick(room, s, 1)
-    snap = {"t": "tksnap", "k": rd.k, "tl": rd.tl(t), "cdn": max(0, int(rd.play_at - t)), "rc": rd.rc(t), "w": rd.wind, "wn": rd.wn,
-            "tanks": [tk.snap(t) for tk in rd.tanks.values()],
-            "sh": [[sh["sid"], round(sh["x"], 1), round(sh["y"], 1)] for sh in rd.shells]}
-    room.cast(snap)
-    # 승패
+        try:
+            rd.step_wind(t)
+        except Exception as exc:
+            _log_tick_exc(room, "wind", exc, t)
+    # 4. 포탄 단계
     if playing:
-        alive = rd.alive_count()
-        if alive["A"] == 0 or alive["B"] == 0:
-            win = "draw" if alive["A"] == alive["B"] else ("A" if alive["A"] else "B")
-            _end_round(rd, win, "wipe")
-        elif t >= rd.end_at:
-            if alive["A"] != alive["B"]:
-                win = "A" if alive["A"] > alive["B"] else "B"
-            else:
-                hp = {"A": 0, "B": 0}
-                for tk in rd.tanks.values():
-                    if tk.alive:
-                        hp[tk.team] += tk.hp
-                win = "draw" if hp["A"] == hp["B"] else ("A" if hp["A"] > hp["B"] else "B")
-            _end_round(rd, win, "time")
+        try:
+            step_shells(rd)
+        except Exception as exc:
+            _log_tick_exc(room, "shells", exc, t)
+    # 정리 · 관전 대상 자동 전환
+    try:
+        rd.recent_carves = [c for c in rd.recent_carves if t - c[0] < 2500]
+        for s in list(room.seats.values()):
+            sw = getattr(s, "spec_switch_at", 0)
+            if sw and t >= sw and s.st == "spec":
+                _spec_pick(room, s, 1)
+    except Exception as exc:
+        _log_tick_exc(room, "spec", exc, t)
+    # 5. 스냅 송신
+    try:
+        snap = {"t": "tksnap", "k": rd.k, "tl": rd.tl(t), "cdn": max(0, int(rd.play_at - t)), "rc": rd.rc(t), "w": rd.wind, "wn": rd.wn,
+                "tanks": [tk.snap(t) for tk in rd.tanks.values()],
+                "sh": [[sh["sid"], round(sh["x"], 1), round(sh["y"], 1)] for sh in rd.shells]}
+        room.cast(snap)
+    except Exception as exc:
+        _log_tick_exc(room, "snap", exc, t)
+    # 6. 승패 판정
+    if playing:
+        try:
+            alive = rd.alive_count()
+            if alive["A"] == 0 or alive["B"] == 0:
+                win = "draw" if alive["A"] == alive["B"] else ("A" if alive["A"] else "B")
+                _end_round(rd, win, "wipe")
+            elif t >= rd.end_at:
+                if alive["A"] != alive["B"]:
+                    win = "A" if alive["A"] > alive["B"] else "B"
+                else:
+                    hp = {"A": 0, "B": 0}
+                    for tk in rd.tanks.values():
+                        if tk.alive:
+                            hp[tk.team] += tk.hp
+                    win = "draw" if hp["A"] == hp["B"] else ("A" if hp["A"] > hp["B"] else "B")
+                _end_round(rd, win, "time")
+        except Exception as exc:
+            _log_tick_exc(room, "judge", exc, t)
 
 
 def housekeeping(t: float) -> None:
@@ -1351,6 +1554,11 @@ async def main_loop() -> None:
     nxt = now()
     hk = 0
     while True:
+        if not ROOMS:
+            hk = 0
+            await asyncio.sleep(1.0)
+            nxt = now()
+            continue
         nxt += TICK_MS
         t = now()
         for room in list(ROOMS.values()):
@@ -1402,13 +1610,17 @@ def _safe_ahead(rd: Round, tk: Tank, d: int, look: float) -> bool:
         return False
     margin = 100 if mc < MAIN_W else 60
     py = y
+    hist = [y]
     for i in range(1, int(margin // 4) + 1):
         xx = x + d * i * 4
         g = surface(m, xx, py, 24, 12)
         if g is None or g == WALL:
             return False
-        if i * 4 <= look + 16 and py - g > 0 and math.degrees(math.atan2(py - g, 4)) > tk.K["climb"] - 8 + 20:
-            return False
+        if i >= 4 and i * 4 <= look + 16:
+            prev_y = hist[i - 4]
+            if prev_y - g > 0 and math.degrees(math.atan2(prev_y - g, 16)) > tk.K["climb"] - 8:
+                return False
+        hist.append(g)
         py = g
     a = surface(m, x + d * 16, y, 28, 40)
     if a not in (None, WALL) and y - a > 0 and math.degrees(math.atan2(y - a, 16)) > tk.K["climb"] - 8:

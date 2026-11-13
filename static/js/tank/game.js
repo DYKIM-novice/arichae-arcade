@@ -68,10 +68,10 @@
       tl: m.endsIn, cdn: m.cdn, startCdn: m.cdn, startedAt: performance.now(),
       aim: { a: null, p: null, sentA: null, sentP: null, sentAt: 0, edge: 0, edgeSide: 0 },
       input: 0, cam: { x: 0, y: 0, ok: false }, zoom: false, spec: !me || !!m.spec, specId: null, specInfo: null, specAsked: false,
-      camState: { mode: 'self', sid: null, own: null, fireAt: 0, impactAt: 0, holdUntil: 0, returnStartAt: 0, returnFromX: 0, returnFromY: 0, lastX: 0, lastY: 0, reason: 'auto' },
+      camState: { mode: 'self', sid: null, own: null, fireAt: 0, impactAt: 0, holdUntil: 0, returnStartAt: 0, returnFromX: 0, returnFromY: 0, impactFromX: 0, impactFromY: 0, lastX: 0, lastY: 0, predX: 0, predY: 0, predT: 0, vx: 0, vy: 0, wind: 0, hasShell: false, reason: 'auto' },
       shellOwn: {}, lastShells: [], miniMarks: [], offHits: [], banners: [],
       dead: {}, deadAt: 0, trails: {}, faceAnim: {}, nums: [], phase: {}, recoil: {}, lastShotP: null, lastLocalFireAt: 0,
-      over: null, shake: 0, hitShakeUntil: 0, hitShakeAmp: 0, minimapT: 0, goT: 0, moving: false
+      over: null, resultTimer: 0, shake: 0, hitShakeUntil: 0, hitShakeAmp: 0, minimapT: 0, goT: 0, moving: false
     };
     window.__tankDbg = {
       wind: m.wind, windNextAt: wn ? wn.at : null, windChanges: [], blinkStarts: [], tags: [],
@@ -92,7 +92,10 @@
   }
   function stop(silent) {
     cancelAnimationFrame(raf); raf = 0;
-    if (G) { sendInput(0, true); SND.engine(false); }
+    if (G) {
+      if (G.resultTimer) clearTimeout(G.resultTimer);
+      sendInput(0, true); SND.engine(false);
+    }
     G = null;
     if (!silent) $('#s-game').hidden = true;
   }
@@ -168,7 +171,25 @@
       }
     }
   }
-  function onEvent(m) { if (G) G.events.push(m); }
+  function onEvent(m) {
+    if (!G) return;
+    if (m.t === 'tkshot') {
+      G.shellOwn[m.sid] = m.id;
+      if (m.id === camOwnerId()) {
+        const t = performance.now();
+        const cs = G.camState;
+        if (cs.mode !== 'self') finishCamLog(t, 'early');
+        const fireAt = (m.id === G.me && G.lastLocalFireAt && t - G.lastLocalFireAt < 400) ? G.lastLocalFireAt : t;
+        if (m.id === G.me) G.lastLocalFireAt = 0;
+        cs.mode = 'follow'; cs.sid = m.sid; cs.own = m.id;
+        cs.fireAt = fireAt; cs.impactAt = 0; cs.holdUntil = 0; cs.returnStartAt = 0;
+        cs.lastX = m.x; cs.lastY = m.y; cs.predX = m.x; cs.predY = m.y; cs.predT = t;
+        cs.vx = m.vx || 0; cs.vy = m.vy || 0; cs.wind = m.w != null ? m.w : (G.wind || 0);
+        cs.hasShell = false; cs.reason = 'auto';
+      }
+    }
+    G.events.push(m);
+  }
   function onSpecTo(m) {
     if (!G) return;
     if (G.specId && m.id && G.specId !== m.id && G.camState && G.camState.mode !== 'self') {
@@ -201,15 +222,17 @@
       }
       if (e.id !== G.me) SND.SFX.fire();
       if (e.id === G.me) G.lastShotP = Math.round(G.aim.p);
-      // 내 포탄(관전 시 관전 대상의 포탄) 따라가기 시작
-      if (e.id === camOwnerId()) {
+      // 내 포탄(관전 시 관전 대상의 포탄) 따라가기 시작 (onEvent 에서 이미 시작되지 않았을 때만)
+      if (e.id === camOwnerId() && !(G.camState.mode === 'follow' && G.camState.sid === e.sid)) {
         const cs = G.camState;
         if (cs.mode !== 'self') finishCamLog(t, 'early');
         const fireAt = (e.id === G.me && G.lastLocalFireAt && t - G.lastLocalFireAt < 400) ? G.lastLocalFireAt : t;
         if (e.id === G.me) G.lastLocalFireAt = 0;
         cs.mode = 'follow'; cs.sid = e.sid; cs.own = e.id;
         cs.fireAt = fireAt; cs.impactAt = 0; cs.holdUntil = 0; cs.returnStartAt = 0;
-        cs.lastX = e.x; cs.lastY = e.y; cs.reason = 'auto';
+        cs.lastX = e.x; cs.lastY = e.y; cs.predX = e.x; cs.predY = e.y; cs.predT = t;
+        cs.vx = e.vx || 0; cs.vy = e.vy || 0; cs.wind = e.w != null ? e.w : (G.wind || 0);
+        cs.hasShell = false; cs.reason = 'auto';
       }
     } else if (e.t === 'tkboom') {
       const nearTop = !T.solid(e.x, e.y - 10);
@@ -257,6 +280,7 @@
       const cs = G.camState;
       if (cs.mode === 'follow' && cs.sid === e.sid) {
         cs.impactAt = t; cs.lastX = e.x; cs.lastY = e.y;
+        cs.impactFromX = G.cam.x; cs.impactFromY = G.cam.y;
         const maxReturnStart = cs.fireAt + 4320;
         const rem = maxReturnStart - t;
         if (rem >= 1350) { cs.mode = 'impact'; cs.holdUntil = t + 1350; cs.reason = 'auto'; }
@@ -331,8 +355,8 @@
           if (h.id === G.me) { SND.SFX.hurt(); try { navigator.vibrate && navigator.vibrate(40); } catch (er2) { /* 무시 */ } }
         });
       }
-      // 화면 밖 명중 가장자리 배지
-      if (hits.length > 0) {
+      // 화면 밖 명중 가장자리 배지 (착탄 지점이 화면 안이거나 착탄 카메라가 비추는 중이면 띄우지 않음)
+      if (hits.length > 0 && !(cs.mode === 'impact' && cs.sid === e.sid)) {
         const [sx, sy] = toScreen(e.x, e.y);
         if (sx < 0 || sx > cw || sy < 46 || sy > ch) {
           const allFf = isMine && hits.every((h) => !!h.ff);
@@ -347,8 +371,25 @@
       delete G.shellOwn[e.sid];
     } else if (e.t === 'tkgone') {
       const t = performance.now();
+      const shooter = e.own || G.shellOwn[e.sid] || null;
+      const isMine = !!(G.me && shooter === G.me);
+      const gx = e.x != null ? e.x : (G.camState.sid === e.sid ? G.camState.lastX : G.cam.x);
+      const gy = e.y != null ? e.y : (G.camState.sid === e.sid ? G.camState.lastY : G.cam.y);
+      if (window.__tankDbg) {
+        pushDbg(window.__tankDbg.booms, {
+          t: Math.round(t), own: shooter, x: gx, y: gy, hits: [], gone: true
+        }, 50);
+      }
+      if (isMine) {
+        G.nums.push({ miss: true, mine: true, gone: true, x: gx, y: gy, t });
+        if (window.__tankDbg) {
+          pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'miss_mine', id: null, dmg: 0, x: gx, y: gy, own: shooter }, 50);
+        }
+      }
       if (G.camState.mode === 'follow' && G.camState.sid === e.sid) {
         G.camState.impactAt = t;
+        G.camState.lastX = gx;
+        G.camState.lastY = gy;
         startReturn(t, 'auto');
       }
       delete G.trails[e.sid];
@@ -390,9 +431,11 @@
     else title = `팀 ${m.win} 승리!`;
     if (myTeam && m.win === myTeam) SND.SFX.win(); else SND.SFX.lose();
     const by = m.by === 'wipe' ? '상대 팀을 모두 물리쳤어요' : '시간 끝 · 남은 탱크와 체력으로 판정';
+    const CAUSE = { hit: '격추', fall: '추락' };
     const rows = m.stats.slice().sort((a, b) => b.dealt - a.dealt).map((s) => {
       const T = Art.TEAM[s.tm];
-      const st = (s.alive ? '생존' : '…') + (s.ffk ? ` · <span style="color:#FF8A1F">아군 오사 ${s.ffk}</span>` : '');
+      const deadCause = CAUSE[s.cause] || (G.dead[s.id] && CAUSE[G.dead[s.id].cause]) || '탈락';
+      const st = (s.alive ? '생존' : deadCause) + (s.ffk ? ` · <span style="color:#FF8A1F">아군 오사 ${s.ffk}</span>` : '');
       return `<tr${s.id === G.me ? ' style="color:#FFE27A"' : ''}><td style="color:${T.c}">${T.mark}${s.tm}</td><td>${esc(s.n)}</td><td>${KN[s.k]}</td><td>${s.shots}발</td><td>${s.hits}명중</td><td>${s.dealt}</td><td>${st}</td></tr>`;
     }).join('');
     const box = $('#result');
@@ -588,7 +631,19 @@
     G.events.sort((x, y) => x.k - y.k);
     while (G.events.length && G.events[0].k <= rk + 0.5) {
       const e = G.events.shift();
-      if (e.t === 'tkend') showResult(e); else applyEvent(e);
+      if (e.t === 'tkend') {
+        G.over = e;
+        if (window.__tankDbg && G.me) {
+          const ms = e.stats.find((s) => s.id === G.me);
+          if (ms) {
+            window.__tankDbg.score = { kills: ms.kills || 0, hits: ms.hits || 0, dealt: ms.dealt || 0, ffk: ms.ffk || 0 };
+          }
+        }
+        setSpecUI(false); $('#ctl').hidden = true;
+        sendInput(0, true);
+        if (G.resultTimer) clearTimeout(G.resultTimer);
+        G.resultTimer = setTimeout(() => { if (G && G.over === e) showResult(e); }, 2000);
+      } else applyEvent(e);
     }
     return { tanks: out, shells };
   }
@@ -637,16 +692,41 @@
         } else {
           if (shells) {
             const sh = shells.find((x) => x.sid === cs.sid);
-            if (sh) { cs.lastX = sh.x; cs.lastY = sh.y; }
+            if (sh) {
+              cs.hasShell = true;
+              cs.lastX = sh.x; cs.lastY = sh.y;
+            }
           }
-          [tx, ty] = clampCam(cs.lastX, cs.lastY, s);
+          if (!cs.hasShell) {
+            const sdt = Math.min(0.05, Math.max(0, (now - (cs.predT || now)) / 1000));
+            cs.predT = now;
+            if (sdt > 0) {
+              cs.vx += (cs.wind != null ? cs.wind : (G.wind || 0)) * sdt;
+              cs.vy += 600 * sdt;
+              cs.predX += cs.vx * sdt;
+              cs.predY += cs.vy * sdt;
+            }
+            cs.lastX = cs.predX; cs.lastY = cs.predY;
+          } else {
+            cs.vx += (G.wind || 0) * dt;
+            cs.vy += 600 * dt;
+          }
+          const halfW = cw / 2 / s, halfH = ch / 2 / s;
+          const lookX = Math.max(-halfW * 0.42, Math.min(halfW * 0.42, cs.vx * 0.28));
+          const lookY = Math.max(-halfH * 0.28, Math.min(halfH * 0.28, cs.vy * 0.16));
+          [tx, ty] = clampCam(cs.lastX + lookX, cs.lastY + lookY, s);
         }
       }
       if (cs.mode === 'impact') {
         if (now >= cs.holdUntil || now >= cs.fireAt + 4550) {
           startReturn(now, cs.holdUntil > cs.fireAt + 4320 ? 'early' : cs.reason);
         } else {
-          [tx, ty] = clampCam(cs.lastX, cs.lastY, s);
+          const [ix, iy] = clampCam(cs.lastX, cs.lastY, s);
+          const u = Math.min(1, Math.max(0, (now - cs.impactAt) / 260));
+          const ease = 1 - Math.pow(1 - u, 3);
+          G.cam.x = cs.impactFromX + (ix - cs.impactFromX) * ease;
+          G.cam.y = cs.impactFromY + (iy - cs.impactFromY) * ease;
+          handled = true;
         }
       }
       if (cs.mode === 'return') {
@@ -670,7 +750,7 @@
     }
     if (!handled) {
       if (!G.cam.ok) { G.cam.x = tx; G.cam.y = ty; G.cam.ok = true; }
-      const rate = cs.mode === 'follow' ? 10 : 8;
+      const rate = cs.mode === 'follow' ? 16 : 8;
       const k = 1 - Math.exp(-rate * dt);
       G.cam.x += (tx - G.cam.x) * k; G.cam.y += (ty - G.cam.y) * k;
     }
@@ -746,6 +826,7 @@
     drawPoolLayer(c, now, 0);
     // 화면 좌표 레이어
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    updateCountdownDom(now);
     drawLabels(c, list, now, cur.shells);
     // 포탄 (닉네임 위) + 폭발 이펙트 레이어
     c.setTransform(dpr * s, 0, 0, dpr * s, dpr * ox, dpr * oy);
@@ -822,6 +903,12 @@
     const foc = focusTank();
     const refX = foc ? foc.x : G.cam.x;
     const refY = foc ? foc.y : G.cam.y;
+    const cdnEl = $('#cdn');
+    let cdnBox = null;
+    if (cdnEl && !cdnEl.hidden) {
+      const r = cdnEl.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) cdnBox = { l: r.left - 8, t: r.top - 8, r: r.right + 8, b: r.bottom + 8 };
+    }
 
     // 포탄 화면 사각형 (겹치면 남의 이름표는 점으로)
     const shRects = [];
@@ -872,22 +959,23 @@
 
       if (!mine) {
         let b = makeBox();
+        const hitCdn = !!(cdnBox && overlapArea(cdnBox, b) > 0);
         const hitShell = shRects.some((sr) => overlapArea(sr, b) > 0);
         const hitBtn = btnRects.some((br) => overlapArea(br, b) > 0);
         let hitPlaced = placed.some((p) => overlapArea(p, b) > 0);
 
         // 다른 이름표와 겹치면 위로 한 번 피해 보고, 그래도 겹치면 점으로
-        if (!hitShell && !hitBtn && hitPlaced) {
+        if (!hitCdn && !hitShell && !hitBtn && hitPlaced) {
           y -= 18;
           b = makeBox();
-          hitPlaced = placed.some((p) => overlapArea(p, b) > 0) || shRects.some((sr) => overlapArea(sr, b) > 0) || btnRects.some((br) => overlapArea(br, b) > 0);
+          hitPlaced = placed.some((p) => overlapArea(p, b) > 0) || shRects.some((sr) => overlapArea(sr, b) > 0) || btnRects.some((br) => overlapArea(br, b) > 0) || !!(cdnBox && overlapArea(cdnBox, b) > 0);
         }
 
-        if (hitShell || hitBtn || hitPlaced) {
-          // 팀색 점(지름 9px)으로 대체 — 만약 점마저 겹치거나 버튼에 가리면 숨김
+        if (hitCdn || hitShell || hitBtn || hitPlaced) {
+          // 팀색 점(지름 9px)으로 대체 — 만약 점마저 겹치거나 버튼/카운트다운에 가리면 숨김
           const dx = it.x, dy = it.y - 6;
           const dotBox = { l: dx - 5.5, t: dy - 5.5, r: dx + 5.5, b: dy + 5.5 };
-          const dotBlocked = placed.some((p) => overlapArea(p, dotBox) > 0) || btnRects.some((br) => overlapArea(br, dotBox) > 0);
+          const dotBlocked = (cdnBox && overlapArea(cdnBox, dotBox) > 0) || placed.some((p) => overlapArea(p, dotBox) > 0) || btnRects.some((br) => overlapArea(br, dotBox) > 0);
           if (dotBlocked) {
             tags.push({ name: m.n, mode: 'hidden', x: Math.round(dx), y: Math.round(dy), w: 0, h: 0 });
             continue;
@@ -908,12 +996,16 @@
           continue;
         }
       } else {
-        // 내(또는 관전 대상) 이름표는 불투명 + 외곽선 유지, 버튼 영역과 심하게 겹칠 때만 살짝 위로 피함
+        // 내(또는 관전 대상) 이름표는 불투명 + 외곽선 유지, 카운트다운이나 버튼과 겹치면 위로 피하거나 카운트다운과 겹칠 땐 잠깐 숨김
         let b = makeBox();
+        if (cdnBox && overlapArea(cdnBox, b) > 0) {
+          tags.push({ name: m.n, mode: 'hidden', x: Math.round(x), y: Math.round(y), w: 0, h: 0 });
+          continue;
+        }
         if (btnRects.some((br) => overlapArea(br, b) > (b.r - b.l) * (b.b - b.t) * 0.35)) {
           y -= 24;
           b = makeBox();
-          if (b.t < 48 || btnRects.some((br) => overlapArea(br, b) > (b.r - b.l) * (b.b - b.t) * 0.35)) {
+          if (b.t < 48 || (cdnBox && overlapArea(cdnBox, b) > 0) || btnRects.some((br) => overlapArea(br, b) > (b.r - b.l) * (b.b - b.t) * 0.35)) {
             y = it.y;
           }
         }
@@ -1096,7 +1188,8 @@
         const onScreen = rx >= 0 && rx <= cw && ry >= 46 && ry <= ch;
         const atImpactCam = G.camState && (G.camState.mode === 'impact' || G.camState.mode === 'follow');
         const fs = (onScreen || atImpactCam) ? 24 : 17;
-        const [x, y] = avoidUI(rx, ry - age * 26, fs * 1.8, fs + 4);
+        const clampedY = Math.max(52 + fs + 4, Math.min(ch - 20, ry - age * 26));
+        const [x, y] = avoidUI(rx, clampedY, fs * 1.8, fs + 4);
         c.save();
         c.globalAlpha = 0.82 * (1 - Math.max(0, age - 0.5) / 0.4);
         c.font = `${fs}px "Black Han Sans", Jua, sans-serif`;
@@ -1182,7 +1275,7 @@
       const age = (now - oh.t) / 1000;
       if (age > 1.2) return false;
       const [sx, sy] = toScreen(oh.x, oh.y);
-      if (sx >= 16 && sx <= cw - 16 && sy >= 50 && sy <= ch - 16) return true;
+      if (sx >= 0 && sx <= cw && sy >= 46 && sy <= ch) return true;
       const ax0 = Math.max(pad, Math.min(cw - pad, sx));
       const ay0 = Math.max(top, Math.min(ch - pad, sy));
       const ang = Math.atan2(sy - ay0, sx - ax0);
@@ -1292,7 +1385,7 @@
     g.addColorStop(0, `rgba(255,60,60,${a + 0.2})`); g.addColorStop(1, 'rgba(255,60,60,0)');
     c.fillStyle = g; c.fillRect(warn < 0 ? 0 : cw - 60, 46, 60, ch - 46);
   }
-  function drawCountdown(c, me, now) {
+  function updateCountdownDom(now) {
     const el = $('#cdn');
     if (G.over) { el.hidden = true; return; }
     if (G.cdn > 0) {
@@ -1302,17 +1395,19 @@
       const html = `<b>${n}</b>${side ? `<span>우리 진지: ${side === 'L' ? '← 왼쪽' : '오른쪽 →'}</span>` : '<span>곧 시작해요</span>'}`;
       if (el.innerHTML !== html) { el.innerHTML = html; SND.SFX.tick(); }
       el.hidden = false; G.goT = now + 800;
-      if (me) {
-        const [x, y] = toScreen(me.x, me.y - 70);
-        const bob = Math.sin(now / 150) * 5;
-        c.fillStyle = '#FFD23F'; c.strokeStyle = 'rgba(20,10,30,.9)'; c.lineWidth = 3;
-        c.beginPath(); c.moveTo(x - 12, y - 40 + bob); c.lineTo(x + 12, y - 40 + bob); c.lineTo(x, y - 22 + bob); c.closePath(); c.stroke(); c.fill();
-        c.font = '18px "Black Han Sans", sans-serif'; c.textAlign = 'center'; c.lineWidth = 4; c.strokeText('나', x, y - 46 + bob); c.fillStyle = '#fff'; c.fillText('나', x, y - 46 + bob);
-      }
     } else if (now < G.goT) {
       if (!el.dataset.go) { el.innerHTML = '<b>출발!</b>'; el.dataset.go = '1'; SND.SFX.go(); }
       el.hidden = false;
     } else { el.hidden = true; delete el.dataset.go; }
+  }
+  function drawCountdown(c, me, now) {
+    updateCountdownDom(now);
+    if (G.over || G.cdn <= 0 || !me) return;
+    const [x, y] = toScreen(me.x, me.y - 70);
+    const bob = Math.sin(now / 150) * 5;
+    c.fillStyle = '#FFD23F'; c.strokeStyle = 'rgba(20,10,30,.9)'; c.lineWidth = 3;
+    c.beginPath(); c.moveTo(x - 12, y - 40 + bob); c.lineTo(x + 12, y - 40 + bob); c.lineTo(x, y - 22 + bob); c.closePath(); c.stroke(); c.fill();
+    c.font = '18px "Black Han Sans", sans-serif'; c.textAlign = 'center'; c.lineWidth = 4; c.strokeText('나', x, y - 46 + bob); c.fillStyle = '#fff'; c.fillText('나', x, y - 46 + bob);
   }
 
   let hudCache = {};
