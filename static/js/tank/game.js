@@ -1474,8 +1474,9 @@
       if (age > 1.2) return false;
       const [sx, sy] = toScreen(oh.x, oh.y);
       if (sx >= 0 && sx <= cw && sy >= 46 && sy <= ch) return true;
-      const ax0 = Math.max(pad, Math.min(cw - pad, sx));
-      const ay0 = Math.max(top, Math.min(ch - pad, sy));
+      // 화면 밖 탱크 화살표와 같은 규칙으로 조작 버튼·HUD 줄을 피한 가장자리 자리
+      const pe = placeEdgeArrow(Math.max(pad, Math.min(cw - pad, sx)), Math.max(top, Math.min(ch - pad, sy)), false, []);
+      const ax0 = pe.ax, ay0 = pe.ay;
       const ang = Math.atan2(sy - ay0, sx - ax0);
       const col = oh.ff ? Art.FF.c : (oh.mine ? '#FFD23F' : (oh.anyFf ? Art.FF.c : (oh.anyMate ? '#ff6a6a' : '#fff3d6')));
       const alpha = 1 - Math.max(0, age - 0.85) / 0.35;
