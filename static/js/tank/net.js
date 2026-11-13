@@ -82,6 +82,33 @@
       if (r && r.pid === seat.pid && r.code === seat.code) saveRejoin();
     } catch (e) { /* 무시 */ }
   }
+  // 탭을 닫거나 떠날 때: 이 탭이 기록의 주인이면 신호만 0으로 (기록은 남김 → 같은 브라우저에서 바로 다시 열면 복귀)
+  function release() {
+    if (!seat || !seat.pid) return;
+    try {
+      const r = JSON.parse(localStorage.getItem(REJOIN_KEY) || 'null');
+      if (r && r.tab === tabId && r.pid === seat.pid && r.code === seat.code) {
+        r.beat = 0;
+        localStorage.setItem(REJOIN_KEY, JSON.stringify(r));
+      }
+    } catch (e) { /* 무시 */ }
+  }
+  // bfcache 로 돌아왔을 때: 내 기록이거나, 같은 자리인데 다른 탭이 쓰지 않는 중이면 신호 다시 갱신
+  function resume() {
+    if (!seat || !seat.pid) return;
+    try {
+      const r = JSON.parse(localStorage.getItem(REJOIN_KEY) || 'null');
+      if (r && r.pid === seat.pid && r.code === seat.code && (r.tab === tabId || !liveOther(r))) saveRejoin();
+    } catch (e) { /* 무시 */ }
+  }
+  function liveOther(r) {
+    return !!(r && r.tab && r.tab !== tabId && typeof r.beat === 'number' && Date.now() - r.beat < BEAT_LIVE_MS);
+  }
+  try {
+    window.addEventListener('pagehide', release);
+    window.addEventListener('beforeunload', release);
+    window.addEventListener('pageshow', (ev) => { if (ev && ev.persisted) resume(); });
+  } catch (e) { /* 무시 */ }
   function retry() {
     clearTimeout(retryT);
     tries++;
