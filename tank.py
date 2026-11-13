@@ -1401,6 +1401,19 @@ def _crater_crawl(m: bytearray, tk: Tank, h: float, max_rim: float) -> bool:
     return False
 
 
+def _log_fall_start(rd, tk, why: str) -> None:
+    """QA 진단용 한 줄 로그: 낙하 시작 위치와 최근 2.5초 안 근처 포격 여부 (사람 탱크만)."""
+    if tk.ai:
+        return
+    near = [round(cx) for ct, cx, cr in rd.recent_carves if abs(cx - tk.x) <= tk.K["bw"] / 2 + cr + 8]
+    cols = {}
+    for dx in (-tk.K["half"], 0, tk.K["half"]):
+        gx = int((tk.x + dx) // CELL)
+        if 0 <= gx < GW:
+            cols[int(dx)] = [c * CELL for c in range(max(0, int(tk.y // CELL) - 6), min(GH, int(tk.y // CELL) + 16)) if rd.mask[c * GW + gx] == 1][:6]
+    log.info("[포격전 %s] fall_start %s x=%.1f y=%.1f d=%d why=%s carves_near=%s solid=%s", rd.room.code, tk.pid, tk.x, tk.y, tk.d, why, near, cols)
+
+
 def step_tank(rd: Round, tk: Tank, t: float, playing: bool) -> None:
     m = rd.mask
     K = tk.K
@@ -1421,6 +1434,7 @@ def step_tank(rd: Round, tk: Tank, t: float, playing: bool) -> None:
         if g is None:
             tk.falling = True
             tk.vy = 0
+            _log_fall_start(rd, tk, "idle")
         elif g != WALL:
             tk.y = g
         # 이동
@@ -1447,6 +1461,7 @@ def step_tank(rd: Round, tk: Tank, t: float, playing: bool) -> None:
                     if g is None:
                         tk.falling = True
                         tk.vy = 0
+                        _log_fall_start(rd, tk, "move")
                         break
                     tk.y = g
                 if not moved and not tk.falling:
