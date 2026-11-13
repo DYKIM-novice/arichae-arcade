@@ -79,7 +79,7 @@
 | merge_test | 109개 통과 |
 | pixcheck | 45장 모두 통과 |
 
-## v3.1 — 5F v3 판정(PASS 85.5) P1 3건·P2 4건 수정 (2026-11-13 23:08~23:45 KST, Claude Code 작성 · 1F 실입력 검증)
+## v3.1 — 5F v3 판정(PASS 85.5) P1 3건·P2 4건 수정 (2026-11-13 23:08~23:40 KST, Claude Code 작성 · 1F 실입력 검증)
 코드 커밋 6a27d81(WIP). 증거: 1F `qa_v31/ev_before`(c023098)·`ev_after`·`reg`(회귀), 진행 기록 V3_PROGRESS.md.
 
 | 항목 | 수정 | 실입력 확인(수정 전 → 후) |
@@ -101,3 +101,5 @@
 | 8대8 844 | qa_8v8_844.json | true |
 | 보행(AI 없음) 2판 | qa_walk_v31_noai1/2.json | true / true |
 콘솔 오류 0(모든 시험), 서버 오류 0, merge_test 109개 통과, 픽셀 단색 검사 before 10·after 10·회귀 29장 모두 OK.
+
+최종 확인 2026-11-13 23:40 KST: 코드 6a27d81 기준 위 결과, push·배포 없음(로컬 커밋만).
