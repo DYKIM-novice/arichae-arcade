@@ -8,7 +8,7 @@
   const $ = (s) => document.querySelector(s);
   const TICK = 1000 / 15, DELAY = 2.2, WW = 2400, WH = 1200;
   const KN = { mongdol: '몽돌', mangru: '망루' };
-  const I = { id: 0, x: 1, y: 2, fa: 3, bt: 4, a: 5, p: 6, hp: 7, fu: 8, cd: 9, inv: 10, f: 11, st: 12, mv: 13 };
+  const I = { id: 0, x: 1, y: 2, fa: 3, bt: 4, a: 5, p: 6, hp: 7, fu: 8, cd: 9, inv: 10, f: 11, st: 12, mv: 13, kl: 14, ht: 15, dl: 16, ffk: 17 };
 
   const IS_MOBILE = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   const MAX_PARTS = IS_MOBILE ? 160 : 300;
@@ -68,10 +68,18 @@
       tl: m.endsIn, cdn: m.cdn, startCdn: m.cdn, startedAt: performance.now(),
       aim: { a: null, p: null, sentA: null, sentP: null, sentAt: 0, edge: 0, edgeSide: 0 },
       input: 0, cam: { x: 0, y: 0, ok: false }, zoom: false, spec: !me || !!m.spec, specId: null, specInfo: null, specAsked: false,
-      dead: {}, deadAt: 0, trails: {}, faceAnim: {}, nums: [], phase: {}, recoil: {}, lastShotP: null,
-      over: null, shake: 0, minimapT: 0, goT: 0, moving: false
+      camState: { mode: 'self', sid: null, own: null, fireAt: 0, impactAt: 0, holdUntil: 0, returnStartAt: 0, returnFromX: 0, returnFromY: 0, lastX: 0, lastY: 0, reason: 'auto' },
+      shellOwn: {}, lastShells: [], miniMarks: [], offHits: [], banners: [],
+      dead: {}, deadAt: 0, trails: {}, faceAnim: {}, nums: [], phase: {}, recoil: {}, lastShotP: null, lastLocalFireAt: 0,
+      over: null, shake: 0, hitShakeUntil: 0, hitShakeAmp: 0, minimapT: 0, goT: 0, moving: false
     };
-    window.__tankDbg = { wind: m.wind, windNextAt: wn ? wn.at : null, windChanges: [], blinkStarts: [], tags: [] };
+    window.__tankDbg = {
+      wind: m.wind, windNextAt: wn ? wn.at : null, windChanges: [], blinkStarts: [], tags: [],
+      fx: [], booms: [], me: null, tanks: [],
+      cam: { x: 0, y: 0, scale: 1, cw, ch }, map: { W: WW, H: WH },
+      score: { kills: 0, hits: 0, dealt: 0, ffk: 0 },
+      cam_log: [], camMode: 'self', aim: { a: null, p: null }
+    };
     $('#s-game').hidden = false;
     $('#result').hidden = true; $('#menu').hidden = true;
     setSpecUI(G.spec);
@@ -96,6 +104,41 @@
     resize();
   }
 
+  function pushDbg(arr, item, max) {
+    if (!arr) return;
+    arr.push(item);
+    if (arr.length > max) arr.shift();
+  }
+  function camOwnerId() {
+    if (!G) return null;
+    if (!G.spec && G.me) return G.me;
+    if (G.spec && G.specId) return G.specId;
+    return G.me;
+  }
+  function finishCamLog(now, reason) {
+    const cs = G && G.camState;
+    if (!cs || cs.mode === 'self') return;
+    if (window.__tankDbg) {
+      pushDbg(window.__tankDbg.cam_log, {
+        fireAt: Math.round(cs.fireAt),
+        impactAt: cs.impactAt ? Math.round(cs.impactAt) : null,
+        returnStartAt: cs.returnStartAt ? Math.round(cs.returnStartAt) : Math.round(now),
+        returnDoneAt: Math.round(now),
+        reason: reason || cs.reason || 'auto'
+      }, 20);
+    }
+    cs.mode = 'self'; cs.sid = null; cs.own = null;
+  }
+  function startReturn(now, reason) {
+    const cs = G && G.camState;
+    if (!cs || cs.mode === 'self' || cs.mode === 'return') return;
+    cs.mode = 'return';
+    cs.reason = reason || cs.reason || 'auto';
+    cs.returnStartAt = now;
+    cs.returnFromX = G.cam.x;
+    cs.returnFromY = G.cam.y;
+  }
+
   // ---------------------------------------------------------------- 서버 메시지
   function onSnap(m) {
     if (!G) return;
@@ -111,10 +154,26 @@
     if (G.snaps.length === 1) { G.tl = m.tl; G.cdn = m.cdn; G.wind = m.w; if (m.wn) G.wn = m.wn; if (m.rc != null) G.rc = m.rc; }
     const mine = G.me && tanks[G.me];
     if (mine && G.aim.a == null) { G.aim.a = mine[I.a]; G.aim.p = mine[I.p]; }
+    if (window.__tankDbg) {
+      window.__tankDbg.tanks = m.tanks.map((t) => {
+        const meta = G.meta[t[0]] || {};
+        return { pid: t[0], name: meta.n || '', x: t[I.x], y: t[I.y], alive: t[I.st] !== 2, team: meta.tm || '', ai: !!meta.ai };
+      });
+      if (mine) {
+        const mm = G.meta[G.me] || {};
+        window.__tankDbg.me = { pid: G.me, x: mine[I.x], y: mine[I.y], alive: mine[I.st] !== 2, team: mm.tm || '', kind: mm.k || '' };
+        if (mine.length > I.ffk) {
+          window.__tankDbg.score = { kills: mine[I.kl] || 0, hits: mine[I.ht] || 0, dealt: mine[I.dl] || 0, ffk: mine[I.ffk] || 0 };
+        }
+      }
+    }
   }
   function onEvent(m) { if (G) G.events.push(m); }
   function onSpecTo(m) {
     if (!G) return;
+    if (G.specId && m.id && G.specId !== m.id && G.camState && G.camState.mode !== 'self') {
+      finishCamLog(performance.now(), 'early');
+    }
     G.specId = m.id || G.specId;
     if (m.id) G.specInfo = m;
     const bar = $('#spec-bar');
@@ -131,6 +190,7 @@
     if (e.t === 'tkshot') {
       const t = performance.now();
       G.recoil[e.id] = t;
+      G.shellOwn[e.sid] = e.id;
       spawnPart('flash', e.x, e.y, 0, 0, t, 0.12, 14, 24, '#ffe68c', '#ff9d2e', 0, 0, 0, 1);
       for (let i = 0; i < 4; i++) {
         const a = Math.random() * Math.PI * 2, v = 60 + Math.random() * 140;
@@ -141,6 +201,16 @@
       }
       if (e.id !== G.me) SND.SFX.fire();
       if (e.id === G.me) G.lastShotP = Math.round(G.aim.p);
+      // 내 포탄(관전 시 관전 대상의 포탄) 따라가기 시작
+      if (e.id === camOwnerId()) {
+        const cs = G.camState;
+        if (cs.mode !== 'self') finishCamLog(t, 'early');
+        const fireAt = (e.id === G.me && G.lastLocalFireAt && t - G.lastLocalFireAt < 400) ? G.lastLocalFireAt : t;
+        if (e.id === G.me) G.lastLocalFireAt = 0;
+        cs.mode = 'follow'; cs.sid = e.sid; cs.own = e.id;
+        cs.fireAt = fireAt; cs.impactAt = 0; cs.holdUntil = 0; cs.returnStartAt = 0;
+        cs.lastX = e.x; cs.lastY = e.y; cs.reason = 'auto';
+      }
     } else if (e.t === 'tkboom') {
       const nearTop = !T.solid(e.x, e.y - 10);
       T.carve(e.x, e.y, e.cr || e.r);
@@ -171,18 +241,118 @@
       }
       const near = nearFactor(e.x, e.y);
       SND.SFX.boom(near);
-      // 거리 감쇠된 화면 흔들림
-      const distCam = G.cam.ok ? Math.hypot(e.x - G.cam.x, e.y - G.cam.y) : 600;
-      const shakeAtten = Math.max(0, 1 - distCam / 1150);
-      G.shake = Math.max(G.shake, shakeAtten * shakeAtten * (er / 44) * 11);
-      e.hits.forEach((h) => {
-        G.nums.push({ id: h.id, dmg: h.dmg, t });
-        if (h.id === G.me) { SND.SFX.hit(); try { navigator.vibrate && navigator.vibrate(40); } catch (er2) { /* 무시 */ } }
-      });
-      if (e.hits.length && !e.hits.some((h) => h.id === G.me)) SND.SFX.hit();
+      const ownerId = camOwnerId();
+      const myTeam = G.me && G.meta[G.me] ? G.meta[G.me].tm : (ownerId && G.meta[ownerId] ? G.meta[ownerId].tm : null);
+      const shooter = e.own || G.shellOwn[e.sid] || null;
+      const isMine = !!(G.me && shooter === G.me);
+      const isOwner = !!(ownerId && shooter === ownerId);
+      const hits = e.hits || [];
+      if (window.__tankDbg) {
+        pushDbg(window.__tankDbg.booms, {
+          t: Math.round(t), own: shooter, x: e.x, y: e.y,
+          hits: hits.map((h) => ({ id: h.id, dmg: h.dmg, kill: !!h.kill, ff: !!h.ff }))
+        }, 50);
+      }
+      // 포탄 따라가기 카메라 착탄 전환 (머무름 포함 4.8초 이내 복귀)
+      const cs = G.camState;
+      if (cs.mode === 'follow' && cs.sid === e.sid) {
+        cs.impactAt = t; cs.lastX = e.x; cs.lastY = e.y;
+        const maxReturnStart = cs.fireAt + 4320;
+        const rem = maxReturnStart - t;
+        if (rem >= 1350) { cs.mode = 'impact'; cs.holdUntil = t + 1350; cs.reason = 'auto'; }
+        else if (rem >= 600) { cs.mode = 'impact'; cs.holdUntil = t + rem; cs.reason = 'auto'; }
+        else if (t + 600 <= cs.fireAt + 4550) { cs.mode = 'impact'; cs.holdUntil = t + 600; cs.reason = 'early'; }
+        else { startReturn(t, 'early'); }
+      }
+      // 미니맵 착탄 표지 (내 포탄 / 관전 대상 포탄 · 3초)
+      if (isOwner) {
+        const mkind = hits.length === 0 ? 'miss' : (hits.some((h) => !h.ff) ? 'hit' : 'ff');
+        G.miniMarks.push({ x: e.x, y: e.y, kind: mkind, t });
+      }
+      // 내 탄이 아닌 폭발의 거리 감쇠 흔들림 (내 포탄 적 명중 시는 아래에서 0.25초 짧은 흔들림 적용)
+      if (!isMine) {
+        const foc = focusTank();
+        const refX = foc ? foc.x : G.cam.x, refY = foc ? foc.y : G.cam.y;
+        const distRef = G.cam.ok ? Math.hypot(e.x - refX, e.y - refY) : 600;
+        const shakeAtten = Math.max(0, 1 - distRef / 1150);
+        G.shake = Math.max(G.shake, shakeAtten * shakeAtten * (er / 44) * 10);
+      }
+      // 명중 · 빗나감 · 아군 오사 피드백 & QA 기록
+      if (isMine) {
+        if (hits.length === 0) {
+          G.nums.push({ miss: true, mine: true, x: e.x, y: e.y, t });
+          if (window.__tankDbg) {
+            pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'miss_mine', id: null, dmg: 0, x: e.x, y: e.y, own: shooter }, 50);
+          }
+        } else {
+          let hitEnemy = false, hitAlly = false, killedEnemy = false, killedAlly = false;
+          hits.forEach((h) => {
+            const ht = G.cur && G.cur[h.id];
+            const ff = !!h.ff;
+            G.nums.push({ id: h.id, dmg: h.dmg, mine: true, ff, ally: ff, x: ht ? ht.x : e.x, y: ht ? ht.y : e.y, t });
+            if (ff) {
+              hitAlly = true;
+              if (h.kill) killedAlly = true;
+              if (window.__tankDbg) {
+                pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'ff_mine', id: h.id, dmg: h.dmg, x: e.x, y: e.y, own: shooter }, 50);
+                if (h.kill) pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'ff_kill_mine', id: h.id, dmg: h.dmg, x: e.x, y: e.y, own: shooter }, 50);
+              }
+            } else {
+              hitEnemy = true;
+              if (h.kill) killedEnemy = true;
+              if (window.__tankDbg) {
+                pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'hit_mine', id: h.id, dmg: h.dmg, x: e.x, y: e.y, own: shooter }, 50);
+                if (h.kill) pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'kill_mine', id: h.id, dmg: h.dmg, x: e.x, y: e.y, own: shooter }, 50);
+              }
+            }
+          });
+          if (hitEnemy) {
+            SND.SFX.hit();
+            G.hitShakeUntil = t + 250;
+            G.hitShakeAmp = 5.5;
+          }
+          if (hitAlly) SND.SFX.allyHit();
+          if (killedEnemy) {
+            SND.SFX.kill();
+            G.banners.push({ text: '격추!', color: '#FFE27A', stroke: '#2c0a10', t, dur: 1.5 });
+          } else if (killedAlly) {
+            G.banners.push({ text: '아군 격추', color: '#FF8A1F', stroke: '#2c0a04', t, dur: 1.5 });
+          }
+        }
+      } else {
+        hits.forEach((h) => {
+          const ht = G.cur && G.cur[h.id];
+          const isAlly = !!(myTeam && h.team === myTeam);
+          G.nums.push({ id: h.id, dmg: h.dmg, mine: false, ff: !!h.ff, ally: isAlly, x: ht ? ht.x : e.x, y: ht ? ht.y : e.y, t });
+          if (window.__tankDbg) {
+            pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'hit_other', id: h.id, dmg: h.dmg, x: e.x, y: e.y, own: shooter }, 50);
+            if (isAlly) pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'ally_hit', id: h.id, dmg: h.dmg, x: e.x, y: e.y, own: shooter }, 50);
+          }
+          if (h.id === G.me) { SND.SFX.hurt(); try { navigator.vibrate && navigator.vibrate(40); } catch (er2) { /* 무시 */ } }
+        });
+      }
+      // 화면 밖 명중 가장자리 배지
+      if (hits.length > 0) {
+        const [sx, sy] = toScreen(e.x, e.y);
+        if (sx < 0 || sx > cw || sy < 46 || sy > ch) {
+          const allFf = isMine && hits.every((h) => !!h.ff);
+          const anyAlly = !!(myTeam && hits.some((h) => h.team === myTeam));
+          G.offHits.push({ x: e.x, y: e.y, t, mine: isMine, ff: allFf, anyAlly });
+          if (isMine && window.__tankDbg) {
+            pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'offscreen_hit', id: hits[0].id, dmg: hits[0].dmg, x: e.x, y: e.y, own: shooter }, 50);
+          }
+        }
+      }
       delete G.trails[e.sid];
+      delete G.shellOwn[e.sid];
     } else if (e.t === 'tkgone') {
+      const t = performance.now();
+      if (G.camState.mode === 'follow' && G.camState.sid === e.sid) {
+        G.camState.impactAt = t;
+        startReturn(t, 'auto');
+      }
       delete G.trails[e.sid];
+      delete G.shellOwn[e.sid];
     } else if (e.t === 'tkdeath') {
       G.dead[e.id] = { t: performance.now(), cause: e.cause };
       if (e.cause === 'fall') SND.SFX.fall();
@@ -207,6 +377,12 @@
   }
   function showResult(m) {
     G.over = m;
+    if (window.__tankDbg && G.me) {
+      const ms = m.stats.find((s) => s.id === G.me);
+      if (ms) {
+        window.__tankDbg.score = { kills: ms.kills || 0, hits: ms.hits || 0, dealt: ms.dealt || 0, ffk: ms.ffk || 0 };
+      }
+    }
     const myTeam = G.me && G.meta[G.me] ? G.meta[G.me].tm : null;
     let title;
     if (m.win === 'draw') title = '무승부!';
@@ -216,7 +392,8 @@
     const by = m.by === 'wipe' ? '상대 팀을 모두 물리쳤어요' : '시간 끝 · 남은 탱크와 체력으로 판정';
     const rows = m.stats.slice().sort((a, b) => b.dealt - a.dealt).map((s) => {
       const T = Art.TEAM[s.tm];
-      return `<tr${s.id === G.me ? ' style="color:#FFE27A"' : ''}><td style="color:${T.c}">${T.mark}${s.tm}</td><td>${esc(s.n)}</td><td>${KN[s.k]}</td><td>${s.shots}발</td><td>${s.hits}명중</td><td>${s.dealt}</td><td>${s.alive ? '생존' : '…'}</td></tr>`;
+      const st = (s.alive ? '생존' : '…') + (s.ffk ? ` · <span style="color:#FF8A1F">아군 오사 ${s.ffk}</span>` : '');
+      return `<tr${s.id === G.me ? ' style="color:#FFE27A"' : ''}><td style="color:${T.c}">${T.mark}${s.tm}</td><td>${esc(s.n)}</td><td>${KN[s.k]}</td><td>${s.shots}발</td><td>${s.hits}명중</td><td>${s.dealt}</td><td>${st}</td></tr>`;
     }).join('');
     const box = $('#result');
     box.innerHTML = `<h2>${title}</h2><div class="sub">${by} · 팀 A ${m.alive.A}대 / 팀 B ${m.alive.B}대 남음</div>
@@ -263,11 +440,6 @@
     const d = portrait() || !canControl() ? 0 : (r && !l ? 1 : l && !r ? -1 : 0);
     sendInput(d);
   }
-  function setPowerFromY(clientY) {
-    const tr = $('#power .ptrack').getBoundingClientRect();
-    const p = Math.round(100 * (1 - (clientY - tr.top) / tr.height));
-    if (G && G.aim.a != null) G.aim.p = Math.max(0, Math.min(100, p));
-  }
   function fire() {
     if (!canControl() || G.aim.a == null || portrait()) return;
     const s = myState();
@@ -275,17 +447,53 @@
     if (s && s.cd > 0) { SND.SFX.deny(); return; }
     Net.send({ t: 'tkfire', a: Math.round(G.aim.a), p: Math.round(G.aim.p) });
     SND.SFX.fire();
-    G.recoil[G.me] = performance.now();
+    const t = performance.now();
+    G.recoil[G.me] = t;
+    G.lastLocalFireAt = t;
   }
 
   function setupInput() {
     bindHold($('#b-left'), 'left'); bindHold($('#b-right'), 'right');
     bindHold($('#b-up'), 'up'); bindHold($('#b-down'), 'down');
     const pw = $('#power');
-    pw.addEventListener('pointerdown', (e) => { e.preventDefault(); SND.unlock(); try { pw.setPointerCapture(e.pointerId); } catch (er) { /* 무시 */ } held.power = e.pointerId; setPowerFromY(e.clientY); });
-    pw.addEventListener('pointermove', (e) => { if (held.power === e.pointerId) setPowerFromY(e.clientY); });
-    const pup = (e) => { if (held.power === e.pointerId) delete held.power; };
+    let pwOffset = 0;
+    const setPower = (clientY) => {
+      const tr = $('#power .ptrack').getBoundingClientRect();
+      if (!tr.height) return;
+      const p = Math.round(100 * (1 - (clientY - pwOffset - tr.top) / tr.height));
+      if (G && G.aim.a != null) G.aim.p = Math.max(0, Math.min(100, p));
+    };
+    pw.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); SND.unlock();
+      try { pw.setPointerCapture(e.pointerId); } catch (er) { /* 무시 */ }
+      held.power = e.pointerId;
+      const kr = $('#p-knob').getBoundingClientRect();
+      const kc = kr.top + kr.height / 2;
+      pwOffset = Math.abs(e.clientY - kc) <= kr.height * 0.65 ? (e.clientY - kc) : 0;
+      setPower(e.clientY);
+    });
+    pw.addEventListener('pointermove', (e) => { if (held.power === e.pointerId) setPower(e.clientY); });
+    const pup = (e) => {
+      if (held.power === e.pointerId) {
+        delete held.power;
+        pwOffset = 0;
+        if (G && G.aim.a != null && canControl()) {
+          const a = Math.round(G.aim.a), p = Math.round(G.aim.p);
+          if (a !== G.aim.sentA || p !== G.aim.sentP) {
+            G.aim.sentA = a; G.aim.sentP = p; G.aim.sentAt = performance.now();
+            Net.send({ t: 'tkaim', a, p });
+          }
+        }
+      }
+    };
     pw.addEventListener('pointerup', pup); pw.addEventListener('pointercancel', pup);
+    // 버튼이 아닌 화면 빈 곳 터치 시 즉시 내 탱크로 복귀 시작
+    cv.addEventListener('pointerdown', () => {
+      if (!G || G.zoom) return;
+      if (G.camState && (G.camState.mode === 'follow' || G.camState.mode === 'impact')) {
+        startReturn(performance.now(), 'touch');
+      }
+    });
     $('#b-fire').addEventListener('pointerdown', (e) => { e.preventDefault(); SND.unlock(); fire(); });
     $('#sp-prev').addEventListener('pointerdown', (e) => { e.preventDefault(); SND.SFX.click(); Net.send({ t: 'tkspec', d: -1 }); });
     $('#sp-next').addEventListener('pointerdown', (e) => { e.preventDefault(); SND.SFX.click(); Net.send({ t: 'tkspec', d: 1 }); });
@@ -388,7 +596,8 @@
   // ---------------------------------------------------------------- 카메라·좌표
   function scale() {
     if (G.zoom) return Math.min(cw / (WW + 80), (ch - 50) / 1000);
-    return Math.max(0.5, Math.min(0.95, ch / 600));
+    // 휴대폰 가로(높이 360~430)에서 탱크가 화면 높이의 약 20%(80~95px)로 보이도록 기본 배율 상향
+    return Math.max(0.95, Math.min(1.9, ch / 236));
   }
   function focusTank() {
     if (!G.cur) return null;
@@ -399,28 +608,79 @@
     if (G.specId && G.cur[G.specId]) return G.cur[G.specId];
     return G.me && G.cur[G.me] ? G.cur[G.me] : null;
   }
-  function updateCam(dt) {
-    const s = scale();
-    let tx, ty;
-    if (G.zoom) { tx = WW / 2; ty = 520; }
-    else {
-      const t = focusTank();
-      if (!t) { tx = G.cam.ok ? G.cam.x : WW / 2; ty = G.cam.ok ? G.cam.y : 500; }
-      else {
-        tx = t.x;
-        // 탱크를 HUD 아래·버튼 위 사이 45% 높이에
-        const playTop = 50, playBot = ch - 96;
-        const want = playTop + (playBot - playTop) * 0.45;
-        ty = (t.y - 20) + (ch / 2 - want) / s;
-      }
-      const halfW = cw / 2 / s, halfH = ch / 2 / s;
-      tx = Math.max(halfW - 60, Math.min(WW + 60 - halfW, tx));
-      ty = Math.max(-300 + halfH, Math.min(WH + 40 - halfH, ty));
-    }
-    if (!G.cam.ok) { G.cam.x = tx; G.cam.y = ty; G.cam.ok = true; }
-    const k = Math.min(1, dt * 6);
-    G.cam.x += (tx - G.cam.x) * k; G.cam.y += (ty - G.cam.y) * k;
+  function selfTarget(s) {
+    const t = focusTank();
+    if (!t) return [G.cam.ok ? G.cam.x : WW / 2, G.cam.ok ? G.cam.y : 500];
+    // 탱크를 HUD 아래·버튼 위 사이 45% 높이에
+    const playTop = 50, playBot = ch - 96;
+    const want = playTop + (playBot - playTop) * 0.45;
+    return [t.x, (t.y - 20) + (ch / 2 - want) / s];
   }
+  function clampCam(tx, ty, s) {
+    const halfW = cw / 2 / s, halfH = ch / 2 / s;
+    return [
+      Math.max(halfW - 60, Math.min(WW + 60 - halfW, tx)),
+      Math.max(-300 + halfH, Math.min(WH + 40 - halfH, ty))
+    ];
+  }
+  function updateCam(dt, now, shells) {
+    const s = scale();
+    const cs = G.camState;
+    let tx, ty, handled = false;
+    if (G.zoom) {
+      if (cs.mode !== 'self') finishCamLog(now, 'early');
+      tx = WW / 2; ty = 520;
+    } else {
+      if (cs.mode === 'follow') {
+        if (now >= cs.fireAt + 4320) {
+          startReturn(now, 'early');
+        } else {
+          if (shells) {
+            const sh = shells.find((x) => x.sid === cs.sid);
+            if (sh) { cs.lastX = sh.x; cs.lastY = sh.y; }
+          }
+          [tx, ty] = clampCam(cs.lastX, cs.lastY, s);
+        }
+      }
+      if (cs.mode === 'impact') {
+        if (now >= cs.holdUntil || now >= cs.fireAt + 4550) {
+          startReturn(now, cs.holdUntil > cs.fireAt + 4320 ? 'early' : cs.reason);
+        } else {
+          [tx, ty] = clampCam(cs.lastX, cs.lastY, s);
+        }
+      }
+      if (cs.mode === 'return') {
+        const [sx, sy] = selfTarget(s);
+        const [rx, ry] = clampCam(sx, sy, s);
+        const dur = Math.max(180, Math.min(480, cs.fireAt + 4750 - cs.returnStartAt));
+        const u = Math.min(1, Math.max(0, (now - cs.returnStartAt) / dur));
+        const ease = 1 - Math.pow(1 - u, 3);
+        G.cam.x = cs.returnFromX + (rx - cs.returnFromX) * ease;
+        G.cam.y = cs.returnFromY + (ry - cs.returnFromY) * ease;
+        if (u >= 1) {
+          G.cam.x = rx; G.cam.y = ry;
+          finishCamLog(now, cs.reason);
+        }
+        handled = true;
+      }
+      if (cs.mode === 'self') {
+        const [sx, sy] = selfTarget(s);
+        [tx, ty] = clampCam(sx, sy, s);
+      }
+    }
+    if (!handled) {
+      if (!G.cam.ok) { G.cam.x = tx; G.cam.y = ty; G.cam.ok = true; }
+      const rate = cs.mode === 'follow' ? 10 : 8;
+      const k = 1 - Math.exp(-rate * dt);
+      G.cam.x += (tx - G.cam.x) * k; G.cam.y += (ty - G.cam.y) * k;
+    }
+    if (window.__tankDbg) {
+      window.__tankDbg.camMode = cs.mode;
+      // 월드→화면 변환 식: screenX = (worldX - cam.x) * cam.scale + cw / 2, screenY = (worldY - cam.y) * cam.scale + ch / 2 (cw = innerWidth, ch = innerHeight)
+      window.__tankDbg.cam = { x: G.cam.x, y: G.cam.y, scale: s, cw, ch };
+    }
+  }
+  // 월드→화면 변환 식: screenX = (worldX - cam.x) * cam.scale + cw / 2, screenY = (worldY - cam.y) * cam.scale + ch / 2
   function toScreen(wx, wy) {
     const s = scale();
     return [(wx - G.cam.x) * s + cw / 2, (wy - G.cam.y) * s + ch / 2];
@@ -448,20 +708,26 @@
     const cur = interpolate();
     if (!cur) { ctx.setTransform(dpr, 0, 0, dpr, 0, 0); Art.sky(ctx, cw, ch, 0, 0, 0.5, now); return; }
     G.cur = cur.tanks;
+    G.lastShells = cur.shells;
     // 내 탱크 포신은 내 입력을 바로 보여 줌
     const me = G.me && G.cur[G.me];
     if (me && G.aim.a != null && canControl()) me.a = G.aim.a;
     if (me && me.st === 2 && !G.spec && performance.now() - G.deadAt > 1400 && !G.over) {
       G.spec = true; setSpecUI(true); Net.send({ t: 'tkspec', d: 0 }); sendInput(0, true); SND.engine(false);
     }
-    updateCam(dt);
+    updateCam(dt, now, cur.shells);
     const s = scale();
     const c = ctx;
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     Art.sky(c, cw, ch, G.cam.x, G.cam.y, s, now);
-    // 흔들림
+    // 흔들림 (일반 폭발 + 내 적 명중 0.25초 약한 흔들림)
     let sx = 0, sy = 0;
-    if (G.shake > 0.2) { sx = (Math.random() - 0.5) * G.shake; sy = (Math.random() - 0.5) * G.shake; G.shake *= Math.pow(0.02, dt); } else G.shake = 0;
+    let shakeAmp = 0;
+    if (G.shake > 0.2) { shakeAmp = G.shake; G.shake *= Math.pow(0.02, dt); } else G.shake = 0;
+    if (now < G.hitShakeUntil) {
+      shakeAmp = Math.max(shakeAmp, G.hitShakeAmp * ((G.hitShakeUntil - now) / 250));
+    }
+    if (shakeAmp > 0.2) { sx = (Math.random() - 0.5) * shakeAmp; sy = (Math.random() - 0.5) * shakeAmp; }
     const ox = cw / 2 - G.cam.x * s + sx, oy = ch / 2 - G.cam.y * s + sy;
     c.setTransform(dpr * s, 0, 0, dpr * s, dpr * ox, dpr * oy);
     // 지형 (보이는 부분만) + 폭포
@@ -489,6 +755,8 @@
     drawNums(c, now);
     if (me && me.st !== 2 && canControl()) drawArc(c, me, now);
     drawArrows(c, cur.shells, list);
+    drawOffscreenHits(c, now);
+    drawBanners(c, now);
     drawEdgeWarn(c, me, now);
     drawCountdown(c, me, now);
     hud(me, now);
@@ -569,7 +837,9 @@
       const t = list[i];
       if (t.st === 2 || t.y >= WH + 100) continue;
       const m = G.meta[t.id], K = Art.KIND[m.k];
-      const [x, y] = toScreen(t.x, t.y - K.bh - 28);
+      const topOff = m.k === 'mangru' ? 50 : 38;
+      const [x, rawY] = toScreen(t.x, t.y - topOff);
+      const y = rawY - 14;
       const mine = t.id === G.me || (G.spec && t.id === G.specId);
       const dist = Math.hypot(t.x - refX, t.y - refY);
       items.push({ t, m, K, x, y, mine, dist });
@@ -802,17 +1072,141 @@
     }
     c.globalAlpha = 1;
   }
+  function avoidUI(x, y, halfW, h) {
+    let cx = Math.max(halfW + 10, Math.min(cw - halfW - 10, x));
+    let cy = y;
+    for (let pass = 0; pass < 4; pass++) {
+      const box = { l: cx - halfW, t: cy - h, r: cx + halfW, b: cy };
+      const hit = btnRects.find((br) => overlapArea(br, box) > 0);
+      if (!hit) break;
+      cy = hit.t - 6;
+    }
+    if (cy - h < 52) cy = 52 + h;
+    return [cx, cy];
+  }
   function drawNums(c, now) {
-    c.font = '20px "Black Han Sans", Jua, sans-serif'; c.textAlign = 'center';
+    c.textAlign = 'center';
+    c.textBaseline = 'alphabetic';
     G.nums = G.nums.filter((n) => {
       const age = (now - n.t) / 1000;
-      if (age > 1.1) return false;
-      const t = G.cur[n.id]; if (!t) return false;
-      const [x, y] = toScreen(t.x, t.y - 60);
-      c.globalAlpha = 1 - Math.max(0, age - 0.6) / 0.5;
-      c.lineWidth = 4; c.strokeStyle = '#3a0a10'; c.strokeText('-' + n.dmg, x + 16, y - age * 40);
-      c.fillStyle = '#ffe2d0'; c.fillText('-' + n.dmg, x + 16, y - age * 40);
-      c.globalAlpha = 1;
+      const maxAge = n.miss ? 0.9 : (n.mine ? 1.2 : 1.1);
+      if (age > maxAge) return false;
+      if (n.miss) {
+        const [rx, ry] = toScreen(n.x, n.y - 16);
+        const onScreen = rx >= 0 && rx <= cw && ry >= 46 && ry <= ch;
+        const atImpactCam = G.camState && (G.camState.mode === 'impact' || G.camState.mode === 'follow');
+        const fs = (onScreen || atImpactCam) ? 24 : 17;
+        const [x, y] = avoidUI(rx, ry - age * 26, fs * 1.8, fs + 4);
+        c.save();
+        c.globalAlpha = 0.82 * (1 - Math.max(0, age - 0.5) / 0.4);
+        c.font = `${fs}px "Black Han Sans", Jua, sans-serif`;
+        c.lineWidth = fs >= 24 ? 5 : 3.5;
+        c.strokeStyle = 'rgba(20,10,30,.9)';
+        c.strokeText('빗나감', x, y);
+        c.fillStyle = '#ece8f4';
+        c.fillText('빗나감', x, y);
+        c.restore();
+        return true;
+      }
+      const t = G.cur[n.id];
+      const m = G.meta[n.id];
+      const topOff = m && m.k === 'mangru' ? 50 : 38;
+      const wx = (t && t.st !== 2) ? t.x : n.x;
+      const wy = (t && t.st !== 2) ? (t.y - topOff) : (n.y - 44);
+      const [rx, rawY] = toScreen(wx, wy);
+      const baseY = rawY - 34;
+      if (n.mine) {
+        const label = n.ff ? `아군 피격! -${n.dmg}` : `명중! -${n.dmg}`;
+        const fs = 36;
+        const bounce = age < 0.18
+          ? 0.72 + 0.42 * Math.sin((age / 0.18) * Math.PI * 0.72)
+          : (age < 0.30 ? 1.14 - 0.14 * ((age - 0.18) / 0.12) : 1);
+        const rise = Math.sin(Math.min(1, age * 1.6) * Math.PI * 0.5) * 30 + age * 16;
+        const [x, y] = avoidUI(rx, baseY - rise, n.ff ? 105 : 85, fs + 6);
+        c.save();
+        c.translate(x, y);
+        c.scale(bounce, bounce);
+        c.globalAlpha = 1 - Math.max(0, age - 0.8) / 0.4;
+        c.font = `${fs}px "Black Han Sans", Jua, sans-serif`;
+        c.lineJoin = 'round';
+        c.lineWidth = 6.5;
+        c.strokeStyle = n.ff ? '#331200' : '#2b0912';
+        c.strokeText(label, 0, 0);
+        c.fillStyle = n.ff ? '#FF8A1F' : '#FFE27A';
+        c.fillText(label, 0, 0);
+        c.restore();
+      } else {
+        const fs = 17;
+        const [x, y] = avoidUI(rx + 14, baseY - age * 36, 28, fs + 4);
+        c.save();
+        c.globalAlpha = 1 - Math.max(0, age - 0.65) / 0.45;
+        c.font = `${fs}px "Black Han Sans", Jua, sans-serif`;
+        c.lineJoin = 'round';
+        c.lineWidth = 4;
+        c.strokeStyle = n.ally ? '#331200' : '#2d0a12';
+        c.strokeText('-' + n.dmg, x, y);
+        c.fillStyle = n.ally ? '#FF8A1F' : '#fff3d6';
+        c.fillText('-' + n.dmg, x, y);
+        c.restore();
+      }
+      return true;
+    });
+  }
+  function drawBanners(c, now) {
+    G.banners = G.banners.filter((b) => {
+      const age = (now - b.t) / 1000;
+      if (age > b.dur) return false;
+      const pop = age < 0.16 ? 0.65 + 0.45 * Math.sin((age / 0.16) * Math.PI * 0.7) : 1;
+      const alpha = 1 - Math.max(0, age - (b.dur - 0.35)) / 0.35;
+      const by = G.spec ? 132 : 108;
+      c.save();
+      c.translate(cw / 2, by);
+      c.scale(pop, pop);
+      c.globalAlpha = alpha;
+      c.font = '44px "Black Han Sans", Jua, sans-serif';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.lineJoin = 'round';
+      c.lineWidth = 7.5;
+      c.strokeStyle = b.stroke;
+      c.strokeText(b.text, 0, 0);
+      c.fillStyle = b.color;
+      c.fillText(b.text, 0, 0);
+      c.restore();
+      return true;
+    });
+  }
+  function drawOffscreenHits(c, now) {
+    const pad = 28, top = 60;
+    G.offHits = G.offHits.filter((oh) => {
+      const age = (now - oh.t) / 1000;
+      if (age > 1.2) return false;
+      const [sx, sy] = toScreen(oh.x, oh.y);
+      if (sx >= 16 && sx <= cw - 16 && sy >= 50 && sy <= ch - 16) return true;
+      const ax0 = Math.max(pad, Math.min(cw - pad, sx));
+      const ay0 = Math.max(top, Math.min(ch - pad, sy));
+      const ang = Math.atan2(sy - ay0, sx - ax0);
+      const col = oh.ff ? '#FF8A1F' : (oh.mine ? '#FFD23F' : (oh.anyAlly ? '#FF8A1F' : '#fff3d6'));
+      const alpha = 1 - Math.max(0, age - 0.85) / 0.35;
+      c.save();
+      c.globalAlpha = alpha;
+      arrowAt(c, ax0, ay0, ang, col);
+      const label = oh.mine ? (oh.ff ? '아군 피격' : '명중') : (oh.anyAlly ? '아군 피격' : '명중');
+      c.font = 'bold 16px Jua, sans-serif';
+      const tw = c.measureText(label).width + 16;
+      const dirX = Math.cos(ang), dirY = Math.sin(ang);
+      const bx0 = ax0 - dirX * (tw * 0.5 + 18);
+      const by0 = ay0 - dirY * 22 + 8;
+      const [bx, by] = avoidUI(bx0, by0, tw / 2 + 4, 28);
+      c.fillStyle = col;
+      c.strokeStyle = 'rgba(20,10,30,.92)';
+      c.lineWidth = 2.4;
+      Art.rr(c, bx - tw / 2, by - 24, tw, 24, 12);
+      c.fill(); c.stroke();
+      c.fillStyle = '#1d1530';
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText(label, bx, by - 12);
+      c.restore();
       return true;
     });
   }
@@ -959,9 +1353,12 @@
     if (me && !G.spec) {
       setText('#fuel-n', String(me.fu));
       $('#fuel-bar').style.width = me.fu + '%';
-      const ea = Math.round(Math.max(-30, Math.min(85, me.bt + (G.aim.a == null ? me.a : G.aim.a))));
-      setText('#aimread', `각도 ${ea}° · 파워 ${Math.round(G.aim.p == null ? me.p : G.aim.p)}`);
-      const p = G.aim.p == null ? me.p : G.aim.p;
+      const curA = G.aim.a == null ? me.a : G.aim.a;
+      const curP = G.aim.p == null ? me.p : G.aim.p;
+      const ea = Math.round(Math.max(-30, Math.min(85, me.bt + curA)));
+      setText('#aimread', `각도 ${ea}° · 파워 ${Math.round(curP)}`);
+      if (window.__tankDbg) window.__tankDbg.aim = { a: Math.round(curA), p: Math.round(curP) };
+      const p = curP;
       $('#p-fill').style.height = p + '%';
       const tr = $('#power .ptrack');
       $('#p-knob').style.top = (tr.offsetTop + tr.offsetHeight * (1 - p / 100)) + 'px';
@@ -972,11 +1369,16 @@
       fb.classList.toggle('cool', cool);
       setText('#fire-t', cool ? (cd / 1000).toFixed(1) : '발사');
       $('#fire-ring').style.strokeDashoffset = String(238.8 * (cool && G.cdn <= 0 ? cd / 5000 : 0));
+    } else if (window.__tankDbg && G.aim.a != null) {
+      window.__tankDbg.aim = { a: Math.round(G.aim.a), p: Math.round(G.aim.p) };
     }
-    // 미니맵
-    if (now - G.minimapT > 200) { G.minimapT = now; minimap(); }
+    // 미니맵 (포탄 비행 중엔 60ms 주기로 갱신)
+    const ownerId = camOwnerId();
+    const hasOwnerShell = !!(ownerId && G.lastShells && G.lastShells.some((sh) => G.shellOwn[sh.sid] === ownerId));
+    if (now - G.minimapT > (hasOwnerShell ? 60 : 200)) { G.minimapT = now; minimap(now); }
   }
-  function minimap() {
+  function minimap(now) {
+    now = now || performance.now();
     const mc = $('#h-mini'); const c = mc.getContext('2d');
     const w = mc.width, h = mc.height, T = G.T;
     c.clearRect(0, 0, w, h);
@@ -986,6 +1388,37 @@
       const x = t.x / WW * w, y = Math.max(2, Math.min(h - 2, t.y / WH * h - 1));
       c.fillStyle = Art.TEAM[m.tm].c; c.beginPath(); c.arc(x, y, 2.5, 0, Math.PI * 2); c.fill();
       if (id === G.me || id === G.specId) { c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.stroke(); }
+    }
+    // 착탄 지점 표지 (3초 유지: 명중 빨강 · 빗나감 회색/흰 X · 아군 피격 주황)
+    G.miniMarks = G.miniMarks.filter((mk) => {
+      const age = (now - mk.t) / 1000;
+      if (age > 3.0) return false;
+      const mx = Math.max(3, Math.min(w - 3, mk.x / WW * w));
+      const my = Math.max(3, Math.min(h - 3, mk.y / WH * h));
+      c.save();
+      c.globalAlpha = 1 - Math.max(0, age - 2.4) / 0.6;
+      if (mk.kind === 'miss') {
+        c.strokeStyle = '#e8ecf5'; c.lineWidth = 1.6; c.lineCap = 'round';
+        c.beginPath(); c.moveTo(mx - 2.6, my - 2.6); c.lineTo(mx + 2.6, my + 2.6);
+        c.moveTo(mx + 2.6, my - 2.6); c.lineTo(mx - 2.6, my + 2.6); c.stroke();
+      } else {
+        c.fillStyle = mk.kind === 'ff' ? '#FF8A1F' : '#ff3838';
+        c.strokeStyle = '#fff'; c.lineWidth = 1;
+        c.beginPath(); c.arc(mx, my, 3.0, 0, Math.PI * 2); c.fill(); c.stroke();
+      }
+      c.restore();
+      return true;
+    });
+    // 내 포탄(관전 시 관전 대상 포탄) 현재 위치 밝은 점
+    const ownerId = camOwnerId();
+    if (ownerId && G.lastShells) {
+      for (const sh of G.lastShells) {
+        if (G.shellOwn[sh.sid] !== ownerId) continue;
+        const sx = sh.x / WW * w, sy = Math.max(2, Math.min(h - 2, sh.y / WH * h));
+        c.fillStyle = '#fff9b8';
+        c.beginPath(); c.arc(sx, sy, 2.4, 0, Math.PI * 2); c.fill();
+        c.strokeStyle = '#ffaa22'; c.lineWidth = 1; c.stroke();
+      }
     }
     const s = scale();
     c.strokeStyle = 'rgba(255,255,255,.6)'; c.lineWidth = 1;

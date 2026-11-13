@@ -139,8 +139,29 @@
     },
     hit() {
       if (!ok()) return; const t = ctx.currentTime;
-      tone(sfxBus, 'square', 620, t, 0.07, 0.18, { s: 0.2 }); tone(sfxBus, 'square', 410, t + 0.06, 0.12, 0.16, { s: 0.2 });
-      noise(sfxBus, t, 0.12, 0.25, 'highpass', 4000, 1);
+      // 짧은 금속성 '팅' + 저음 '쿵'
+      tone(sfxBus, 'triangle', 1560, t, 0.09, 0.24, { slide: 1180, s: 0.08, d: 0.06, r: 0.08 });
+      tone(sfxBus, 'sine', 2680, t, 0.07, 0.14, { s: 0.05, d: 0.05, r: 0.06 });
+      tone(sfxBus, 'sine', 155, t, 0.16, 0.55, { slide: 46, s: 0.06, d: 0.11, r: 0.06 });
+      noise(sfxBus, t, 0.06, 0.18, 'bandpass', 2400, 1.2);
+    },
+    hurt() {
+      if (!ok()) return; const t = ctx.currentTime;
+      tone(sfxBus, 'sawtooth', 180, t, 0.14, 0.22, { slide: 75, lp: 650, s: 0.1 });
+      noise(sfxBus, t, 0.1, 0.22, 'lowpass', 900, 0.8);
+    },
+    kill() {
+      if (!ok()) return; const t = ctx.currentTime;
+      tone(sfxBus, 'triangle', 880, t, 0.12, 0.26, { s: 0.35, r: 0.08 });
+      tone(sfxBus, 'triangle', 1318.5, t + 0.07, 0.24, 0.28, { s: 0.35, r: 0.12 });
+      tone(sfxBus, 'sine', 1760, t + 0.07, 0.2, 0.14, { s: 0.2, r: 0.1 });
+      tone(sfxBus, 'sine', 130, t, 0.18, 0.45, { slide: 48, s: 0.08 });
+    },
+    allyHit() {
+      if (!ok()) return; const t = ctx.currentTime;
+      // 낮은 '삐빅' 경고음
+      tone(sfxBus, 'square', 270, t, 0.065, 0.16, { lp: 1100, s: 0.3, r: 0.02 });
+      tone(sfxBus, 'square', 210, t + 0.09, 0.11, 0.18, { lp: 1000, s: 0.3, r: 0.04 });
     },
     fall() { if (!ok()) return; tone(sfxBus, 'triangle', 900, ctx.currentTime, 1.0, 0.25, { slide: 120, s: 0.6, d: 0.6 }); },
     deny() { if (!ok()) return; tone(sfxBus, 'square', 220, ctx.currentTime, 0.12, 0.12, { s: 0.3 }); },

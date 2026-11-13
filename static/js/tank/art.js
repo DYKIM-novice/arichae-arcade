@@ -60,13 +60,6 @@
   const BARREL_CACHE = {};
   const MANTLET_CACHE = {};
 
-  function bolt(c, x, y, r) {
-    c.fillStyle = '#252834';
-    c.beginPath(); c.arc(x, y, r || 1.0, 0, Math.PI * 2); c.fill();
-    c.fillStyle = 'rgba(255,255,255,.45)';
-    c.beginPath(); c.arc(x - (r || 1) * 0.28, y - (r || 1) * 0.28, (r || 1) * 0.42, 0, Math.PI * 2); c.fill();
-  }
-
   function drawFlag(c, x, top, team) {
     const T = TEAM[team];
     if (!T) return;
@@ -343,240 +336,203 @@
 
       // 트랙 위 진한 그림자 받침
       c.fillStyle = '#252936';
-      rr(c, -29, -14, 58, 6, 3); c.fill();
+      rr(c, -29, -13.5, 58, 5.5, 2.8); c.fill();
 
-      // 후방 배기/장비 팩
+      // 후방 배기 팩
       c.fillStyle = '#5b6170';
-      rr(c, -24.5, -30, 7, 9, 2.2); c.fill();
+      rr(c, -25.5, -28.5, 7, 9, 2.2); c.fill();
       c.fillStyle = '#3c414d';
-      rr(c, -24.5, -24, 7, 3, 1); c.fill();
-      c.strokeStyle = INK; c.lineWidth = 1.8;
-      rr(c, -24.5, -30, 7, 9, 2.2); c.stroke();
+      rr(c, -25.5, -23, 7, 3.2, 1); c.fill();
+      c.strokeStyle = INK; c.lineWidth = 1.9;
+      rr(c, -25.5, -28.5, 7, 9, 2.2); c.stroke();
 
-      // 메인 장갑 차체 (둥글고 낮은 차체: -29..27, -25..-9)
+      // 메인 장갑 차체 (앞면 얼굴 영역 넓게 확보 · 3단 셀 셰이딩)
       c.fillStyle = K.body;
-      rr(c, -29, -25, 56, 16.5, 8); c.fill();
-      // 아래쪽 셀 셰이딩 어두운 면
+      rr(c, -29, -27.5, 56, 19, 8.5); c.fill();
       c.save();
-      rr(c, -29, -25, 56, 16.5, 8); c.clip();
+      rr(c, -29, -27.5, 56, 19, 8.5); c.clip();
+      // 어두운 그림자 면 (아래·뒤)
       c.fillStyle = K.dark;
       c.fillRect(-29, -14.5, 56, 7);
       c.fillStyle = K.deep;
-      c.fillRect(-29, -11.5, 22, 4);
-      // 윗면 밝은 셀 하이라이트
+      c.fillRect(-29, -27.5, 9, 19);
+      // 밝은 윗면 + 하이라이트 띠
       c.fillStyle = K.light;
-      rr(c, -25, -24.5, 46, 4.5, 2.2); c.fill();
+      rr(c, -23, -27.2, 46, 5.2, 2.6); c.fill();
       c.fillStyle = K.spec;
-      rr(c, -18, -24.0, 26, 1.5, 0.8); c.fill();
+      rr(c, -16, -26.5, 28, 1.8, 0.9); c.fill();
       c.restore();
-      // 차체 외곽선
-      c.lineWidth = 2.4; c.strokeStyle = INK;
-      rr(c, -29, -25, 56, 16.5, 8); c.stroke();
+      c.lineWidth = 2.5; c.strokeStyle = INK;
+      rr(c, -29, -27.5, 56, 19, 8.5); c.stroke();
 
-      // 트랙 커버 펜더 (파랑 앞뒤 펜더)
+      // 트랙 커버 펜더 (앞뒤 큰 덩어리)
       c.fillStyle = K.body;
-      rr(c, -30.5, -13.5, 16, 4.5, 2.2); c.fill();
+      rr(c, -30.5, -13.2, 15, 4.4, 2.2); c.fill();
       c.fillStyle = K.light;
-      rr(c, -29.5, -13.2, 14, 1.6, 0.8); c.fill();
+      rr(c, -29.2, -12.8, 12.5, 1.5, 0.7); c.fill();
       c.strokeStyle = INK; c.lineWidth = 1.8;
-      rr(c, -30.5, -13.5, 16, 4.5, 2.2); c.stroke();
+      rr(c, -30.5, -13.2, 15, 4.4, 2.2); c.stroke();
 
       c.fillStyle = K.body;
-      rr(c, 15, -13.5, 15.5, 4.5, 2.2); c.fill();
+      rr(c, 15.5, -13.2, 15, 4.4, 2.2); c.fill();
       c.fillStyle = K.light;
-      rr(c, 16, -13.2, 13, 1.6, 0.8); c.fill();
+      rr(c, 16.5, -12.8, 12.5, 1.5, 0.7); c.fill();
       c.strokeStyle = INK; c.lineWidth = 1.8;
-      rr(c, 15, -13.5, 15.5, 4.5, 2.2); c.stroke();
+      rr(c, 15.5, -13.2, 15, 4.4, 2.2); c.stroke();
 
-      // 몽돌 전조등 (앞 펜더 노란 불빛 + 하우징)
+      // 몽돌 노란 전조등 (앞 펜더 끝)
       c.fillStyle = '#484d59';
-      rr(c, 22.5, -16.5, 7, 4.5, 1.5); c.fill();
-      c.strokeStyle = INK; c.lineWidth = 1.4; c.stroke();
-      c.fillStyle = '#FFD84D';
-      rr(c, 25.5, -15.8, 3.6, 3.1, 1); c.fill();
-      c.fillStyle = '#fff9c4';
-      c.fillRect(26.2, -15.4, 2.0, 1.1);
-
-      // 앞쪽 회색 범퍼 장갑판 + 볼트 (tanks_v1 시안)
-      c.fillStyle = '#6c7382';
-      rr(c, 18, -12, 10, 6.2, 2); c.fill();
-      c.fillStyle = '#9aa1b2';
-      rr(c, 18.8, -11.4, 8.4, 1.8, 0.8); c.fill();
-      c.strokeStyle = INK; c.lineWidth = 1.6;
-      rr(c, 18, -12, 10, 6.2, 2); c.stroke();
-      bolt(c, 20.2, -9.2, 0.85); bolt(c, 25.8, -9.2, 0.85);
-
-      // 측면 회색 장갑판 + 노란 삼각 마커 + 볼트
-      c.fillStyle = '#686e7d';
-      rr(c, -21, -21.5, 15.5, 9.5, 2.4); c.fill();
-      c.fillStyle = '#4a4f5c';
-      rr(c, -20.5, -14.8, 14.5, 2.5, 1); c.fill();
-      c.fillStyle = '#939aab';
-      rr(c, -20, -21, 13.5, 2, 1); c.fill();
-      c.strokeStyle = INK; c.lineWidth = 1.7;
-      rr(c, -21, -21.5, 15.5, 9.5, 2.4); c.stroke();
-      // 노란 경고 삼각 마커
-      c.fillStyle = '#FFD23F';
-      c.beginPath(); c.moveTo(-13.2, -19.2); c.lineTo(-9.6, -14.0); c.lineTo(-16.8, -14.0); c.closePath(); c.fill();
-      c.strokeStyle = INK; c.lineWidth = 1.1; c.stroke();
-      bolt(c, -19, -19.5, 0.75); bolt(c, -7.5, -19.5, 0.75); bolt(c, -19, -13.6, 0.75);
-
-      // 장갑판 이음선 & 볼트
-      c.strokeStyle = K.deep; c.lineWidth = 1.2;
-      c.beginPath(); c.moveTo(-4, -24.2); c.lineTo(-4, -10); c.stroke();
-      bolt(c, -2, -22.8, 0.8); bolt(c, 21.5, -21.5, 0.8); bolt(c, -25.5, -17.5, 0.8);
-
-      // 포탑 돔 (-20..14, -34..-22, 전체 높이 34px <= 30*1.15)
-      c.fillStyle = K.body;
-      rr(c, -20, -34, 34, 13, 6.2); c.fill();
-      c.save();
-      rr(c, -20, -34, 34, 13, 6.2); c.clip();
-      c.fillStyle = K.dark;
-      c.fillRect(-20, -25.5, 34, 5);
-      c.fillStyle = K.light;
-      rr(c, -17, -33.5, 27, 3.6, 1.8); c.fill();
-      c.fillStyle = K.spec;
-      rr(c, -13, -33.0, 16, 1.3, 0.6); c.fill();
-      c.restore();
-      c.lineWidth = 2.3; c.strokeStyle = INK;
-      rr(c, -20, -34, 34, 13, 6.2); c.stroke();
-      // 포탑 상단 해치 & 측면 패널
-      c.fillStyle = K.dark;
-      rr(c, -14, -34.2, 11, 3.2, 1.4); c.fill();
+      rr(c, 22.8, -16.2, 6.8, 4.2, 1.4); c.fill();
       c.strokeStyle = INK; c.lineWidth = 1.5; c.stroke();
-      c.fillStyle = '#5a6170';
-      rr(c, -15, -29.5, 9.5, 6, 1.8); c.fill();
-      c.strokeStyle = INK; c.lineWidth = 1.4; c.stroke();
-      bolt(c, -13.2, -27.8, 0.7); bolt(c, -7.2, -27.8, 0.7);
-      bolt(c, 9.5, -28.5, 0.8);
+      c.fillStyle = '#FFD84D';
+      rr(c, 25.5, -15.5, 3.6, 2.8, 1); c.fill();
 
-      // 노란 측면 마커 (차체 앞쪽)
+      // 앞쪽 회색 범퍼 (낮게 배치해 얼굴 공간 확보)
+      c.fillStyle = '#6c7382';
+      rr(c, 18.5, -10.8, 9.5, 5.0, 1.8); c.fill();
+      c.fillStyle = '#9aa1b2';
+      rr(c, 19.3, -10.2, 7.8, 1.5, 0.7); c.fill();
+      c.strokeStyle = INK; c.lineWidth = 1.7;
+      rr(c, 18.5, -10.8, 9.5, 5.0, 1.8); c.stroke();
+
+      // 뒤쪽 측면 회색 장갑판 + 노란 삼각 마커 (얼굴 뒤쪽으로 배치)
+      c.fillStyle = '#686e7d';
+      rr(c, -22.5, -22.2, 15, 9.5, 2.4); c.fill();
+      c.fillStyle = '#4a4f5c';
+      rr(c, -22, -15.5, 14, 2.5, 1); c.fill();
+      c.fillStyle = '#939aab';
+      rr(c, -21.5, -21.6, 13, 2.0, 1); c.fill();
+      c.strokeStyle = INK; c.lineWidth = 1.8;
+      rr(c, -22.5, -22.2, 15, 9.5, 2.4); c.stroke();
       c.fillStyle = '#FFD23F';
-      rr(c, 19.5, -20.5, 4.8, 3.2, 1); c.fill();
-      c.strokeStyle = INK; c.lineWidth = 1.1; c.stroke();
+      c.beginPath(); c.moveTo(-15.0, -19.8); c.lineTo(-11.4, -14.6); c.lineTo(-18.6, -14.6); c.closePath(); c.fill();
+      c.strokeStyle = INK; c.lineWidth = 1.2; c.stroke();
+
+      // 포탑 돔 (-20..12, -36..-25) · 깔끔한 3단 셀 셰이딩
+      c.fillStyle = K.body;
+      rr(c, -20, -35.5, 32, 12.5, 6); c.fill();
+      c.save();
+      rr(c, -20, -35.5, 32, 12.5, 6); c.clip();
+      c.fillStyle = K.dark;
+      c.fillRect(-20, -27, 32, 4.5);
+      c.fillStyle = K.light;
+      rr(c, -17, -35.0, 25, 3.8, 1.8); c.fill();
+      c.fillStyle = K.spec;
+      rr(c, -13, -34.4, 15, 1.4, 0.7); c.fill();
+      c.restore();
+      c.lineWidth = 2.4; c.strokeStyle = INK;
+      rr(c, -20, -35.5, 32, 12.5, 6); c.stroke();
+      // 포탑 상단 해치
+      c.fillStyle = K.dark;
+      rr(c, -13, -36, 11, 3.0, 1.4); c.fill();
+      c.strokeStyle = INK; c.lineWidth = 1.6; c.stroke();
     } else {
-      // 망루 (높고 각진 주황 차체: w=53 <= 48*1.15, h=45 <= 40*1.15)
+      // 망루 (높고 각진 주황 차체 · 앞면 얼굴 영역 넓고 깔끔하게)
       drawFlag(c, -23, -36, team);
 
-      // 안테나 (뒤쪽 상단: 예외 항목) + 노란 구
-      c.strokeStyle = INK; c.lineWidth = 2.0; c.lineCap = 'round';
-      c.beginPath(); c.moveTo(-15, -45); c.lineTo(-15, -63); c.stroke();
+      // 안테나 (뒤쪽 상단) + 노란 구
+      c.strokeStyle = INK; c.lineWidth = 2.1; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(-15, -45); c.lineTo(-15, -62); c.stroke();
       c.fillStyle = '#5d6473';
       rr(c, -17.5, -47.5, 5, 3.5, 1); c.fill();
-      c.strokeStyle = INK; c.lineWidth = 1.4; c.stroke();
+      c.strokeStyle = INK; c.lineWidth = 1.5; c.stroke();
       c.fillStyle = '#FFD23F';
-      c.beginPath(); c.arc(-15, -64.2, 3.3, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.arc(-15, -63.5, 3.4, 0, Math.PI * 2); c.fill();
       c.fillStyle = '#fff8bf';
-      c.beginPath(); c.arc(-16.0, -65.2, 1.1, 0, Math.PI * 2); c.fill();
-      c.strokeStyle = INK; c.lineWidth = 1.5;
-      c.beginPath(); c.arc(-15, -64.2, 3.3, 0, Math.PI * 2); c.stroke();
+      c.beginPath(); c.arc(-16.1, -64.5, 1.2, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = INK; c.lineWidth = 1.6;
+      c.beginPath(); c.arc(-15, -63.5, 3.4, 0, Math.PI * 2); c.stroke();
 
       // 센서 다이얼 (포탑 위 원형 계기판)
       c.strokeStyle = INK; c.lineWidth = 1.8;
-      c.beginPath(); c.moveTo(-2, -44); c.lineTo(-2, -48.5); c.stroke();
+      c.beginPath(); c.moveTo(-3, -44); c.lineTo(-3, -48.5); c.stroke();
       c.fillStyle = '#6c7382';
-      c.beginPath(); c.arc(-2, -50.2, 3.6, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.arc(-3, -50.2, 3.6, 0, Math.PI * 2); c.fill();
       c.strokeStyle = INK; c.lineWidth = 1.5; c.stroke();
       c.fillStyle = '#f5efe0';
-      c.beginPath(); c.arc(-2, -50.2, 2.2, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.arc(-3, -50.2, 2.2, 0, Math.PI * 2); c.fill();
       c.strokeStyle = '#c43b2b'; c.lineWidth = 1.1;
-      c.beginPath(); c.moveTo(-2, -50.2); c.lineTo(-0.5, -51.7); c.stroke();
+      c.beginPath(); c.moveTo(-3, -50.2); c.lineTo(-1.5, -51.7); c.stroke();
 
       // 트랙 위 받침 그림자
       c.fillStyle = '#252936';
-      rr(c, -25.5, -14, 51, 5.5, 2.5); c.fill();
+      rr(c, -25.5, -13.5, 51, 5.2, 2.5); c.fill();
 
-      // 메인 각진 차체 (-25..24, -33..-10)
+      // 메인 각진 차체 (-25..25, -33.5..-10) · 앞면 넉넉한 얼굴 공간
       c.fillStyle = K.body;
       c.beginPath();
-      c.moveTo(-25, -10.5); c.lineTo(-25, -28); c.lineTo(-21, -33);
-      c.lineTo(6, -33); c.lineTo(14, -26); c.lineTo(23.5, -23.5);
-      c.lineTo(24.5, -13); c.lineTo(22, -10.5);
+      c.moveTo(-25, -10); c.lineTo(-25, -29); c.lineTo(-21, -33.5);
+      c.lineTo(6, -33.5); c.lineTo(15, -28.5); c.lineTo(24.5, -27);
+      c.lineTo(25.2, -12.5); c.lineTo(22.5, -10);
       c.closePath(); c.fill();
 
-      // 셀 셰이딩 (아래·뒤 어두운 면 + 윗모서리 밝은 면)
+      // 3단 셀 셰이딩 (아래·뒤 어두운 면 + 윗모서리 밝은 면)
       c.save();
       c.clip();
       c.fillStyle = K.dark;
-      c.fillRect(-25, -16.5, 50, 7);
+      c.fillRect(-25, -15.5, 51, 6.5);
       c.fillStyle = K.deep;
-      c.fillRect(-25, -33, 8, 23);
+      c.fillRect(-25, -33.5, 8.5, 24);
       c.fillStyle = K.light;
       c.beginPath();
-      c.moveTo(-22, -32.5); c.lineTo(5.5, -32.5); c.lineTo(13.5, -25.5);
-      c.lineTo(23, -23); c.lineTo(23, -20.5); c.lineTo(12, -23);
-      c.lineTo(4.5, -29.5); c.lineTo(-22, -29.5);
+      c.moveTo(-22, -33); c.lineTo(5.5, -33); c.lineTo(14.5, -28);
+      c.lineTo(24, -26.5); c.lineTo(24, -23.5); c.lineTo(13, -25.5);
+      c.lineTo(4.5, -29.8); c.lineTo(-22, -29.8);
       c.closePath(); c.fill();
       c.fillStyle = K.spec;
-      c.fillRect(-14, -32.2, 16, 1.3);
+      c.fillRect(-13, -32.6, 16, 1.6);
       c.restore();
 
       // 차체 외곽선
-      c.lineWidth = 2.4; c.strokeStyle = INK; c.lineJoin = 'round';
+      c.lineWidth = 2.5; c.strokeStyle = INK; c.lineJoin = 'round';
       c.beginPath();
-      c.moveTo(-25, -10.5); c.lineTo(-25, -28); c.lineTo(-21, -33);
-      c.lineTo(6, -33); c.lineTo(14, -26); c.lineTo(23.5, -23.5);
-      c.lineTo(24.5, -13); c.lineTo(22, -10.5);
+      c.moveTo(-25, -10); c.lineTo(-25, -29); c.lineTo(-21, -33.5);
+      c.lineTo(6, -33.5); c.lineTo(15, -28.5); c.lineTo(24.5, -27);
+      c.lineTo(25.2, -12.5); c.lineTo(22.5, -10);
       c.closePath(); c.stroke();
 
-      // 앞/뒤 계단식 펜더 + 노란 마커
+      // 하단 펜더 띠
       c.fillStyle = K.dark;
-      rr(c, -26.5, -15, 53, 5.2, 2); c.fill();
+      rr(c, -26.5, -14.2, 53, 4.6, 2); c.fill();
       c.fillStyle = K.light;
-      rr(c, -25.5, -14.6, 51, 1.6, 0.8); c.fill();
+      rr(c, -25.5, -13.8, 51, 1.5, 0.7); c.fill();
       c.strokeStyle = INK; c.lineWidth = 1.8;
-      rr(c, -26.5, -15, 53, 5.2, 2); c.stroke();
+      rr(c, -26.5, -14.2, 53, 4.6, 2); c.stroke();
 
-      // 노란 마커들 (앞 펜더 & 옆면)
+      // 앞 펜더 노란 마커 1개만 깔끔하게
       c.fillStyle = '#FFD23F';
-      rr(c, 19.5, -14.2, 5.2, 3.4, 1); c.fill();
-      c.strokeStyle = INK; c.lineWidth = 1.1; c.stroke();
-      c.fillStyle = '#FFD23F';
-      rr(c, -14, -14.0, 6.2, 3.0, 0.8); c.fill();
-      c.strokeStyle = INK; c.lineWidth = 1.0; c.stroke();
+      rr(c, 20.5, -13.6, 4.8, 3.0, 1); c.fill();
+      c.strokeStyle = INK; c.lineWidth = 1.2; c.stroke();
 
-      // 장갑판 이음선 & 볼트
-      c.strokeStyle = K.deep; c.lineWidth = 1.2;
-      c.beginPath(); c.moveTo(-2, -32.5); c.lineTo(-2, -15.5); c.stroke();
-      bolt(c, -22, -29.5, 0.8); bolt(c, -4, -30.5, 0.8); bolt(c, 19.5, -21, 0.8);
-      bolt(c, -23, -12.5, 0.75); bolt(c, 15, -12.5, 0.75);
-
-      // 상단 포탑 블록 (-22..10, -45..-31, 높이 45px <= 40*1.15)
+      // 상단 포탑 블록 (-22..9, -45..-31)
       c.fillStyle = K.body;
       c.beginPath();
       c.moveTo(-22, -31); c.lineTo(-20, -43); c.lineTo(-16, -45);
-      c.lineTo(5, -45); c.lineTo(10, -39); c.lineTo(10, -31);
+      c.lineTo(4, -45); c.lineTo(9, -39); c.lineTo(9, -31);
       c.closePath(); c.fill();
       c.save(); c.clip();
-      c.fillStyle = K.dark; c.fillRect(-22, -35, 32, 4.5);
-      c.fillStyle = K.light; c.fillRect(-18, -44.6, 23, 2.8);
-      c.fillStyle = K.spec; c.fillRect(-14, -44.2, 14, 1.2);
+      c.fillStyle = K.dark; c.fillRect(-22, -35, 31, 4.5);
+      c.fillStyle = K.light; c.fillRect(-18, -44.6, 22, 3.0);
+      c.fillStyle = K.spec; c.fillRect(-14, -44.0, 13, 1.3);
       c.restore();
-      c.lineWidth = 2.3; c.strokeStyle = INK;
+      c.lineWidth = 2.4; c.strokeStyle = INK;
       c.beginPath();
       c.moveTo(-22, -31); c.lineTo(-20, -43); c.lineTo(-16, -45);
-      c.lineTo(5, -45); c.lineTo(10, -39); c.lineTo(10, -31);
+      c.lineTo(4, -45); c.lineTo(9, -39); c.lineTo(9, -31);
       c.closePath(); c.stroke();
 
-      // 통풍 그릴 (측면 회색 루버 그릴 — tanks_v1 시안)
+      // 뒤쪽 통풍 그릴 (깔끔한 3줄 루버, 얼굴과 분리)
       c.fillStyle = '#686f7d';
-      rr(c, -18, -32.5, 13, 10, 2); c.fill();
+      rr(c, -20.5, -32.8, 12.5, 9.5, 2); c.fill();
       c.fillStyle = '#9aa1b0';
-      rr(c, -17.2, -32, 11.4, 2, 0.8); c.fill();
-      c.strokeStyle = INK; c.lineWidth = 1.6;
-      rr(c, -18, -32.5, 13, 10, 2); c.stroke();
+      rr(c, -19.8, -32.2, 11.1, 1.8, 0.7); c.fill();
+      c.strokeStyle = INK; c.lineWidth = 1.7;
+      rr(c, -20.5, -32.8, 12.5, 9.5, 2); c.stroke();
       c.strokeStyle = '#242730'; c.lineWidth = 1.5; c.lineCap = 'round';
       for (let i = 0; i < 3; i++) {
-        const gy = -29.2 + i * 2.6;
-        c.beginPath(); c.moveTo(-15.5, gy); c.lineTo(-7.5, gy); c.stroke();
+        const gy = -29.6 + i * 2.5;
+        c.beginPath(); c.moveTo(-18, gy); c.lineTo(-10.5, gy); c.stroke();
       }
-      // 후방 작은 보조 그릴
-      c.fillStyle = '#5c6270';
-      rr(c, -19, -41.5, 7.5, 5.5, 1.4); c.fill();
-      c.strokeStyle = INK; c.lineWidth = 1.3; c.stroke();
-      c.strokeStyle = '#242730'; c.lineWidth = 1.1;
-      c.beginPath(); c.moveTo(-17.5, -39.5); c.lineTo(-13, -39.5); c.moveTo(-17.5, -37.8); c.lineTo(-13, -37.8); c.stroke();
-      bolt(c, 5.5, -42, 0.75);
     }
 
     const res = { cv, x: lx, y: ly, w: lw, h: lh };
@@ -606,7 +562,7 @@
   }
 
   // ---------------------------------------------------------------- 표정 & 전환 (기본 · 웃음 · 아픔 + 눈 깜빡)
-  function drawEyesAt(c, ex, ey, r, f, gap, irisCol, squishY) {
+  function drawEyesAt(c, ex, ey, rx, ry, f, gap, irisCol, squishY) {
     for (let k = 0; k < 2; k++) {
       const x = ex + k * gap;
       c.save();
@@ -614,40 +570,40 @@
       if (squishY < 0.99) c.scale(1 + (1 - squishY) * 0.12, squishY);
       if (f === 1 || squishY <= 0.18) {
         // 웃음 또는 깜빡임 감은 눈 ^ ^
-        c.strokeStyle = INK; c.lineWidth = 2.4; c.lineCap = 'round';
+        c.strokeStyle = INK; c.lineWidth = 2.6; c.lineCap = 'round';
         c.beginPath();
         if (f === 1) {
-          c.moveTo(-r * 0.85, r * 0.28);
-          c.quadraticCurveTo(0, -r * 0.95, r * 0.85, r * 0.28);
+          c.moveTo(-rx * 0.85, ry * 0.25);
+          c.quadraticCurveTo(0, -ry * 0.82, rx * 0.85, ry * 0.25);
         } else {
-          c.moveTo(-r * 0.85, 0);
-          c.quadraticCurveTo(0, r * 0.35, r * 0.85, 0);
+          c.moveTo(-rx * 0.85, 0);
+          c.quadraticCurveTo(0, ry * 0.3, rx * 0.85, 0);
         }
         c.stroke();
       } else if (f === 2) {
         // 아픔 > <
-        c.strokeStyle = INK; c.lineWidth = 2.3; c.lineCap = 'round'; c.lineJoin = 'round';
+        c.strokeStyle = INK; c.lineWidth = 2.5; c.lineCap = 'round'; c.lineJoin = 'round';
         const s = k === 0 ? 1 : -1;
         c.beginPath();
-        c.moveTo(-r * 0.55 * s, -r * 0.52);
-        c.lineTo(r * 0.48 * s, 0);
-        c.lineTo(-r * 0.55 * s, r * 0.52);
+        c.moveTo(-rx * 0.58 * s, -ry * 0.48);
+        c.lineTo(rx * 0.52 * s, 0);
+        c.lineTo(-rx * 0.58 * s, ry * 0.48);
         c.stroke();
       } else {
-        // 기본: 반짝이는 큰 눈 (흰자 + 그라데이션 홍채 + 동공 + 이중 하이라이트)
+        // 기본: 크고 반짝이는 눈 (흰자 + 큰 검은 눈동자 + 홍채 + 하이라이트 2개)
         c.fillStyle = '#fff';
-        c.beginPath(); c.ellipse(0, 0, r * 0.88, r, 0, 0, Math.PI * 2); c.fill();
-        c.lineWidth = 1.7; c.strokeStyle = INK; c.stroke();
-        // 홍채
+        c.beginPath(); c.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2); c.fill();
+        c.lineWidth = 1.9; c.strokeStyle = INK; c.stroke();
+        // 아래쪽 컬러 홍채
         c.fillStyle = irisCol;
-        c.beginPath(); c.arc(r * 0.18, r * 0.08, r * 0.62, 0, Math.PI * 2); c.fill();
-        // 동공
-        c.fillStyle = '#11101d';
-        c.beginPath(); c.arc(r * 0.22, r * 0.12, r * 0.36, 0, Math.PI * 2); c.fill();
-        // 큰 반짝임 + 작은 반짝임
+        c.beginPath(); c.ellipse(rx * 0.16, ry * 0.10, rx * 0.68, ry * 0.66, 0, 0, Math.PI * 2); c.fill();
+        // 큰 검은 눈동자
+        c.fillStyle = '#0d0c18';
+        c.beginPath(); c.ellipse(rx * 0.18, ry * 0.04, rx * 0.54, ry * 0.52, 0, 0, Math.PI * 2); c.fill();
+        // 하이라이트 2개 (큰 반짝임 + 작은 점)
         c.fillStyle = '#fff';
-        c.beginPath(); c.arc(-r * 0.04, -r * 0.28, r * 0.25, 0, Math.PI * 2); c.fill();
-        c.beginPath(); c.arc(r * 0.42, r * 0.32, r * 0.12, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(-rx * 0.10, -ry * 0.28, rx * 0.30, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(rx * 0.42, ry * 0.30, rx * 0.15, 0, Math.PI * 2); c.fill();
       }
       c.restore();
     }
@@ -754,20 +710,20 @@
     }
 
     if (kind === 'mongdol') {
-      drawEyesAt(c, 5.2, -17.5, 4.4, fShow, 10.6, '#2366c4', squishY);
-      drawMouthAt(c, 10.5, -12.0, fShow === 0 ? 2.5 : 3.2, fShow);
-      if (fShow === 2) drawSweat(c, -2, -28);
+      drawEyesAt(c, 3.6, -19.2, 4.9, 6.2, fShow, 11.8, '#2566cc', squishY);
+      drawMouthAt(c, 10.6, -11.4, fShow === 0 ? 2.6 : 3.3, fShow);
+      if (fShow === 2) drawSweat(c, -2, -30);
       c.save();
-      c.fillStyle = '#FFB0B8'; c.globalAlpha *= 0.55;
-      c.beginPath(); c.ellipse(19.5, -13.0, 2.3, 1.4, 0, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#FFB0B8'; c.globalAlpha *= 0.58;
+      c.beginPath(); c.ellipse(19.6, -13.6, 2.5, 1.5, 0, 0, Math.PI * 2); c.fill();
       c.restore();
     } else {
-      drawEyesAt(c, 5.8, -21.5, 4.0, fShow, 10.0, '#9e4c14', squishY);
-      drawMouthAt(c, 10.8, -16.2, fShow === 0 ? 2.6 : 3.1, fShow);
+      drawEyesAt(c, 4.0, -21.0, 5.0, 6.4, fShow, 12.0, '#a64d14', squishY);
+      drawMouthAt(c, 10.8, -13.2, fShow === 0 ? 2.8 : 3.3, fShow);
       if (fShow === 2) drawSweat(c, -1, -35);
       c.save();
-      c.fillStyle = '#FF9C8A'; c.globalAlpha *= 0.45;
-      c.beginPath(); c.ellipse(18.8, -17.2, 2.1, 1.3, 0, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#FF9C8A'; c.globalAlpha *= 0.48;
+      c.beginPath(); c.ellipse(19.8, -15.4, 2.3, 1.4, 0, 0, Math.PI * 2); c.fill();
       c.restore();
     }
 
@@ -795,7 +751,7 @@
     c.restore();
   }
 
-  // 대기실 아이콘(줄 · 기종 선택 버튼)
+  // 대기실 아이콘(줄 · 기종 선택 버튼 — 차체와 얼굴이 또렷하게 보이도록 확대 프레이밍)
   function icon(canvas, kind, team, f) {
     const c = canvas.getContext('2d');
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -805,9 +761,10 @@
     if (canvas.width !== pw || canvas.height !== ph) { canvas.width = pw; canvas.height = ph; }
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.clearRect(0, 0, pw, ph);
-    const s = Math.min(ph / 68, pw / 98);
-    c.setTransform(s, 0, 0, s, pw * 0.43, ph - 5 * s);
-    drawTank(c, 0, 0, { kind, face: 1, bt: 0, a: kind === 'mongdol' ? 22 : 38, f: f || 0, team, outline: !!team });
+    const isM = kind === 'mongdol';
+    const s = Math.min(ph / (isM ? 48 : 56), pw / 76);
+    c.setTransform(s, 0, 0, s, pw * 0.44, ph - 3 * s);
+    drawTank(c, 0, 0, { kind, face: 1, bt: 0, a: isM ? 22 : 38, f: f || 0, team, outline: !!team });
   }
 
   // ---------------------------------------------------------------- 지형 패턴 (tex_soil_v3 / tex_grass_v3 맞춤)

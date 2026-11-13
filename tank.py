@@ -420,6 +420,8 @@ class Tank:
         self.shots = 0
         self.hits = 0
         self.dealt = 0
+        self.kills = 0
+        self.ffk = 0
         self.brain: Optional[dict] = None
 
     def center(self):
@@ -429,7 +431,8 @@ class Tank:
         st = 2 if not self.alive else (1 if self.falling else 0)
         return [self.pid, round(self.x, 1), round(self.y, 1), self.face, int(round(self.bt * 10)), int(round(self.a)),
                 int(round(self.p)), max(0, int(math.ceil(self.hp))), int(self.fuel), max(0, int(self.cd_until - t)),
-                max(0, int(self.inv_until - t)), self.f, st, 1 if self.moving else 0]
+                max(0, int(self.inv_until - t)), self.f, st, 1 if self.moving else 0,
+                self.kills, self.hits, self.dealt, self.ffk]
 
 
 class Round:
@@ -476,6 +479,7 @@ class Round:
         self.result: Optional[dict] = None
         self.result_until = 0.0
         self.recent_carves: List[tuple] = []   # (t, x, r) — AI 추락 원인 기록용
+        self.last_ff_avoid_at = 0.0
 
     def tl(self, t: float) -> int:
         return max(0, int(self.end_at - t))
@@ -979,6 +983,7 @@ def _explode(rd: Round, sh: dict, x: float, y: float) -> None:
     faces = {}
     shooter = rd.tanks.get(sh["own"])
     hit_enemy = False
+    hit_ally = False
     for tk in rd.tanks.values():
         if not tk.alive:
             continue
@@ -991,47 +996,66 @@ def _explode(rd: Round, sh: dict, x: float, y: float) -> None:
         dist = math.hypot(dx, dy)
         if dist > r:
             continue
-        dmg = sh["dmg"] * (1 - 0.7 * dist / r)
-        if tk.pid == sh["own"]:
-            dmg *= 0.5
-        elif tk.team == sh["team"]:
-            continue   # 아군 데미지 0
         if t < tk.inv_until:
             continue   # 스폰 무적
-        dmg = max(1, int(round(dmg)))
+        # 아군·자기 자신도 적과 똑같은 피해 (배율 1)
+        dmg = max(1, int(round(sh["dmg"] * (1 - 0.7 * dist / r))))
         tk.hp -= dmg
-        hits.append({"id": tk.pid, "dmg": dmg, "hp": max(0, tk.hp)})
+        is_ff = (tk.team == sh["team"])
+        is_kill = (tk.hp <= 0)
+        hits.append({"id": tk.pid, "dmg": dmg, "hp": max(0, tk.hp), "kill": is_kill, "team": tk.team, "ff": is_ff})
         _set_face(tk, 2, t)
         faces[tk.pid] = 2
-        if tk.pid != sh["own"]:
+        if is_ff:
+            hit_ally = True
+            if shooter is not None and shooter.ai:
+                log.info("[포격전 %s] ai_ff %s -> %s %d", rd.room.code, shooter.name, tk.name, dmg)
+        else:
             hit_enemy = True
             if shooter:
                 shooter.dealt += dmg
         if tk.brain is not None:
             tk.brain["hit_at"] = t
-    if hit_enemy and shooter is not None and shooter.alive:
+    if hit_enemy and shooter is not None:
         shooter.hits += 1
-        _set_face(shooter, 1, t)
-        faces[shooter.pid] = shooter.f
-    rd.room.cast({"t": "tkboom", "k": rd.k, "sid": sh["sid"], "x": ix, "y": iy, "r": r, "cr": cr, "hits": hits,
+    if shooter is not None and shooter.alive:
+        if hit_ally:
+            # 아군을 맞힌 쏜 사람은 웃지 않음 (자기 피격이면 이미 2, 웃는 중이면 기본으로)
+            if shooter.f == 1:
+                shooter.f = 0
+                faces[shooter.pid] = 0
+        elif hit_enemy:
+            _set_face(shooter, 1, t)
+            faces[shooter.pid] = shooter.f
+    rd.room.cast({"t": "tkboom", "k": rd.k, "sid": sh["sid"], "own": sh["own"], "ownTeam": sh["team"],
+                  "x": ix, "y": iy, "r": r, "cr": cr, "hits": hits,
                   "face": [{"id": k, "f": v, "ms": FACE_MS} for k, v in faces.items()]})
     for h in hits:
         tk = rd.tanks[h["id"]]
         if tk.hp <= 0 and tk.alive:
+            if shooter is not None:
+                if h["ff"]:
+                    shooter.ffk += 1
+                else:
+                    shooter.kills += 1
             _kill(rd, tk, "hit", by=sh["own"])
 
 
 def _kill(rd: Round, tk: Tank, cause: str, by: str = "") -> None:
+    t_now = now()
+    since_go_ms = rd.rc(t_now)
+    ff_flag = 1 if (by and by in rd.tanks and rd.tanks[by].team == tk.team) else 0
     tk.alive = False
     tk.hp = 0
     tk.d = 0
     tk.f = 2
-    tk.dead_at = now()
+    tk.dead_at = t_now
     tk.cause = cause
-    rd.room.cast({"t": "tkdeath", "k": rd.k, "id": tk.pid, "cause": cause, "by": by})
+    log.info("[포격전 %s] death %s cause=%s since_go_ms=%d ai=%s by=%s ff=%d",
+             rd.room.code, tk.pid, cause, since_go_ms, "1" if tk.ai else "0", by or "-", ff_flag)
+    rd.room.cast({"t": "tkdeath", "k": rd.k, "id": tk.pid, "cause": cause, "by": by, "ff": ff_flag})
     if tk.ai and cause == "fall":
-        t = now()
-        terr = any(t - ct < 2000 and abs(cx - tk.x) <= tk.K["bw"] / 2 + cr for ct, cx, cr in rd.recent_carves)
+        terr = any(t_now - ct < 2000 and abs(cx - tk.x) <= tk.K["bw"] / 2 + cr for ct, cx, cr in rd.recent_carves)
         log.info("[포격전 %s] ai_fall %s %s", rd.room.code, tk.name, "terrain" if terr else "self")
     seat = rd.room.seats.get(tk.pid)
     if seat is not None and seat.st == "play":
@@ -1039,7 +1063,7 @@ def _kill(rd: Round, tk: Tank, cause: str, by: str = "") -> None:
     # 이 탱크를 보던 관전자는 1.4초 뒤 다음 대상으로
     for s in rd.room.seats.values():
         if s.spec == tk.pid:
-            s.spec_switch_at = now() + 1400
+            s.spec_switch_at = t_now + 1400
     rd.room.push_lobby()
 
 
@@ -1211,7 +1235,8 @@ def _end_round(rd: Round, win: str, by: str) -> None:
     rd.result_until = now() + RESULT_MS
     alive = rd.alive_count()
     stats = [{"id": tk.pid, "n": tk.name, "tm": tk.team, "k": tk.kind, "shots": tk.shots, "hits": tk.hits,
-              "dealt": tk.dealt, "alive": 1 if tk.alive else 0} for tk in rd.tanks.values()]
+              "dealt": tk.dealt, "kills": tk.kills, "ffk": tk.ffk, "alive": 1 if tk.alive else 0}
+             for tk in rd.tanks.values()]
     rd.result = {"t": "tkend", "k": rd.k, "win": win, "by": by, "alive": alive, "stats": stats, "back": RESULT_MS}
     rd.room.cast(rd.result)
     log.info("[포격전 %s] 판 끝: %s (%s) %s", rd.room.code, win, by, alive)
@@ -1416,8 +1441,8 @@ def _sim_land(x0, y0, ea, p, face, wind, tx, ty, sw=None):
     return None
 
 
-def _sim_impact(m: bytearray, x0, y0, ea, p, face, wind, sw=None):
-    """지형에 처음 닿는 자리 (탱크 판정은 빼고). 맵 밖으로 빠지면 None."""
+def _sim_impact(m: bytearray, x0, y0, ea, p, face, wind, sw=None, allies=None, own_pid: str = ""):
+    """지형(또는 아군 탱크)에 처음 닿는 자리. 맵 밖으로 빠지면 None."""
     v0 = 300 + 9 * p
     er = math.radians(ea)
     vx, vy = face * v0 * math.cos(er), -v0 * math.sin(er)
@@ -1436,6 +1461,13 @@ def _sim_impact(m: bytearray, x0, y0, ea, p, face, wind, sw=None):
             return None
         if tt > 0.05 and solid(m, x, y):
             return (x, y)
+        if allies:
+            for ally in allies:
+                if ally.pid == own_pid and tt < 0.35:
+                    continue
+                AK = ally.K
+                if abs(x - ally.x) <= AK["bw"] / 2 and ally.y - AK["bh"] - 4 <= y <= ally.y + 2:
+                    return (x, y)
     return None
 
 
@@ -1458,6 +1490,9 @@ def _plan(rd: Round, tk: Tank, target: Tank, L: dict) -> Optional[tuple]:
     cands = sorted(range(int(math.ceil(lo)), int(hi) + 1, 3), key=lambda e: abs(e - pref))[:8]
     if not cands:
         return None
+    allies = [ally for ally in rd.tanks.values() if ally.alive and ally.team == tk.team]
+    safe_r = tk.K["r"] + 12
+    avoided_ff = False
     save = tk.face
     tk.face = face
     try:
@@ -1487,14 +1522,35 @@ def _plan(rd: Round, tk: Tank, target: Tank, L: dict) -> Optional[tuple]:
             p = hi_p
             xl = _sim_land(mx, my, ea, p, face, wind, tx, ty, sw)
             if xl is not None and abs(xl - tk.x) < tk.K["r"] + 20:
+                avoided_ff = True
                 continue
-            # 떠 있는 섬·진지에 먼저 막히는 길은 버림 (맞는 자리가 목표 근처여야 함)
-            imp = _sim_impact(rd.mask, mx, my, ea, p, face, wind, sw)
-            if imp is None or math.hypot(imp[0] - tx, imp[1] - ty) > target.K["bw"] / 2 + 18:
+            # 떠 있는 섬·진지·아군에 먼저 막히거나 아군/자기 폭발 반경+12px 안이면 버림
+            imp = _sim_impact(rd.mask, mx, my, ea, p, face, wind, sw, allies=allies, own_pid=tk.pid)
+            if imp is None:
+                continue
+            ff_hit = False
+            for ally in allies:
+                AK = ally.K
+                ax0, ax1 = ally.x - AK["bw"] / 2, ally.x + AK["bw"] / 2
+                ay0, ay1 = ally.y - AK["bh"], ally.y
+                adx = max(ax0 - imp[0], 0.0, imp[0] - ax1)
+                ady = max(ay0 - imp[1], 0.0, imp[1] - ay1)
+                if math.hypot(adx, ady) <= safe_r:
+                    ff_hit = True
+                    break
+            if ff_hit:
+                avoided_ff = True
+                continue
+            if math.hypot(imp[0] - tx, imp[1] - ty) > target.K["bw"] / 2 + 18:
                 continue
             return (a, p, face)
     finally:
         tk.face = save
+        if avoided_ff:
+            t_now = now()
+            if t_now - rd.last_ff_avoid_at >= 1000:
+                rd.last_ff_avoid_at = t_now
+                log.info("[포격전 %s] ai_ff_avoid %s", rd.room.code, tk.name)
     return None
 
 
