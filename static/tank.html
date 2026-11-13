@@ -24,7 +24,7 @@
     <div class="join-sky" aria-hidden="true"><canvas id="join-art"></canvas></div>
     <div class="join-card">
       <h1 class="disp">노을언덕 포격대</h1>
-      <p class="join-sub">각도와 파워로 쏘는 실시간 팀 포격전 · 2명부터 16명까지</p>
+      <p class="join-sub">각도와 파워로 쏘는 실시간 팀 포격전 · 2대2~8대8 (AI 연습 가능)</p>
       <div class="join-row">
         <label class="fld"><span>닉네임</span><input id="j-name" maxlength="8" placeholder="8자까지" autocomplete="off"></label>
         <label class="fld code"><span>방 코드</span><input id="j-code" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="새 방이면 비워요" autocomplete="off"></label>
@@ -97,7 +97,7 @@
       <div class="hteam A" id="h-a"><span class="tmark A">●</span><b id="h-an">0</b><i><em id="h-ab"></em></i></div>
       <div class="hteam B" id="h-b"><span class="tmark B">▲</span><b id="h-bn">0</b><i><em id="h-bb"></em></i></div>
       <div class="htime disp" id="h-time">5:00</div>
-      <div class="hwind" id="h-wind"><span>바람</span><svg viewBox="0 0 48 20" width="48" height="20"><path id="h-warrow" d="M4 10 H40 M32 4 L42 10 L32 16" stroke="#fff" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><b id="h-wlv">0</b></div>
+      <div class="hwind" id="h-wind" data-wind="0" data-blink="0"><span>바람</span><svg viewBox="0 0 48 20" width="48" height="20"><path id="h-warrow" d="M4 10 H40 M32 4 L42 10 L32 16" stroke="#fff" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><b id="h-wlv">0</b></div>
       <canvas class="hmini" id="h-mini" width="120" height="32"></canvas>
       <button class="hbtn" id="h-zoom" type="button" aria-label="전체 보기">전체</button>
       <button class="hbtn" id="h-menu" type="button" aria-label="메뉴">≡</button>

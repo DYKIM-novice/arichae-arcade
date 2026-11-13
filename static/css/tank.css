@@ -72,6 +72,7 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 .prow .tag { flex: none; font-size: 16px; padding: 0 5px; border-radius: 6px; background: rgba(255,255,255,.2); line-height: 22px; }
 .prow .tag.host { background: #FFD23F; color: #3a2400; }
 .prow .tag.ai { background: #6ad0ff; color: #08263a; }
+.prow .tag.ai.norm { background: #ffb86c; color: #3a1a00; }
 .prow .tag.st { background: rgba(0,0,0,.25); }
 .bubble { position: absolute; left: 2px; bottom: 70%; width: 52px; height: 52px; padding: 4px; border-radius: 16px; background: #fff;
   box-shadow: 0 3px 8px rgba(0,0,0,.35); z-index: 5; pointer-events: none; animation: pop .25s ease-out; transition: opacity .3s; }
@@ -128,6 +129,8 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 .htime { margin-left: auto; min-width: 66px; text-align: center; font-size: 22px; text-shadow: 0 2px 0 rgba(0,0,0,.4); }
 .hwind { display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 8px; border-radius: 10px; background: rgba(0,0,0,.35); font-size: 16px; }
 .hwind svg { transition: transform .3s; }
+.hwind.blink svg, .hwind.blink #h-wlv { animation: windBlink .5s steps(1, end) infinite; }
+@keyframes windBlink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: .3; } }
 .hmini { width: 120px; height: 32px; border-radius: 6px; background: rgba(0,0,0,.35); margin-left: auto; }
 .hbtn { min-width: 44px; height: 44px; padding: 0 8px; border-radius: 12px; border: 2px solid rgba(255,255,255,.35); background: rgba(30,14,44,.6); color: #fff; font-size: 18px; }
 .hbtn.on { background: #fff; color: var(--ink); }
@@ -207,6 +210,9 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 }
 @media (max-width: 700px) {
   .lb-side { width: 236px; }
+  .prow { gap: 4px; padding: 0 3px; }
+  .prow canvas { width: 38px; height: 22px; }
+  .prow .tag { padding: 0 4px; }
   .hteam i { width: 30px; }
   .hmini { width: 96px; }
   .lb-round { display: none; }

@@ -68,16 +68,23 @@
     const c = cv.getContext('2d');
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     Art.sky(c, w, h, 600, 200, 0.5, 0);
-    // 양쪽 언덕과 탱크 두 대
+    // 떠 있는 양쪽 언덕(뿌리 + 풀)과 탱크 두 대
     const hill = (x0, x1, top, dir) => {
-      c.fillStyle = '#8e5530'; c.beginPath(); c.moveTo(x0, h); c.lineTo(x0, top); c.lineTo(x1 - dir * 0, top); c.quadraticCurveTo(x1 + dir * 60, top + 10, x1 + dir * 120, h); c.closePath(); c.fill();
-      c.strokeStyle = '#5fb43a'; c.lineWidth = 12; c.lineCap = 'round'; c.beginPath(); c.moveTo(x0, top); c.lineTo(x1, top); c.quadraticCurveTo(x1 + dir * 40, top + 4, x1 + dir * 70, top + 40); c.stroke();
+      c.fillStyle = '#7e4728'; c.beginPath(); c.moveTo(x0, top); c.lineTo(x1, top);
+      c.quadraticCurveTo(x1 + dir * 45, top + 16, x1 + dir * 70, top + 55);
+      c.quadraticCurveTo(x1 + dir * 20, top + 95, x0, top + 110); c.closePath(); c.fill();
+      c.strokeStyle = '#4e2a18'; c.lineWidth = 2.5;
+      for (let rx = Math.min(x0, x1) + 18; rx < Math.max(x0, x1) + (dir > 0 ? 40 : 0); rx += 28) {
+        c.beginPath(); c.moveTo(rx, top + 85); c.quadraticCurveTo(rx + dir * 6, top + 115, rx - dir * 4, top + 132); c.stroke();
+      }
+      c.strokeStyle = '#5ea82e'; c.lineWidth = 11; c.lineCap = 'round'; c.beginPath(); c.moveTo(x0, top); c.lineTo(x1, top); c.quadraticCurveTo(x1 + dir * 32, top + 4, x1 + dir * 56, top + 34); c.stroke();
+      c.strokeStyle = '#9ad944'; c.lineWidth = 4; c.beginPath(); c.moveTo(x0, top - 3); c.lineTo(x1, top - 3); c.stroke();
     };
-    const top = h * 0.8;
-    hill(0, w * 0.2, top, 1); hill(w, w * 0.8, top, -1);
+    const top = h * 0.72;
+    hill(0, w * 0.22, top, 1); hill(w, w * 0.78, top, -1);
     const s = Math.max(1, h / 260);
-    c.save(); c.translate(w * 0.1, top - 4); c.scale(s, s); Art.drawTank(c, 0, 0, { kind: 'mongdol', face: 1, bt: 0, a: 30, f: 1, team: 'A' }); c.restore();
-    c.save(); c.translate(w * 0.9, top - 4); c.scale(s, s); Art.drawTank(c, 0, 0, { kind: 'mangru', face: -1, bt: 0, a: 45, f: 0, team: 'B' }); c.restore();
+    c.save(); c.translate(w * 0.11, top - 4); c.scale(s, s); Art.drawTank(c, 0, 0, { kind: 'mongdol', face: 1, bt: 0, a: 30, f: 1, team: 'A' }); c.restore();
+    c.save(); c.translate(w * 0.89, top - 4); c.scale(s, s); Art.drawTank(c, 0, 0, { kind: 'mangru', face: -1, bt: 0, a: 45, f: 0, team: 'B' }); c.restore();
   }
 
   // ---------------------------------------------------------------- 대기실
@@ -101,7 +108,7 @@
       box.innerHTML = rows.map((p) => {
         const tags = [];
         if (p.id === L.host) tags.push('<span class="tag host">방장</span>');
-        if (p.ai) tags.push('<span class="tag ai">AI</span>');   // 이름에 난이도가 들어 있어요 (AI쉬움1 · AI보통2)
+        if (p.ai) tags.push(`<span class="tag ai ${p.lv === 'normal' ? 'norm' : 'easy'}">${p.lv === 'normal' ? '보통' : '쉬움'}</span>`);
         if (p.id === me) tags.push('<span class="tag">나</span>');
         if (!p.ai && L.round && ST[p.st]) tags.push(`<span class="tag st">${ST[p.st]}</span>`);
         if (!p.on) tags.push('<span class="tag st">끊김</span>');
@@ -132,7 +139,6 @@
     if (rd) why = '판이 끝나면 다음 판이 시작돼요' + (mine ? ' · 기종·팀은 다음 판에 적용' : '');
     else if (!host) why = '방장이 시작하면 바로 출발해요';
     else if (!L.canStart) why = L.why;
-    else if (L.minTeam < 2 && (L.players.filter((p) => p.tm === 'A').length < 2 || L.players.filter((p) => p.tm === 'B').length < 2)) why = '지금은 1대1로도 시작할 수 있어요 (시험용)';
     $('#lb-why').textContent = why;
     renderAI();
   }

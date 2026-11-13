@@ -22,7 +22,7 @@
     dpr = Math.min(2, window.devicePixelRatio || 1);
     cw = window.innerWidth; ch = window.innerHeight;
     cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
-    btnRects = Array.from(document.querySelectorAll('#s-game .pad, #s-game .fire, #s-game .power, #s-game .sp-back, #s-game .hud > *'))
+    btnRects = Array.from(document.querySelectorAll('#s-game .pad, #s-game .fire, #s-game .power, #s-game .sp-back, #s-game .aimread, #s-game .fuel, #s-game .hud > *'))
       .filter((e) => e.offsetParent !== null).map((e) => { const r = e.getBoundingClientRect(); return { l: r.left - 8, t: r.top - 8, r: r.right + 8, b: r.bottom + 8 }; });
   }
 
@@ -30,18 +30,21 @@
   function start(m) {
     stop(true);
     const T = new Art.Terrain(m.gw, m.gh, 4);
-    T.load(m.rle);
+    T.load(m.rle, m.geo);
     const meta = {};
     m.tanks.forEach((t) => { meta[t.id] = t; });
     const me = meta[m.me] ? m.me : null;
+    const wn = m.wn || m.next || null;
     G = {
-      T, meta, me, side: m.side, snaps: [], events: [], est: null, renderK: m.k || 0, appliedK: m.k || 0,
-      wind: m.wind, tl: m.endsIn, cdn: m.cdn, startCdn: m.cdn, startedAt: performance.now(),
+      T, geo: m.geo || null, meta, me, side: m.side, snaps: [], events: [], est: null, renderK: m.k || 0, appliedK: m.k || 0,
+      wind: m.wind, wn, lastWindAt: null, windBlink: false, rc: m.rc != null ? m.rc : -(m.cdn || 0),
+      tl: m.endsIn, cdn: m.cdn, startCdn: m.cdn, startedAt: performance.now(),
       aim: { a: null, p: null, sentA: null, sentP: null, sentAt: 0, edge: 0, edgeSide: 0 },
-      input: 0, cam: { x: 0, y: 0, ok: false }, zoom: false, spec: !me, specId: null, specInfo: null, specAsked: false,
+      input: 0, cam: { x: 0, y: 0, ok: false }, zoom: false, spec: !me || !!m.spec, specId: null, specInfo: null, specAsked: false,
       dead: {}, deadAt: 0, trails: {}, fx: [], parts: [], nums: [], phase: {}, recoil: {}, lastShotP: null,
       over: null, shake: 0, minimapT: 0, goT: 0, moving: false
     };
+    window.__tankDbg = { wind: m.wind, windNextAt: wn ? wn.at : null, windChanges: [], blinkStarts: [] };
     $('#s-game').hidden = false;
     $('#result').hidden = true; $('#menu').hidden = true;
     setSpecUI(G.spec);
@@ -76,9 +79,9 @@
     m.tanks.forEach((t) => { tanks[t[0]] = t; });
     const sh = {};
     m.sh.forEach((s) => { sh[s[0]] = s; });
-    G.snaps.push({ k: m.k, tanks, sh, tl: m.tl, cdn: m.cdn, w: m.w });
+    G.snaps.push({ k: m.k, tanks, sh, tl: m.tl, cdn: m.cdn, rc: m.rc, w: m.w, wn: m.wn });
     if (G.snaps.length > 40) G.snaps.shift();
-    G.tl = m.tl; G.cdn = m.cdn; G.wind = m.w;
+    if (G.snaps.length === 1) { G.tl = m.tl; G.cdn = m.cdn; G.wind = m.w; if (m.wn) G.wn = m.wn; if (m.rc != null) G.rc = m.rc; }
     const mine = G.me && tanks[G.me];
     if (mine && G.aim.a == null) { G.aim.a = mine[I.a]; G.aim.p = mine[I.p]; }
   }
@@ -104,7 +107,7 @@
       if (e.id !== G.me) SND.SFX.fire();
       if (e.id === G.me) G.lastShotP = Math.round(G.aim.p);
     } else if (e.t === 'tkboom') {
-      T.carve(e.x, e.y, e.r);
+      T.carve(e.x, e.y, e.cr || e.r);
       G.minimapT = 0;
       const t = performance.now();
       G.fx.push({ kind: 'boom', x: e.x, y: e.y, r: e.r, t });
@@ -129,7 +132,16 @@
       if (e.cause === 'fall') SND.SFX.fall();
       if (e.id === G.me) G.deadAt = performance.now();
     } else if (e.t === 'tkwind') {
-      G.wind = e.w;
+      const nw = e.cur != null ? e.cur : G.wind;
+      const nxt = e.next || { at: e.at, w: e.w };
+      const changedAt = G.wn ? G.wn.at : e.rc;
+      G.wind = nw;
+      G.wn = nxt;
+      if (G.lastWindAt !== nxt.at) {
+        G.lastWindAt = nxt.at;
+        if (window.__tankDbg) window.__tankDbg.windChanges.push({ t: Math.round(performance.now()), w: nw });
+      }
+      void changedAt;
     }
   }
 
@@ -295,6 +307,19 @@
       if (B) shells.push({ sid, x: A[1] + (B[1] - A[1]) * f, y: A[2] + (B[2] - A[2]) * f });
       else if (rk - a.k < 1) shells.push({ sid, x: A[1], y: A[2] });
     }
+    const s = f >= 0.5 ? b : a;
+    if (s.tl != null) G.tl = s.tl;
+    if (s.cdn != null) G.cdn = s.cdn;
+    if (a.rc != null && b.rc != null) G.rc = a.rc + (b.rc - a.rc) * f;
+    else if (s.rc != null) G.rc = s.rc;
+    if (s.wn && (!G.wn || s.wn.at > G.wn.at)) {
+      G.wind = s.w;
+      G.wn = s.wn;
+      if (G.lastWindAt !== s.wn.at) {
+        G.lastWindAt = s.wn.at;
+        if (window.__tankDbg) window.__tankDbg.windChanges.push({ t: Math.round(performance.now()), w: s.w });
+      }
+    }
     // 이벤트 적용 (렌더 시간선에 맞춰)
     G.events.sort((x, y) => x.k - y.k);
     while (G.events.length && G.events[0].k <= rk + 0.5) {
@@ -321,7 +346,7 @@
   function updateCam(dt) {
     const s = scale();
     let tx, ty;
-    if (G.zoom) { tx = WW / 2; ty = 650; }
+    if (G.zoom) { tx = WW / 2; ty = 520; }
     else {
       const t = focusTank();
       if (!t) { tx = G.cam.ok ? G.cam.x : WW / 2; ty = G.cam.ok ? G.cam.y : 500; }
@@ -383,14 +408,11 @@
     if (G.shake > 0.2) { sx = (Math.random() - 0.5) * G.shake; sy = (Math.random() - 0.5) * G.shake; G.shake *= Math.pow(0.02, dt); } else G.shake = 0;
     const ox = cw / 2 - G.cam.x * s + sx, oy = ch / 2 - G.cam.y * s + sy;
     c.setTransform(dpr * s, 0, 0, dpr * s, dpr * ox, dpr * oy);
-    // 구덩이 안쪽 어둠
-    const pg = c.createLinearGradient(0, 700, 0, 1250);
-    pg.addColorStop(0, 'rgba(30,22,60,.0)'); pg.addColorStop(0.15, 'rgba(24,20,52,.9)'); pg.addColorStop(1, '#0e0c22');
-    c.fillStyle = pg; c.fillRect(1040, 690, 320, 700);
-    // 지형 (보이는 부분만)
+    // 지형 (보이는 부분만) + 폭포
     const vl = Math.max(0, Math.floor(G.cam.x - cw / 2 / s - 4)), vt = Math.max(0, Math.floor(G.cam.y - ch / 2 / s - 4));
     const vr = Math.min(WW, Math.ceil(G.cam.x + cw / 2 / s + 4)), vb = Math.min(WH, Math.ceil(G.cam.y + ch / 2 / s + 4));
     if (vr > vl && vb > vt) c.drawImage(G.T.cv, vl, vt, vr - vl, vb - vt, vl, vt, vr - vl, vb - vt);
+    Art.drawWaterfalls(c, G.geo, G.T, now);
     // 탱크
     const list = Object.values(G.cur).sort((a, b) => (a.id === G.me) - (b.id === G.me));
     let anyMoving = false;
@@ -401,7 +423,7 @@
     drawParticles(c, now, dt);
     // 화면 좌표 레이어
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawLabels(c, list, now);
+    drawLabels(c, list, now, cur.shells);
     // 포탄 (닉네임 위)
     c.setTransform(dpr * s, 0, 0, dpr * s, dpr * ox, dpr * oy);
     drawShells(c, cur.shells, s);
@@ -448,55 +470,84 @@
     const w = Math.min(a.r, b.r) - Math.max(a.l, b.l), h = Math.min(a.b, b.b) - Math.max(a.t, b.t);
     return w > 0 && h > 0 ? w * h : 0;
   }
-  function drawLabels(c, list, now) {
-    const s = scale();
+  function drawLabels(c, list, now, shells) {
     c.font = '16px Jua, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
     const placed = [];
+    const shPts = (shells || []).map((sh) => toScreen(sh.x, sh.y));
     const items = list.filter((t) => t.st !== 2 && t.y < WH + 100).map((t) => {
       const m = G.meta[t.id], K = Art.KIND[m.k];
-      const [x, y] = toScreen(t.x, t.y - K.bh - 30);
+      const [x, y] = toScreen(t.x, t.y - K.bh - 28);
       const mine = t.id === G.me || (G.spec && t.id === G.specId);
       return { t, m, K, x, y, mine };
-    }).sort((a, b) => b.y - a.y);
+    }).sort((a, b) => (b.mine ? 1 : 0) - (a.mine ? 1 : 0) || b.y - a.y);
+
     for (const it of items) {
       const { t, m, mine } = it;
-      let name = m.n;   // AI 이름은 'AI쉬움1'처럼 AI 로 시작
-      name = ellipsize(c, name, 88);
-      const tw = Math.min(96, c.measureText(name).width + 6);
+      const teamCol = Art.TEAM[m.tm].c;
+      const nearOthers = !mine && items.some((o) => o !== it && Math.hypot(o.x - it.x, o.y - it.y) < 110);
+      const maxW = nearOthers ? 54 : 88;
+      const hw = nearOthers ? 32 : 44;
+      const name = ellipsize(c, m.n, maxW);
+      const tw = Math.min(maxW + 8, c.measureText(name).width + 6);
       let y = it.y, x = it.x;
-      const box = () => ({ l: x - Math.max(tw, 44) / 2, t: y - 34, r: x + Math.max(tw, 44) / 2, b: y + 2 });
-      // 닉네임끼리 겹치면 위로 12px씩 최대 2단
-      let alpha = mine ? 0.95 : 0.6, lift = 0;
-      while (lift < 2 && placed.some((p) => overlapArea(p, box()) > 0)) { y -= 12; lift++; }
-      if (placed.some((p) => overlapArea(p, box()) > 0)) alpha = 0.3;
-      // 버튼과 겹치면 흐리게 · 반 이상이면 올리기/옆으로
+      const box = () => ({ l: x - Math.max(tw, hw) / 2, t: y - 32, r: x + Math.max(tw, hw) / 2, b: y + 4 });
+
+      let alpha = mine ? 0.95 : (nearOthers ? 0.42 : 0.6);
+      // 닉네임끼리 겹치면 위로 1칸(16px) 피해보고, 그래도 겹치면 (남의 것만) 팀 색 점으로 축약
+      if (!mine && placed.some((p) => overlapArea(p, box()) > 0)) y -= 16;
+      const hitLabel = !mine && placed.some((p) => overlapArea(p, box()) > 0);
+      // 포탄이 이름표 위에 지나가면 남의 이름표를 어둡게
+      if (!mine && shPts.some(([sx, sy]) => { const b = box(); return sx >= b.l - 12 && sx <= b.r + 12 && sy >= b.t - 12 && sy <= b.b + 12; })) {
+        alpha = Math.min(alpha, 0.3);
+      }
+      // 버튼 회피
       let b = box(), area = (b.r - b.l) * (b.b - b.t);
       let ov = Math.max(0, ...btnRects.map((r) => overlapArea(r, b)));
       if (ov > 0) {
-        alpha = mine ? 0.6 : 0.3;
-        if (ov > area / 2) {
+        alpha = mine ? 0.6 : Math.min(alpha, 0.3);
+        if (ov > area * 0.35) {
           y -= 24; b = box();
-          if (b.t < 50 || Math.max(0, ...btnRects.map((r) => overlapArea(r, b))) > area / 2) { y += 24; x += (x < cw / 2 ? 1 : -1) * 70; }
+          if (b.t < 50 || Math.max(0, ...btnRects.map((r) => overlapArea(r, b))) > area * 0.35) {
+            y += 24; x += (x < cw / 2 ? 1 : -1) * 72; b = box();
+            ov = Math.max(0, ...btnRects.map((r) => overlapArea(r, b)));
+          } else {
+            ov = Math.max(0, ...btnRects.map((r) => overlapArea(r, b)));
+          }
         }
       }
+      const hitBtn = !mine && ov > area * 0.35;
+      if (!mine && (hitLabel || hitBtn)) {
+        // 글자를 16px 미만으로 줄이지 않고 팀 색 점으로 대체 (겹침 방지)
+        const dx = it.x, dy = it.y - 6;
+        c.save(); c.globalAlpha = 0.8;
+        c.fillStyle = teamCol; c.strokeStyle = 'rgba(20,10,30,.85)'; c.lineWidth = 2;
+        if (m.tm === 'A') { c.beginPath(); c.arc(dx, dy, 5, 0, Math.PI * 2); c.fill(); c.stroke(); }
+        else { c.beginPath(); c.moveTo(dx, dy - 6); c.lineTo(dx + 5.5, dy + 4); c.lineTo(dx - 5.5, dy + 4); c.closePath(); c.fill(); c.stroke(); }
+        c.restore();
+        placed.push({ l: dx - 7, t: dy - 7, r: dx + 7, b: dy + 7 });
+        continue;
+      }
+
       placed.push(box());
       c.save(); c.globalAlpha = alpha;
       // 체력바
-      const maxHp = Art.STAT[m.k].hp, hw = 44;
+      const maxHp = Art.STAT[m.k].hp;
       c.fillStyle = 'rgba(0,0,0,.55)'; c.fillRect(x - hw / 2 - 1, y - 1, hw + 2, 7);
       const r = Math.max(0, t.hp / maxHp);
       c.fillStyle = r > 0.5 ? '#7CE36A' : r > 0.25 ? '#FFD23F' : '#ff5a4a'; c.fillRect(x - hw / 2, y, hw * r, 5);
       if (mine) { c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.strokeRect(x - hw / 2 - 1, y - 1, hw + 2, 7); }
-      // 닉네임
+      // 닉네임 (항상 16px 이상)
       const ty = y - 6;
-      if (mine) { c.lineWidth = 4; c.strokeStyle = 'rgba(20,10,30,.9)'; c.strokeText(name, x, ty - 3); }
-      else { c.lineWidth = 3; c.strokeStyle = 'rgba(20,10,30,.55)'; c.strokeText(name, x, ty - 3); }
-      c.fillStyle = '#fff'; c.fillText(name, x, ty - 3);
+      c.lineWidth = mine ? 4 : (nearOthers ? 2.5 : 3);
+      c.strokeStyle = mine ? 'rgba(20,10,30,.95)' : (nearOthers ? 'rgba(14,8,22,.8)' : 'rgba(20,10,30,.55)');
+      c.strokeText(name, x, ty - 3);
+      c.fillStyle = mine ? '#fff' : (nearOthers ? '#e2d6e8' : '#fff');
+      c.fillText(name, x, ty - 3);
       // 팀 색 언더라인
-      c.fillStyle = Art.TEAM[m.tm].c; c.fillRect(x - tw / 2 + 3, ty, tw - 6, 2);
+      c.fillStyle = teamCol; c.fillRect(x - tw / 2 + 3, ty, tw - 6, 2);
       c.restore();
     }
-    void s;
+    void now;
   }
 
   function drawShells(c, shells, s) {
@@ -672,6 +723,18 @@
     setText('#h-time', `${Math.floor(tl / 60)}:${String(tl % 60).padStart(2, '0')}`);
     const w = G.wind || 0, lv = Math.abs(w) < 2 ? 0 : Math.abs(w) <= 8 ? 1 : Math.abs(w) <= 16 ? 2 : 3;
     setText('#h-wlv', String(lv));
+    const hwEl = $('#h-wind');
+    const blink = !!(G.wn && G.rc >= G.wn.at - 2000 && G.rc < G.wn.at + 200);
+    if (blink && !G.windBlink && window.__tankDbg) window.__tankDbg.blinkStarts.push(Math.round(now));
+    G.windBlink = blink;
+    hwEl.classList.toggle('blink', blink);
+    if (hwEl.dataset.wind !== String(w)) hwEl.dataset.wind = String(w);
+    const bStr = blink ? '1' : '0';
+    if (hwEl.dataset.blink !== bStr) hwEl.dataset.blink = bStr;
+    if (window.__tankDbg) {
+      window.__tankDbg.wind = w;
+      window.__tankDbg.windNextAt = G.wn ? G.wn.at : null;
+    }
     const ar = $('#h-wind svg');
     const tf = `scaleX(${w < 0 ? -1 : 1}) scale(${0.6 + lv * 0.15})`;
     if (ar.style.transform !== tf) ar.style.transform = tf;
@@ -712,22 +775,16 @@
     const mc = $('#h-mini'); const c = mc.getContext('2d');
     const w = mc.width, h = mc.height, T = G.T;
     c.clearRect(0, 0, w, h);
-    c.fillStyle = '#8e5530';
-    for (let i = 0; i < w; i++) {
-      const gy = T.groundY((i + 0.5) / w * WW);
-      if (gy == null) continue;
-      const y = gy / WH * h * 1.5 - h * 0.25;
-      c.fillRect(i, y, 1, h - y);
-    }
+    c.drawImage(T.cv, 0, 0, WW, WH, 0, 0, w, h);
     for (const id in G.cur) {
       const t = G.cur[id], m = G.meta[id]; if (!m || t.st === 2) continue;
-      const x = t.x / WW * w, y = t.y / WH * h * 1.5 - h * 0.25 - 2;
+      const x = t.x / WW * w, y = Math.max(2, Math.min(h - 2, t.y / WH * h - 1));
       c.fillStyle = Art.TEAM[m.tm].c; c.beginPath(); c.arc(x, y, 2.5, 0, Math.PI * 2); c.fill();
       if (id === G.me || id === G.specId) { c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.stroke(); }
     }
     const s = scale();
     c.strokeStyle = 'rgba(255,255,255,.6)'; c.lineWidth = 1;
-    c.strokeRect((G.cam.x - cw / 2 / s) / WW * w, 1, cw / s / WW * w, h - 2);
+    c.strokeRect((G.cam.x - cw / 2 / s) / WW * w, Math.max(0, (G.cam.y - ch / 2 / s) / WH * h), cw / s / WW * w, Math.min(h, ch / s / WH * h));
   }
 
   function init() {

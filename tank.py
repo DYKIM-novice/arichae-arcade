@@ -22,7 +22,7 @@ log = logging.getLogger("tank")
 # ---------------------------------------------------------------- 수치 (설계서 2절 초안)
 TANK_MAX = 16
 TEAM_MAX = 8
-MIN_PER_TEAM = 1          # 설계는 팀당 2명. 첫 동작 QA(두 브라우저 1대1)를 위해 임시로 1명 — IMPLEMENT_STATUS 참고
+MIN_PER_TEAM = 2          # 팀당 최소 2명 (AI 포함, 1인 연습도 AI로 2대2+ 채워서 시작)
 TICK_HZ = 15
 DT = 1.0 / TICK_HZ
 TICK_MS = 1000.0 / TICK_HZ
@@ -38,7 +38,7 @@ INV_MS = 1500
 RESULT_MS = 8000
 SHELL_LIFE = 8.0
 WIND_MAX = 24
-WIND_EVERY_MS = 60_000
+WIND_GAP_MS = (15_000, 20_000)   # 바람은 15~20초 무작위 간격으로 바뀜 (Chris 16:42)
 FUEL_MAX = 100.0
 FUEL_USE = 25.0
 FUEL_REGEN = 8.0
@@ -59,46 +59,127 @@ KINDS = {
 }
 KIND_NAME = {"mongdol": "몽돌", "mangru": "망루"}
 
-# ---------------------------------------------------------------- 맵 (map_2d_v2 구조)
-PIT_L, PIT_R = 1060, 1340
-PLATFORMS = [(1100, 1190, 600, 630), (1225, 1320, 640, 670)]   # x0, x1, 윗면 y, 아랫면 y
+# ---------------------------------------------------------------- 맵 (map_2d_v3 · Chris 16:39)
+# 좌우 큰 떠 있는 대지(풀 언덕이 가운데로 내려감) + 떠 있는 섬 6개 + 진지 안쪽→낮은 섬 흙다리 2개.
+# 진지·섬·다리 아래와 좌우 사이 가운데는 모두 하늘(추락). 수치는 설계서 2.6 초안.
+MAP_ID = "v3"
+MAIN_W = 600                       # 진지 x 0~600 (오른쪽은 좌우 대칭)
+CLIFF_X = 520                      # 안쪽 절벽 시작
+# 섬: (번호, 윗면 x0, x1, 윗면 y, 두께, 폭포 시작 x 또는 None)
+ISLANDS = [
+    (1, 520, 780, 260, 80, 752),
+    (2, 980, 1090, 180, 40, None),
+    (3, 700, 900, 560, 60, 872),
+    (4, 1300, 1390, 230, 36, None),
+    (5, 1500, 1700, 560, 60, 1528),
+    (6, 1620, 1880, 280, 80, 1648),
+]
+BRIDGES = [(600, 500, 700, 560), (1800, 500, 1700, 560)]   # (진지 쪽 x, y, 섬 쪽 x, y) · 두께 16
+BRIDGE_T = 16
 SLOTS_L = [96, 152, 208, 264, 320, 376, 432, 488]
 SLOTS_R = [W - x for x in reversed(SLOTS_L)]
+BED_DEPTH = 64                     # 스폰 구간: 처음 윗면에서 64px 아래부터 밑면까지 기반암
+BED_ZONES = [(64, 520), (W - 520, W - 64)]
+SOFT_ZONES = [(0, 64), (CLIFF_X, MAIN_W), (W - MAIN_W, W - CLIFF_X), (W - 64, W)]   # 파임 반경 ×1.25
+SOFT_MUL = 1.25
 
 
-def surface_y(x: float) -> Optional[float]:
-    """처음 지형의 윗면 y (구덩이면 None). 양쪽 고지 → 풀 내리막(굴곡) → 구덩이 가장자리 평지. 좌우 대칭."""
-    if PIT_L <= x < PIT_R:
-        return None
-    m = x if x < PIT_L else W - x
-    if m < 520:
-        return 380.0
-    if m < 960:
-        t = (m - 520) / 440.0
-        return 380 + 340 * t + 12 * math.sin(t * math.pi * 3)   # 약 38° 내리막 + 풀 언덕 굴곡
-    return 720.0
+def _hash01(i: int) -> float:
+    """작은 결정적 잡음 (서버·클라 모두 같은 마스크를 서버에서만 만들고 보내므로 파이썬 쪽만 있으면 됨)."""
+    v = (i * 2654435761) & 0xFFFFFFFF
+    v ^= v >> 13
+    v = (v * 1274126177) & 0xFFFFFFFF
+    return ((v ^ (v >> 16)) & 0xFFFF) / 65535.0
+
+
+def main_top(m: float) -> float:
+    """진지 윗면 y (m = 맵 끝에서 안쪽으로 거리). 0→520 에서 410→470 (약 7°) + 잔물결, 절벽 520→600 에서 500."""
+    if m < CLIFF_X:
+        return 410 + 60 * (m / CLIFF_X) + 3 * math.sin(m / 37.0) + 2 * math.sin(m / 13.0 + 1.3)
+    t = (m - CLIFF_X) / (MAIN_W - CLIFF_X)
+    base = 410 + 60 + 3 * math.sin(CLIFF_X / 37.0) + 2 * math.sin(CLIFF_X / 13.0 + 1.3)
+    return base + (500 - base) * (t * t * (3 - 2 * t))
+
+
+def main_bot(m: float) -> float:
+    """진지 밑면 y: 가운데가 두껍고(≈740) 바깥 끝(≈700)·안쪽 끝(≈590)으로 얇아짐 + 울퉁불퉁."""
+    if m <= 430:
+        b = 700 + 42 * math.sin(math.pi * (m + 30) / 920)
+    else:
+        t = (m - 430) / (MAIN_W - 430)
+        b0 = 700 + 42 * math.sin(math.pi * 460 / 920)
+        b = b0 + (585 - b0) * t ** 1.4
+    return b + 6 * math.sin(m / 23.0) + 4 * (_hash01(int(m // 8)) - 0.5)
+
+
+def island_bot(x: float, x0: float, x1: float, y0: float, th: float) -> float:
+    """섬 아래쪽: 가운데가 가장 두껍고 양끝으로 둥글게 좁아짐."""
+    mid = (x0 + x1) / 2
+    hw = (x1 - x0) / 2
+    u = min(1.0, abs(x - mid) / hw)
+    d = th * (1 - u ** 2.2) ** 0.75
+    d += 3 * math.sin(x / 9.0) * (1 - u)
+    return y0 + max(10.0, d)
+
+
+def column_spans(cx: float) -> List[tuple]:
+    """x 열의 단단한 구간 목록 (y0, y1)."""
+    out = []
+    for side in (0, 1):
+        m = cx if side == 0 else W - cx
+        if 0 <= m < MAIN_W:
+            out.append((main_top(m), main_bot(m)))
+    for (_, x0, x1, y0, th, _f) in ISLANDS:
+        if x0 <= cx < x1:
+            out.append((float(y0), island_bot(cx, x0, x1, y0, th)))
+    for (ax, ay, bx, by) in BRIDGES:
+        lo, hi = min(ax, bx), max(ax, bx)
+        if lo - 4 <= cx < hi + 4:
+            t = clamp((cx - ax) / (bx - ax), 0.0, 1.0)
+            top = ay + (by - ay) * t
+            out.append((top, top + BRIDGE_T))
+    return out
 
 
 def build_mask() -> bytearray:
     m = bytearray(GW * GH)
     for gx in range(GW):
         cx = gx * CELL + CELL / 2
-        s = surface_y(cx)
-        if s is not None:
-            start = max(0, int(math.ceil((s - CELL / 2) / CELL)))
-            for gy in range(start, GH):
+        for (y0, y1) in column_spans(cx):
+            a = max(0, int(math.ceil((y0 - CELL / 2) / CELL)))
+            b = min(GH, int(math.ceil((y1 - CELL / 2) / CELL)))
+            for gy in range(a, b):
                 m[gy * GW + gx] = 1
-        for (x0, x1, y0, y1) in PLATFORMS:
-            if x0 <= cx < x1:
-                # 발판 아래쪽은 둥글게 깎은 모양
-                edge = min(cx - x0, x1 - cx)
-                bot = y1 - max(0, 10 - edge) * 0.8
-                for gy in range(int(y0 // CELL), int(math.ceil(bot / CELL))):
-                    m[gy * GW + gx] = 1
     return m
 
 
+def build_bedrock() -> tuple:
+    """기반암: 스폰 구간 16px 띠마다 [x0, x1, y0, y1] 사각형 (서버·클라 같은 표). 마스크는 칸마다 1."""
+    rects = []
+    for (zx0, zx1) in BED_ZONES:
+        for x in range(zx0, zx1, 16):
+            xs = [x + i for i in range(0, 17, 4)]
+            ms = [xx if xx < W / 2 else W - xx for xx in xs]
+            top = max(main_top(mm) for mm in ms) + BED_DEPTH
+            bot = min(main_bot(mm) for mm in ms) - 8
+            y0 = int(math.ceil(top / CELL)) * CELL
+            y1 = int(bot // CELL) * CELL
+            if y1 > y0:
+                rects.append([x, x + 16, y0, y1])
+    bm = bytearray(GW * GH)
+    for (x0, x1, y0, y1) in rects:
+        for gy in range(y0 // CELL, y1 // CELL):
+            for gx in range(x0 // CELL, x1 // CELL):
+                bm[gy * GW + gx] = 1
+    return rects, bm
+
+
+def clamp(v, a, b):
+    return a if v < a else b if v > b else v
+
+
 BASE_MASK = build_mask()
+BED_RECTS, BEDROCK = build_bedrock()
 
 
 def mask_rle(m: bytearray) -> List[int]:
@@ -118,6 +199,13 @@ def mask_rle(m: bytearray) -> List[int]:
 
 
 BASE_RLE = mask_rle(BASE_MASK)
+GEO = {
+    "islands": [[i, x0, x1, y0, th] for (i, x0, x1, y0, th, _f) in ISLANDS],
+    "falls": [[i, fx, y0 + 6] for (i, x0, x1, y0, th, fx) in ISLANDS if fx],
+    "bridges": [list(b) for b in BRIDGES], "bt": BRIDGE_T,
+    "bed": BED_RECTS, "soft": [list(z) for z in SOFT_ZONES], "softMul": SOFT_MUL,
+    "main": MAIN_W, "cliff": CLIFF_X,
+}
 
 
 def solid(m: bytearray, x: float, y: float) -> bool:
@@ -158,23 +246,45 @@ def surface(m: bytearray, x: float, y: float, up: float = 8, down: float = 12) -
     return float(c * CELL)
 
 
+def carve_radius(x: float, r: int) -> int:
+    """안쪽 절벽·바깥 가장자리는 더 잘 팜 (데미지 반경은 그대로)."""
+    for (a, b) in SOFT_ZONES:
+        if a <= x < b:
+            return int(round(r * SOFT_MUL))
+    return r
+
+
 def carve(m: bytearray, x: int, y: int, r: int) -> None:
-    """클라이언트와 똑같은 규칙: 칸 가운데가 원 안이면 지움."""
+    """클라이언트와 똑같은 규칙: 칸 가운데가 원 안이면 지움 · 기반암 칸은 남김."""
     r2 = r * r
     gx0 = max(0, (x - r) // CELL)
     gx1 = min(GW - 1, (x + r) // CELL)
     gy0 = max(0, (y - r) // CELL)
     gy1 = min(GH - 1, (y + r) // CELL)
+    bm = BEDROCK
     for gy in range(gy0, gy1 + 1):
         cy = gy * CELL + 2 - y
         row = gy * GW
         for gx in range(gx0, gx1 + 1):
             cx = gx * CELL + 2 - x
-            if cx * cx + cy * cy <= r2:
+            if cx * cx + cy * cy <= r2 and not bm[row + gx]:
                 m[row + gx] = 0
 
 
+def edge_dist(m: bytearray, x: float, y: float, d: int, limit: int = 140) -> int:
+    """x 에서 d 방향으로 걸어가며 발밑이 끊기는 곳까지 거리(px, 최대 limit)."""
+    py = y
+    for i in range(1, limit // 4 + 1):
+        g = surface(m, x + d * i * 4, py, 24, 16)
+        if g is None:
+            return i * 4
+        if g != WALL:
+            py = g
+    return limit
+
+
 def check_slots() -> bool:
+    """안전 슬롯 세 조건: 가장자리·하늘 여유(맵 끝 96 · 안쪽 끝 100 · 기반암), 간격 56, 경사 15° 이하."""
     ok = True
     for side, xs in (("L", SLOTS_L), ("R", SLOTS_R)):
         good = 0
@@ -190,12 +300,15 @@ def check_slots() -> bool:
                     tilts.append(90)
                 else:
                     tilts.append(abs(math.degrees(math.atan2(a - b, 2 * k["half"]))))
-            far_pit = min(abs(x - PIT_L), abs(x - PIT_R)) >= 500
-            far_edge = 96 <= x <= W - 96
-            if max(tilts) <= 15 and far_pit and far_edge:
+            m = x if x < W / 2 else W - x
+            far_edge = 96 <= m and (MAIN_W - m) >= 100
+            gx = int(x // CELL)
+            bed = BEDROCK[(int(s + BED_DEPTH + 8) // CELL) * GW + gx] == 1
+            if max(tilts) <= 15 and far_edge and bed:
                 good += 1
         gaps = all(b - a >= 56 for a, b in zip(xs, xs[1:]))
-        log.info("[포격전] 안전 슬롯 %s 진지 %d/8 통과 · 간격 %s", side, good, "OK" if gaps else "부족")
+        log.info("[포격전] 맵 %s 안전 슬롯 %s 진지 %d/8 통과 · 간격 %s · 기반암 %d칸", MAP_ID, side, good,
+                 "OK" if gaps else "부족", len(BED_RECTS))
         ok = ok and good >= 8 and gaps
     return ok
 
@@ -206,9 +319,6 @@ SLOTS_OK = check_slots()
 def now() -> float:
     return time.monotonic() * 1000.0
 
-
-def clamp(v, a, b):
-    return a if v < a else b if v > b else v
 
 
 # ---------------------------------------------------------------- 연결
@@ -355,8 +465,10 @@ class Round:
             tk.inv_until = self.play_at + INV_MS
             if tk.ai:
                 tk.brain = new_brain(tk, rng)
-        self.wind = rng.randint(-WIND_MAX, WIND_MAX)
-        self.wind_at = self.play_at + WIND_EVERY_MS
+        # 바람: 그 판 시드에서 이어지는 난수. at 은 라운드 시계 ms (카운트다운 끝 = 0)
+        self.wrng = random.Random(rng.getrandbits(32))
+        self.wind = self.wrng.randint(-WIND_MAX, WIND_MAX)
+        self.wn = {"at": self.wrng.randint(*WIND_GAP_MS), "w": self.wrng.randint(-WIND_MAX, WIND_MAX)}
         self.shells: List[dict] = []
         self.sid = 0
         self.k = 0
@@ -368,6 +480,24 @@ class Round:
     def tl(self, t: float) -> int:
         return max(0, int(self.end_at - t))
 
+    def rc(self, t: float) -> int:
+        """라운드 시계 ms (카운트다운 중은 음수)."""
+        return int(t - self.play_at)
+
+    def step_wind(self, t: float) -> None:
+        """예고한 시각이 되면 바꾸고, 그 틱에 다음 변경(15~20초 뒤)을 정해 모두에게 미리 알림."""
+        rc = self.rc(t)
+        if rc < self.wn["at"]:
+            return
+        prev, at = self.wind, self.wn["at"]
+        self.wind = self.wn["w"]
+        gap = self.wrng.randint(*WIND_GAP_MS)
+        self.wn = {"at": at + gap, "w": self.wrng.randint(-WIND_MAX, WIND_MAX)}
+        log.info("[포격전 %s] wind_change rc=%d %d→%d 다음 %dms 뒤 %d", self.room.code, at, prev, self.wind, gap,
+                 self.wn["w"])
+        self.room.cast({"t": "tkwind", "k": self.k, "at": self.wn["at"], "w": self.wn["w"], "cur": self.wind,
+                        "next": self.wn, "rc": rc})
+
     def alive_count(self) -> Dict[str, int]:
         c = {"A": 0, "B": 0}
         for tk in self.tanks.values():
@@ -377,10 +507,12 @@ class Round:
 
     def start_msg(self, for_pid: str = "") -> dict:
         t = now()
+        sp = 1 if for_pid and (for_pid not in self.tanks or not self.tanks[for_pid].alive) else 0
         return {
-            "t": "tkround", "map": "v2", "rle": mask_rle(self.mask) if self.k > 0 else BASE_RLE, "gw": GW, "gh": GH,
-            "seed": self.seed, "side": self.side, "spawn": self.spawn, "inv": INV_MS, "wind": self.wind,
-            "cdn": max(0, int(self.play_at - t)), "endsIn": self.tl(t), "k": self.k,
+            "t": "tkround", "map": MAP_ID, "geo": GEO, "rle": mask_rle(self.mask) if self.k > 0 else BASE_RLE, "gw": GW, "gh": GH,
+            "seed": self.seed, "side": self.side, "spawn": self.spawn, "inv": INV_MS,
+            "wind": self.wind, "cur": self.wind, "wn": self.wn, "next": self.wn, "rc": self.rc(t),
+            "cdn": max(0, int(self.play_at - t)), "endsIn": self.tl(t), "k": self.k, "spec": sp,
             "tanks": [{"id": tk.pid, "n": tk.name, "k": tk.kind, "tm": tk.team, "ai": 1 if tk.ai else 0,
                        "lv": tk.lv if tk.ai else ""} for tk in self.tanks.values()],
             "me": for_pid,
@@ -657,7 +789,6 @@ async def handle(ws, msg: dict) -> None:
         if s is None or not s.ai:
             return err(ws, "no_ai")
         s.lv = "normal" if msg.get("lv") == "normal" else "easy"
-        s.name = _ai_name(room, s.lv, s.pid)
         room.push_lobby()
     elif t == "tkpractice":
         if not is_host:
@@ -681,9 +812,12 @@ async def handle(ws, msg: dict) -> None:
         err(ws, "bad_input")
 
 
-def _ai_name(room: TRoom, lv: str, pid: str) -> str:
-    n = pid[2:] if pid.startswith("ai") else "1"
-    return _clean_name(("AI쉬움" if lv == "easy" else "AI보통") + n)
+def _ai_name(room: TRoom, team: str) -> str:
+    used = {s.name for s in room.seats.values()}
+    i = 1
+    while f"로봇{team}{i}" in used:
+        i += 1
+    return _clean_name(f"로봇{team}{i}")
 
 
 def _add_ai(room: TRoom, team: str, lv: str, kind) -> bool:
@@ -693,7 +827,7 @@ def _add_ai(room: TRoom, team: str, lv: str, kind) -> bool:
     room.counter += 1
     pid = f"ai{room.ai_counter}"
     s = Seat(pid, "", room.counter, ai=True, lv=lv)
-    s.name = _ai_name(room, lv, pid)
+    s.name = _ai_name(room, team)
     s.team = team
     s.kind = kind if kind in KINDS else random.choice(list(KINDS))
     room.seats[pid] = s
@@ -812,7 +946,7 @@ def _fire(rd: Round, tk: Tank, a, p):
     tk.cd_until = t + COOLDOWN_MS
     tk.shots += 1
     rd.room.cast({"t": "tkshot", "k": rd.k, "id": tk.pid, "sid": rd.sid, "x": round(x, 1), "y": round(y, 1),
-                  "ea": round(ea, 1), "vx": round(vx, 1), "vy": round(vy, 1), "w": rd.wind})
+                  "ea": round(ea, 1), "vx": round(vx, 1), "vy": round(vy, 1), "w": rd.wind, "wn": rd.wn})
     return None
 
 
@@ -838,8 +972,9 @@ def _set_face(tk: Tank, f: int, t: float) -> None:
 def _explode(rd: Round, sh: dict, x: float, y: float) -> None:
     t = now()
     ix, iy, r = int(round(x)), int(round(y)), int(sh["r"])
-    carve(rd.mask, ix, iy, r)
-    rd.recent_carves.append((t, ix, r))
+    cr = carve_radius(ix, r)
+    carve(rd.mask, ix, iy, cr)
+    rd.recent_carves.append((t, ix, cr))
     hits = []
     faces = {}
     shooter = rd.tanks.get(sh["own"])
@@ -878,7 +1013,7 @@ def _explode(rd: Round, sh: dict, x: float, y: float) -> None:
         shooter.hits += 1
         _set_face(shooter, 1, t)
         faces[shooter.pid] = shooter.f
-    rd.room.cast({"t": "tkboom", "k": rd.k, "sid": sh["sid"], "x": ix, "y": iy, "r": r, "hits": hits,
+    rd.room.cast({"t": "tkboom", "k": rd.k, "sid": sh["sid"], "x": ix, "y": iy, "r": r, "cr": cr, "hits": hits,
                   "face": [{"id": k, "f": v, "ms": FACE_MS} for k, v in faces.items()]})
     for h in hits:
         tk = rd.tanks[h["id"]]
@@ -1127,18 +1262,15 @@ def tick_round(room: TRoom, t: float) -> None:
                     tk.vy = min(tk.vy + GRAV * DT, 900)
                     tk.y += tk.vy * DT
     if playing:
+        rd.step_wind(t)          # 바람을 먼저 바꾸고 → 포탄은 이 틱의 현재 바람으로
         step_shells(rd)
-        if t >= rd.wind_at:
-            rd.wind = random.randint(-WIND_MAX, WIND_MAX)
-            rd.wind_at = t + WIND_EVERY_MS
-            room.cast({"t": "tkwind", "k": rd.k, "w": rd.wind})
     rd.recent_carves = [c for c in rd.recent_carves if t - c[0] < 2500]
     # 관전 대상 자동 전환
     for s in room.seats.values():
         sw = getattr(s, "spec_switch_at", 0)
         if sw and t >= sw and s.st == "spec":
             _spec_pick(room, s, 1)
-    snap = {"t": "tksnap", "k": rd.k, "tl": rd.tl(t), "cdn": max(0, int(rd.play_at - t)), "w": rd.wind,
+    snap = {"t": "tksnap", "k": rd.k, "tl": rd.tl(t), "cdn": max(0, int(rd.play_at - t)), "rc": rd.rc(t), "w": rd.wind, "wn": rd.wn,
             "tanks": [tk.snap(t) for tk in rd.tanks.values()],
             "sh": [[sh["sid"], round(sh["x"], 1), round(sh["y"], 1)] for sh in rd.shells]}
     room.cast(snap)
@@ -1220,7 +1352,7 @@ AI_LV = {
     # 오차는 '파워 숫자'가 아니라 초속(v0) 기준 비율로 넣음. 45° 근처는 각도 오차가 사거리에 거의 안 미쳐서
     # 쏠 때마다 선호 각을 pref 범위에서 무작위로 고름 (2026-11-13 헤드리스 측정으로 조정 · IMPLEMENT_STATUS 참고)
     "easy": dict(e=(8, 12), ep=(0.15, 0.20), delay=(400, 700), wind=0.5, shrink=0.85, floor=0.85, pref=(28, 66)),
-    "normal": dict(e=(4, 6), ep=(0.08, 0.12), delay=(150, 300), wind=1.0, shrink=0.8, floor=0.7, pref=(32, 60)),
+    "normal": dict(e=(4, 6), ep=(0.08, 0.12), delay=(150, 300), wind=1.0, shrink=0.8, floor=0.7, pref=(32, 60), pred=True),
 }
 
 
@@ -1232,16 +1364,20 @@ def new_brain(tk: Tank, rng: random.Random) -> dict:
 
 
 def _safe_ahead(rd: Round, tk: Tank, d: int, look: float) -> bool:
-    """AI 앞쪽 검사: 끊김(구덩이·맵 끝)에서 100px, 맵 끝 96px, 경사 한도-8°, 발판 진입 금지."""
+    """AI 앞쪽 검사: 끊김(하늘·구덩이·다리·맵 끝) 여유(진지 100px · 섬 60px), 맵 끝 96px, 경사 한도-8°."""
     m = rd.mask
     x, y = tk.x, tk.y
     nx = tk.x + d * look
     if nx < 96 or nx > W - 96:
         return False
-    if PIT_L - 100 <= nx <= PIT_R + 100:
+    # 진지 위 AI 는 안쪽 절벽·흙다리(하늘 쪽)로 스스로 나가지 않음 (진지 안쪽 끝에서 100px 이상)
+    mc = x if x < W / 2 else W - x
+    mn = nx if nx < W / 2 else W - nx
+    if mc < MAIN_W and mn > MAIN_W - 100 and mn > mc:
         return False
+    margin = 100 if mc < MAIN_W else 60
     py = y
-    for i in range(1, int(100 // 4) + 1):
+    for i in range(1, int(margin // 4) + 1):
         xx = x + d * i * 4
         g = surface(m, xx, py, 24, 12)
         if g is None or g == WALL:
@@ -1255,14 +1391,19 @@ def _safe_ahead(rd: Round, tk: Tank, d: int, look: float) -> bool:
     return True
 
 
-def _sim_land(x0, y0, ea, p, face, wind, tx, ty):
-    """바람 넣은 짧은 계산(1/15초 × 120걸음). 목표 높이를 내려오며 지날 때 x. 못 닿으면 None."""
+def _sim_land(x0, y0, ea, p, face, wind, tx, ty, sw=None):
+    """바람 넣은 짧은 계산(1/30초 × 240걸음). 목표 높이를 내려오며 지날 때 x. 못 닿으면 None.
+    sw = (초, 새 바람): 비행 중 그 시각이 지나면 새 바람 (서버 예고 일정 반영)."""
     v0 = 300 + 9 * p
     er = math.radians(ea)
     vx, vy = face * v0 * math.cos(er), -v0 * math.sin(er)
     x, y = x0, y0
     dt = DT / 2
+    tt = 0.0
     for _ in range(240):
+        tt += dt
+        if sw is not None and tt >= sw[0]:
+            wind = sw[1]
         vx += wind * dt
         vy += GRAV * dt
         nx, ny = x + vx * dt, y + vy * dt
@@ -1275,10 +1416,42 @@ def _sim_land(x0, y0, ea, p, face, wind, tx, ty):
     return None
 
 
+def _sim_impact(m: bytearray, x0, y0, ea, p, face, wind, sw=None):
+    """지형에 처음 닿는 자리 (탱크 판정은 빼고). 맵 밖으로 빠지면 None."""
+    v0 = 300 + 9 * p
+    er = math.radians(ea)
+    vx, vy = face * v0 * math.cos(er), -v0 * math.sin(er)
+    x, y = x0, y0
+    dt = DT / 4
+    tt = 0.0
+    while tt < SHELL_LIFE:
+        tt += dt
+        if sw is not None and tt >= sw[0]:
+            wind = sw[1]
+        vx += wind * dt
+        vy += GRAV * dt
+        x += vx * dt
+        y += vy * dt
+        if x < -300 or x > W + 300 or y > H + 100:
+            return None
+        if tt > 0.05 and solid(m, x, y):
+            return (x, y)
+    return None
+
+
 def _plan(rd: Round, tk: Tank, target: Tank, L: dict) -> Optional[tuple]:
     face = 1 if target.x > tk.x else -1
     tx, ty = target.x, target.y - target.K["bh"] / 2
     wind = rd.wind * L["wind"]
+    sw = None
+    if L.get("pred"):
+        # 예정된 바람 변경: 발사까지 걸릴 시간(조준 이동·반응)을 대충 더해 비행 중 몇 초 뒤 바뀌는지
+        lead = (rd.wn["at"] - rd.rc(now()) - 1200) / 1000.0
+        if lead < SHELL_LIFE:
+            if lead <= 0:
+                wind = rd.wn["w"] * L["wind"]
+            else:
+                sw = (lead, rd.wn["w"] * L["wind"])
     lo = max(-30.0, tk.bt + tk.K["amin"])
     hi = min(85.0, tk.bt + tk.K["amax"])
     pref = random.uniform(*L["pref"])
@@ -1295,7 +1468,7 @@ def _plan(rd: Round, tk: Tank, target: Tank, L: dict) -> Optional[tuple]:
             mx, my, _ = muzzle(tk, a)
 
             def over(p):
-                xl = _sim_land(mx, my, ea, p, face, wind, tx, ty)
+                xl = _sim_land(mx, my, ea, p, face, wind, tx, ty, sw)
                 if xl is None:
                     return None
                 return (xl - tx) * face
@@ -1312,8 +1485,12 @@ def _plan(rd: Round, tk: Tank, target: Tank, L: dict) -> Optional[tuple]:
                 else:
                     hi_p = mid
             p = hi_p
-            xl = _sim_land(mx, my, ea, p, face, wind, tx, ty)
+            xl = _sim_land(mx, my, ea, p, face, wind, tx, ty, sw)
             if xl is not None and abs(xl - tk.x) < tk.K["r"] + 20:
+                continue
+            # 떠 있는 섬·진지에 먼저 막히는 길은 버림 (맞는 자리가 목표 근처여야 함)
+            imp = _sim_impact(rd.mask, mx, my, ea, p, face, wind, sw)
+            if imp is None or math.hypot(imp[0] - tx, imp[1] - ty) > target.K["bw"] / 2 + 18:
                 continue
             return (a, p, face)
     finally:
@@ -1350,6 +1527,18 @@ def ai_step(rd: Round, tk: Tank, t: float, playing: bool, may_plan: bool) -> int
                     md = 0
                     b["move_until"] = 0
             d = md
+        elif not tk.falling and tk.fuel > 0:
+            # 발밑 가장자리(폭격으로 파인 구덩이·절벽) 가까우면 안전한 반대쪽으로 회피
+            el = edge_dist(rd.mask, tk.x, tk.y, -1, 56)
+            er = edge_dist(rd.mask, tk.x, tk.y, 1, 56)
+            if el < 44 and er >= 56 and _safe_ahead(rd, tk, 1, tk.K["speed"] * DT * 2 + 24):
+                d = 1
+            elif er < 44 and el >= 56 and _safe_ahead(rd, tk, -1, tk.K["speed"] * DT * 2 + 24):
+                d = -1
+    # 바람이 바뀌었으면 계획 다시 세우기 (발사 전 최신 바람 반영)
+    wind_sig = (rd.wind, rd.wn["at"], rd.wn["w"])
+    if b["plan"] is not None and b.get("plan_wind") != wind_sig and may_plan:
+        b["plan"] = None
     # 조준 계획
     if b["plan"] is None and enemies and t >= tk.cd_until and t >= b["ready_at"] and may_plan and not tk.falling:
         enemies.sort(key=lambda e: (t < e.inv_until and len(enemies) > 1, abs(e.x - tk.x)))
@@ -1377,6 +1566,7 @@ def ai_step(rd: Round, tk: Tank, t: float, playing: bool, may_plan: bool) -> int
             v0 = (300 + 9 * p) * (1 + rng.uniform(-EP, EP))
             p = clamp(round((v0 - 300) / 9), 0, 100)
             b["plan"] = (a, p, face)
+            b["plan_wind"] = wind_sig
             b["ready_at"] = t + rng.uniform(*L["delay"])
     # 조준 움직이기 → 발사
     if b["plan"] is not None and t >= b["ready_at"]:
