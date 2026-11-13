@@ -247,6 +247,100 @@ def surface(m: bytearray, x: float, y: float, up: float = 8, down: float = 12) -
     return float(c * CELL)
 
 
+def _step_col(m: bytearray, x: float, y: float, up: float = 8, down: float = 12) -> Optional[float]:
+    """한 열(x)에서 y 근처 지면 윗면. 얇은 다리 오르막에서 발밑 바로 위 1~2칸도 이어서 찾음."""
+    g = surface(m, x, y, up, down)
+    if g is not None:
+        return g
+    gx = int(x // CELL)
+    if gx < 0 or gx >= GW:
+        return None
+    c = int(round(y / CELL))
+    max_up = int(up // CELL)
+    for k in range(1, max_up + 1):
+        cy = c - k
+        if cy < 0:
+            break
+        if m[cy * GW + gx] == 1:
+            top = cy
+            while top > 0 and m[(top - 1) * GW + gx] == 1:
+                top -= 1
+                if (c - top) * CELL > up:
+                    return WALL
+            return float(top * CELL)
+    return None
+
+
+def _trace_surface(m: bytearray, x0: float, y0: float, tx: float, step_up: float = 8, step_down: float = 12) -> Optional[float]:
+    """x0에서 tx까지 CELL 간격으로 이어진 지면 윗면을 따라가며 최종 y를 반환."""
+    dx = tx - x0
+    if abs(dx) < 1e-6:
+        return _step_col(m, tx, y0, step_up, step_down)
+    steps = max(1, int(math.ceil(abs(dx) / CELL)))
+    py = y0
+    for i in range(1, steps + 1):
+        xx = x0 + dx * (i / steps)
+        g = _step_col(m, xx, py, step_up, step_down)
+        if g is None or g == WALL:
+            return g
+        py = g
+    return py
+
+
+def _span_support(x: float, half: float, col_fn: Callable[[int], Optional[float]]) -> Optional[float]:
+    """중심 열 또는 차체 좌우 양쪽 열이 모두 지지할 때 지면 y 반환(절벽 끝 한쪽만 걸친 경우는 None)."""
+    gx_c = int(x // CELL)
+    if 0 <= gx_c < GW:
+        vc = col_fn(gx_c)
+        if vc is not None:
+            return vc
+    gx_l = max(0, int((x - half) // CELL))
+    gx_r = min(GW - 1, int((x + half) // CELL))
+    yl = next((v for gx in range(min(GW - 1, gx_c - 1), gx_l - 1, -1) if (v := col_fn(gx)) is not None), None)
+    yr = next((v for gx in range(max(0, gx_c + 1), gx_r + 1) if (v := col_fn(gx)) is not None), None)
+    if yl is not None and yr is not None:
+        return (yl + yr) * 0.5
+    return None
+
+
+def _step_ground(m: bytearray, x: float, y: float, half: float, up: float = 8, down: float = 12) -> Optional[float]:
+    """보행 중 발밑 지면 y (벽이면 WALL, 낭떠러지면 None)."""
+    g = _step_col(m, x, y, up, down)
+    if g is not None:
+        return g
+
+    def col_walk(gx: int) -> Optional[float]:
+        v = _step_col(m, gx * CELL + CELL / 2, y, up, down)
+        return None if v == WALL else v
+
+    return _span_support(x, half, col_walk)
+
+
+def _land_y(m: bytearray, x: float, y0: float, ny: float, half: float) -> Optional[float]:
+    """낙하 중 한 틱 이동 구간 [y0, ny] 전체를 차체 폭 [x-half, x+half] 기준으로 검사해 착지 y 반환."""
+    c0 = max(0, int(y0 // CELL))
+    c1 = min(GH - 1, int(ny // CELL))
+    if c1 < c0:
+        return None
+
+    def col_land(gx: int) -> Optional[float]:
+        if gx < 0 or gx >= GW:
+            return None
+        if m[c0 * GW + gx] == 1:
+            tc = c0
+            while tc > 0 and m[(tc - 1) * GW + gx] == 1:
+                tc -= 1
+            # 얇은 다리 윗칸에 이미 살짝 걸친 상태로 낙하 시작 시 관통 방지(아래에 있을 때는 절대 위로 순간이동 금지)
+            if y0 - tc * CELL <= 2 * CELL:
+                return float(tc * CELL)
+        for c in range(c0, c1 + 1):
+            if m[c * GW + gx] == 1 and c * CELL >= y0 - 0.01:
+                return float(c * CELL)
+        return None
+
+    return _span_support(x, half, col_land)
+
+
 def carve_radius(x: float, r: int) -> int:
     """안쪽 절벽·바깥 가장자리는 더 잘 팜 (데미지 반경은 그대로)."""
     for (a, b) in SOFT_ZONES:
@@ -276,7 +370,7 @@ def edge_dist(m: bytearray, x: float, y: float, d: int, limit: int = 140) -> int
     """x 에서 d 방향으로 걸어가며 발밑이 끊기는 곳까지 거리(px, 최대 limit)."""
     py = y
     for i in range(1, limit // 4 + 1):
-        g = surface(m, x + d * i * 4, py, 24, 16)
+        g = _step_col(m, x + d * i * 4, py, 24, 16)
         if g is None:
             return i * 4
         if g != WALL:
@@ -1234,19 +1328,12 @@ def _kill(rd: Round, tk: Tank, cause: str, by: str = "") -> None:
 def step_tank(rd: Round, tk: Tank, t: float, playing: bool) -> None:
     m = rd.mask
     K = tk.K
+    h = K["half"]
     tk.moving = False
     if tk.falling:
         tk.vy = min(tk.vy + GRAV * DT, 900)
         ny = tk.y + tk.vy * DT
-        land = None
-        if 0 <= tk.x < W:
-            c0 = int(tk.y // CELL)
-            c1 = int(ny // CELL)
-            gx = int(tk.x // CELL)
-            for c in range(max(0, c0), min(GH, c1 + 1)):
-                if m[c * GW + gx] == 1 and c * CELL >= tk.y - 0.01:
-                    land = float(c * CELL)
-                    break
+        land = _land_y(m, tk.x, tk.y, ny, h) if -h <= tk.x < W + h else None
         if land is not None:
             tk.y = land
             tk.vy = 0
@@ -1254,7 +1341,7 @@ def step_tank(rd: Round, tk: Tank, t: float, playing: bool) -> None:
         else:
             tk.y = ny
     else:
-        g = surface(m, tk.x, tk.y, 8, 12)
+        g = _step_ground(m, tk.x, tk.y, h, 8, 12)
         if g is None:
             tk.falling = True
             tk.vy = 0
@@ -1271,12 +1358,12 @@ def step_tank(rd: Round, tk: Tank, t: float, playing: bool) -> None:
                 moved = False
                 for _ in range(n):
                     nx = tk.x + tk.d * stepd
-                    ahead = surface(m, tk.x + tk.d * 16, tk.y, 28, 40)
+                    ahead = _trace_surface(m, tk.x, tk.y, tk.x + tk.d * 16, 12, 16)
                     if ahead == WALL:
                         break
                     if ahead is not None and tk.y - ahead > 0 and math.degrees(math.atan2(tk.y - ahead, 16)) > K["climb"]:
                         break
-                    g = surface(m, nx, tk.y, 8, 12)
+                    g = _step_ground(m, nx, tk.y, h, 8, 12)
                     if g == WALL:
                         break
                     tk.x = nx
@@ -1296,11 +1383,10 @@ def step_tank(rd: Round, tk: Tank, t: float, playing: bool) -> None:
         tk.idle += DT
         if tk.idle >= FUEL_IDLE_S:
             tk.fuel = min(FUEL_MAX, tk.fuel + FUEL_REGEN * DT)
-    # 차체 기울기 (바퀴 두 점)
+    # 차체 기울기 (바퀴 두 점 — 얇은 다리·31~45° 경사 따라 추적)
     if not tk.falling:
-        h = K["half"]
-        gf = surface(m, tk.x + tk.face * h, tk.y, 20, 12)
-        gb = surface(m, tk.x - tk.face * h, tk.y, 20, 12)
+        gf = _trace_surface(m, tk.x, tk.y, tk.x + tk.face * h, 10, 14)
+        gb = _trace_surface(m, tk.x, tk.y, tk.x - tk.face * h, 10, 14)
         if gf in (None, WALL):
             gf = tk.y
         if gb in (None, WALL):
@@ -1311,10 +1397,11 @@ def step_tank(rd: Round, tk: Tank, t: float, playing: bool) -> None:
         if abs(target) > SLIDE_DEG:
             down = -tk.face if target > 0 else tk.face
             nx = tk.x + down * 40 * DT
-            g = surface(m, nx, tk.y, 4, 16)
+            g = _step_ground(m, nx, tk.y, h, 4, 16)
             if g is None:
                 tk.x = nx
                 tk.falling = True
+                tk.vy = 0
             elif g != WALL:
                 tk.x, tk.y = nx, g
     # 표정 복귀
@@ -1597,23 +1684,19 @@ def new_brain(tk: Tank, rng: random.Random) -> dict:
 
 
 def _safe_ahead(rd: Round, tk: Tank, d: int, look: float) -> bool:
-    """AI 앞쪽 검사: 끊김(하늘·구덩이·다리·맵 끝) 여유(진지 100px · 섬 60px), 맵 끝 96px, 경사 한도-8°."""
+    """AI 앞쪽 검사: 이어진 다리는 허용하고 끊김(하늘·구덩이·끊긴 다리·맵 끝) 여유(진지 100px · 섬/다리 60px), 맵 끝 96px, 경사 한도-8°."""
     m = rd.mask
     x, y = tk.x, tk.y
     nx = tk.x + d * look
     if nx < 96 or nx > W - 96:
         return False
-    # 진지 위 AI 는 안쪽 절벽·흙다리(하늘 쪽)로 스스로 나가지 않음 (진지 안쪽 끝에서 100px 이상)
     mc = x if x < W / 2 else W - x
-    mn = nx if nx < W / 2 else W - nx
-    if mc < MAIN_W and mn > MAIN_W - 100 and mn > mc:
-        return False
     margin = 100 if mc < MAIN_W else 60
     py = y
     hist = [y]
     for i in range(1, int(margin // 4) + 1):
         xx = x + d * i * 4
-        g = surface(m, xx, py, 24, 12)
+        g = _step_col(m, xx, py, 16, 12)
         if g is None or g == WALL:
             return False
         if i >= 4 and i * 4 <= look + 16:
@@ -1622,9 +1705,6 @@ def _safe_ahead(rd: Round, tk: Tank, d: int, look: float) -> bool:
                 return False
         hist.append(g)
         py = g
-    a = surface(m, x + d * 16, y, 28, 40)
-    if a not in (None, WALL) and y - a > 0 and math.degrees(math.atan2(y - a, 16)) > tk.K["climb"] - 8:
-        return False
     return True
 
 
