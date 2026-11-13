@@ -44,6 +44,7 @@ import boards as BG  # noqa: E402
 import cards as CG  # noqa: E402
 import olympic as OL  # noqa: E402
 import rpg as RP  # noqa: E402  /* === rpg === */ 회귀 RPG 같이 모드 진행자
+import tank as TK  # noqa: E402  /* === tank === */ 노을언덕 포격대(실시간 팀 포격전) — 메시지 접두사 tk, 방은 TK.ROOMS
 from cardgames import ENGINES as _CARD_ENGINES  # noqa: E402
 from partygames import ENGINES as _PARTY_ENGINES  # noqa: E402
 import aiworker  # noqa: E402
@@ -730,9 +731,12 @@ rooms: Dict[str, Room] = {}
 def new_code() -> str:
     for _ in range(1000):
         code = f"{random.randint(1000, 9999)}"
-        if code not in rooms:
+        if code not in rooms and code not in TK.ROOMS:   # === tank === 포격전 방과도 겹치지 않게
             return code
     raise RuntimeError("방 코드를 만들 수 없어요")
+
+
+TK.bind(clean_name=clean_name, codes_taken=lambda: rooms)   # === tank ===
 
 
 async def handle_board(room: "Room", player: "Player", msg: dict, reply, is_host: bool) -> None:
@@ -1295,6 +1299,11 @@ async def ws_session(ws: WebSocketConn) -> None:
                         player.rtt = rtt
                 continue
 
+            # === tank === 포격전 메시지(tk…)는 기존 분기보다 먼저 전용 모듈로
+            if isinstance(t, str) and t.startswith("tk"):
+                await TK.handle(ws, msg)
+                continue
+
             # ---------- 입장 전 ----------
             if player is None:
                 if t == "join":
@@ -1395,7 +1404,7 @@ async def ws_session(ws: WebSocketConn) -> None:
                     if length in (3, 5, 10):
                         room.length = length
                         changed = True
-                if msg.get("mode") in ("arcade", "edu", "music", "board", "card", "party", "olympic", "rpg", "merge"):   # === rpg === (+merge: 머지관)
+                if msg.get("mode") in ("arcade", "edu", "music", "board", "card", "party", "olympic", "rpg", "merge", "tank"):   # === rpg === (+merge: 머지관) (+tank: 포격전)
                     room.mode = msg["mode"]
                     changed = True
                 if msg.get("level") in LEVELS:
@@ -1487,7 +1496,7 @@ async def ws_session(ws: WebSocketConn) -> None:
                 if room.mode == "olympic" and not room.events:
                     await reply({"t": "error", "code": "no_picks", "msg": "올림픽 종목을 하나 이상 골라주세요"})
                     continue
-                if room.mode == "merge":   # === merge === 머지관은 폰마다 혼자 하는 페이지(static/merge.html)라 방 시작이 없어요
+                if room.mode in ("merge", "tank"):   # === tank === 포격전도 전용 페이지(static/tank.html)에서 시작 · === merge === 머지관은 폰마다 혼자 하는 페이지(static/merge.html)라 방 시작이 없어요
                     continue
                 if room.mode == "rpg":   # === rpg === 같이 모험 시작
                     room.rsess = RP.make_session(room, now_ms(), OL.ATHLETE_IDS)
@@ -1628,6 +1637,7 @@ async def ws_session(ws: WebSocketConn) -> None:
         log.exception("웹소켓 오류")
     finally:
         await ws.close()
+        TK.on_close(ws)   # === tank ===
         if player is not None and room is not None and player.ws is ws:
             player.ws = None
             player.connected = False
@@ -1910,7 +1920,8 @@ async def handle_http(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             # 주소에 ?v=버전 이 붙은 파일은 내용이 바뀌면 주소도 바뀌니 오래 저장해도 돼요
             versioned = "v=" in (urlsplit(target).query or "")
             # 머지관 화면·코드는 주소에 버전이 없어서, 새로 배포한 뒤 옛 파일과 새 파일이 섞이면 저장을 못 읽어요 → 매번 확인
-            merge_code = not versioned and (path == "/static/merge.html" or path.startswith("/static/js/merge/") or path == "/static/css/merge.css")
+            merge_code = not versioned and (path == "/static/merge.html" or path.startswith("/static/js/merge/") or path == "/static/css/merge.css"
+                                            or path == "/static/tank.html" or path.startswith("/static/js/tank/") or path == "/static/css/tank.css")   # === tank === 매번 확인
             await serve_file(writer, STATIC_DIR / path[len("/static/"):], head_only, merge_code, immutable=versioned)
         elif path == "/manifest.webmanifest":
             await serve_file(writer, STATIC_DIR / "manifest.webmanifest", head_only, True, "application/manifest+json; charset=utf-8")

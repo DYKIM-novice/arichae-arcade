@@ -1,0 +1,14 @@
+노을언덕 포격대 (포격전, static/tank.html) — 만든 사람·출처
+
+소리
+- 배경음(타이틀·대기실 팝 음악)과 효과음(발사·폭발·피격·추락·이동·버튼)은 모두
+  static/js/tank/sfx.js 안에서 Web Audio API 로 직접 합성합니다. 외부 음원 파일을 쓰지 않습니다.
+  (Kenney RPG/UI Audio 후보는 검토만 하고 복사하지 않았습니다.)
+
+그림
+- 탱크 2종(몽돌·망루), 지형·하늘·나무·바위, 대기실 이모티콘 8종은 static/js/tank/art.js 에서
+  캔버스/SVG 코드로 직접 그렸습니다. 이미지 생성 AI·외부 그림을 쓰지 않았습니다.
+  컨셉 시안(tanks_v1.jpg, map_2d_v2.jpg)은 참고만 했습니다.
+
+글꼴
+- Black Han Sans, Jua: 저장소의 static/fonts (SIL Open Font License 1.1). 외부 폰트 요청 없음.

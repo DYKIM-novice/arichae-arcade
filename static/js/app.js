@@ -660,7 +660,7 @@
     const total = others.length + 1;
     const mainBtn = $('#btn-main');
     const hall = room.mode === 'board' ? window.BoardHall : room.mode === 'card' || room.mode === 'party' ? window.CardHall
-      : room.mode === 'rpg' ? window.RpgHall : room.mode === 'merge' ? window.MergeHall : null;   /* === rpg === (+merge: 머지관) */
+      : room.mode === 'rpg' ? window.RpgHall : room.mode === 'merge' ? window.MergeHall : room.mode === 'tank' ? window.TankHall : null;   /* === rpg === (+merge: 머지관) (+tank: 포격전) */
     if (isHost && hall) {
       const bm = hall.lobbyMain();
       mainBtn.className = 'btn btn-green' + (bm.wait ? ' wait' : '');
@@ -715,19 +715,22 @@
     const oly = room.mode === 'olympic';
     const rpg = room.mode === 'rpg';   /* === rpg === */
     const merge = room.mode === 'merge';   /* === merge === 머지관 */
+    const tank = room.mode === 'tank';   /* === tank === 포격전 */
     $('#settings').classList.toggle('edu', edu);
     $('#settings').classList.toggle('oly', oly);
     $('#settings').classList.toggle('music', music);
     $('#settings').classList.toggle('board', board);
     $('#settings-note').textContent = isHost ? '눌러서 바꿀 수 있어요' : '방장만 바꿀 수 있어요';
     $$('#mode-seg button').forEach((b) => {
-      const on = b.dataset.mode === (card || oly || rpg || merge ? room.mode : board ? 'board' : music ? 'music' : edu ? 'edu' : 'arcade');   /* === rpg === (+rpg) */
+      const on = b.dataset.mode === (card || oly || rpg || merge || tank ? room.mode : board ? 'board' : music ? 'music' : edu ? 'edu' : 'arcade');   /* === rpg === (+rpg) */
       b.classList.toggle('on', on);
       b.disabled = !isHost;
       b.setAttribute('aria-pressed', String(on));
     });
-    $('#arcade-panel').style.display = edu || music || board || card || oly || rpg || merge ? 'none' : '';   /* === rpg === (+rpg) */
+    $('#arcade-panel').style.display = edu || music || board || card || oly || rpg || merge || tank ? 'none' : '';   /* === rpg === (+rpg) */
     if ($('#merge-panel')) $('#merge-panel').style.display = merge ? '' : 'none';   /* === merge === */
+    if ($('#tank-panel')) $('#tank-panel').style.display = tank ? '' : 'none';   /* === tank === */
+    if (tank) { ['#edu-panel', '#music-panel', '#board-panel', '#card-panel', '#olympic-panel', '#rpg-panel'].forEach((k) => { if ($(k)) $(k).style.display = 'none'; }); if (window.TankHall) window.TankHall.renderLobby(isHost); return; }   /* === tank === */
     /* === rpg === */
     if ($('#rpg-panel')) $('#rpg-panel').style.display = rpg ? '' : 'none';
     if (rpg) { $('#edu-panel').style.display = 'none'; $('#music-panel').style.display = 'none'; if (window.RpgHall) window.RpgHall.renderLobby(isHost); return; }
@@ -964,6 +967,7 @@
       if (!room) return;
       if (room.hostPid === S.pid) {
         if (room.mode === 'rpg' && window.RpgHall && window.RpgHall.onMain) { window.RpgHall.onMain(); return; }
+        if (room.mode === 'tank' && window.TankHall) { window.TankHall.onMain(); return; }   /* === tank === 포격전은 전용 페이지로 */
         if (room.mode === 'merge' && window.MergeHall) { window.MergeHall.onMain(); return; }   /* === merge === 머지관은 혼자 하는 페이지로 */   /* === rpg === (1장은 혼자 모험 페이지로) */
         const needPick = (room.mode === 'edu' && !(room.picks || []).length) || (room.mode === 'music' && !(room.songs || []).length)
           || (room.mode === 'olympic' && !(room.events || []).length);
