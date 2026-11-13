@@ -44,15 +44,18 @@
     <header class="lb-top">
       <div class="lb-code">방 코드 <b class="disp" id="lb-code">----</b></div>
       <button class="sbtn" id="lb-copy" type="button">복사</button>
-      <div class="lb-count" id="lb-count"></div>
-      <div class="lb-warn" id="lb-warn"></div>
-      <div class="lb-round" id="lb-round"></div>
       <span class="grow"></span>
       <button class="sbtn" id="lb-watch" type="button" hidden>판 보기</button>
       <button class="sbtn" id="lb-ai" type="button" hidden>AI ⚙</button>
       <button class="sbtn mute-btn" type="button" aria-label="소리 켜기/끄기"></button>
       <button class="sbtn" id="lb-leave" type="button">나가기</button>
     </header>
+    <!-- 참가 인원·인원 차이 경고·판 진행 정보는 위 줄을 넘치지 않게 얇은 두 번째 줄로 -->
+    <div class="lb-info" id="lb-info">
+      <span class="lb-count" id="lb-count"></span>
+      <span class="lb-warn" id="lb-warn"></span>
+      <span class="lb-round" id="lb-round"></span>
+    </div>
     <div class="lb-body">
       <div class="lb-team" data-team="A"><div class="lb-th"><span class="tmark A">●</span> 팀 A <small id="lb-ca"></small></div><div class="lb-list" id="lb-la"></div></div>
       <div class="lb-team" data-team="B"><div class="lb-th"><span class="tmark B">▲</span> 팀 B <small id="lb-cb"></small></div><div class="lb-list" id="lb-lb"></div></div>

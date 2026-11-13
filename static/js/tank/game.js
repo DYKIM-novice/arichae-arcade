@@ -70,7 +70,7 @@
       input: 0, cam: { x: 0, y: 0, ok: false }, zoom: false, spec: !me || !!m.spec, specId: null, specInfo: null, specAsked: false,
       camState: { mode: 'self', sid: null, own: null, fireAt: 0, impactAt: 0, holdUntil: 0, returnStartAt: 0, returnFromX: 0, returnFromY: 0, impactFromX: 0, impactFromY: 0, lastX: 0, lastY: 0, predX: 0, predY: 0, predT: 0, vx: 0, vy: 0, wind: 0, hasShell: false, reason: 'auto' },
       shellOwn: {}, lastShells: [], miniMarks: [], offHits: [], banners: [],
-      dead: {}, deadAt: 0, trails: {}, faceAnim: {}, nums: [], phase: {}, recoil: {}, lastShotP: null, lastLocalFireAt: 0,
+      dead: {}, deadAt: 0, endSeen: false, trails: {}, faceAnim: {}, nums: [], phase: {}, recoil: {}, lastShotP: null, lastLocalFireAt: 0,
       over: null, resultTimer: 0, shake: 0, hitShakeUntil: 0, hitShakeAmp: 0, minimapT: 0, goT: 0, moving: false
     };
     const fxLog = [];
@@ -359,11 +359,14 @@
       } else {
         hits.forEach((h) => {
           const ht = G.cur && G.cur[h.id];
-          const isAlly = !!(myTeam && h.team === myTeam);
-          G.nums.push({ id: h.id, dmg: h.dmg, mine: false, ff: !!h.ff, ally: isAlly, x: ht ? ht.x : e.x, y: ht ? ht.y : e.y, t });
+          // 주황 '아군 피격'은 같은 팀이 쏜 탄일 때만 — 적이 우리 편을 맞힌 건 일반 피해(빨강)
+          const ff = isFf(e, h);
+          const mate = !ff && !!(myTeam && h.team === myTeam);
+          G.nums.push({ id: h.id, dmg: h.dmg, mine: false, ff, ally: ff, mate, x: ht ? ht.x : e.x, y: ht ? ht.y : e.y, t });
           if (window.__tankDbg) {
             pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'hit_other', id: h.id, dmg: h.dmg, x: e.x, y: e.y, own: shooter }, 50);
-            if (isAlly) pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'ally_hit', id: h.id, dmg: h.dmg, x: e.x, y: e.y, own: shooter }, 50);
+            if (ff) pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'ally_hit', id: h.id, dmg: h.dmg, x: e.x, y: e.y, own: shooter, tm: h.team, myTm: !!(myTeam && h.team === myTeam) }, 50);
+            if (mate) pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'mate_hit', id: h.id, dmg: h.dmg, x: e.x, y: e.y, own: shooter }, 50);
           }
           if (h.id === G.me) { SND.SFX.hurt(); try { navigator.vibrate && navigator.vibrate(40); } catch (er2) { /* 무시 */ } }
         });
@@ -373,8 +376,9 @@
         const [sx, sy] = toScreen(e.x, e.y);
         if (sx < 0 || sx > cw || sy < 46 || sy > ch) {
           const allFf = isMine && hits.every((h) => !!h.ff);
-          const anyAlly = !!(myTeam && hits.some((h) => h.team === myTeam));
-          G.offHits.push({ x: e.x, y: e.y, t, mine: isMine, ff: allFf, anyAlly });
+          const anyFf = hits.some((h) => isFf(e, h));
+          const anyMate = !anyFf && !!(myTeam && hits.some((h) => h.team === myTeam));
+          G.offHits.push({ x: e.x, y: e.y, t, mine: isMine, ff: allFf, anyFf, anyMate });
           if (isMine && window.__tankDbg) {
             pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'offscreen_hit', id: hits[0].id, dmg: hits[0].dmg, x: e.x, y: e.y, own: shooter }, 50);
           }
@@ -408,9 +412,16 @@
       delete G.trails[e.sid];
       delete G.shellOwn[e.sid];
     } else if (e.t === 'tkdeath') {
-      G.dead[e.id] = { t: performance.now(), cause: e.cause };
+      G.dead[e.id] = { t: performance.now(), cause: e.cause, by: e.by || '', ff: !!e.ff };
       if (e.cause === 'fall') SND.SFX.fall();
-      if (e.id === G.me) G.deadAt = performance.now();
+      // 흙다리를 파서 떨어뜨린 추락도 쏜 사람의 격추로 인정 (서버 by) — 내 탄이면 배너
+      if (e.cause === 'fall' && e.by && e.by === G.me && e.id !== G.me) {
+        const t = performance.now();
+        if (e.ff) G.banners.push({ text: '아군 추락', color: '#FF8A1F', stroke: '#2c0a04', t, dur: 1.5 });
+        else { SND.SFX.kill(); G.banners.push({ text: '추락 격추!', color: '#FFE27A', stroke: '#2c0a10', t, dur: 1.5 }); }
+        if (window.__tankDbg) pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: e.ff ? 'ff_fall_mine' : 'fall_kill_mine', id: e.id, dmg: 0, x: 0, y: 0, own: G.me }, 50);
+      }
+      if (e.id === G.me && !G.deadAt) G.deadAt = performance.now();
     } else if (e.t === 'tkwind') {
       const nw = e.cur != null ? e.cur : G.wind;
       const nxt = e.next || { at: e.at, w: e.w };
@@ -425,8 +436,17 @@
     }
   }
 
+  // 같은 팀이 쏜 탄에 맞았는지 (서버 ff 표시 또는 쏜 사람 팀 === 맞은 팀)
+  function isFf(e, h) {
+    if (h.ff) return true;
+    let ot = e.ownTeam;
+    if (!ot && e.own && G.meta[e.own]) ot = G.meta[e.own].tm;
+    return !!(ot && h.team && ot === h.team);
+  }
   function onEnd(m) {
     if (!G) return;
+    // 판 끝을 받은 즉시 표시(결과 화면은 렌더 시간선에 맞춰 조금 뒤) — 이 뒤로는 관전 전환(tkspec)을 보내지 않음
+    G.endSeen = true;
     G.events.push(m);
   }
   function showResult(m) {
@@ -443,11 +463,17 @@
     else if (myTeam) title = m.win === myTeam ? '우리 팀 승리!' : '아쉬워요, 졌어요';
     else title = `팀 ${m.win} 승리!`;
     if (myTeam && m.win === myTeam) SND.SFX.win(); else SND.SFX.lose();
-    const by = m.by === 'wipe' ? '상대 팀을 모두 물리쳤어요' : '시간 끝 · 남은 탱크와 체력으로 판정';
+    const by = m.by === 'wipe' ? '상대 팀을 모두 물리쳤어요' : '시간 끝 · 남은 탱크 수, 같으면 체력 비율로 판정';
     const CAUSE = { hit: '격추', fall: '추락' };
+    const tmOf = (id) => (G.meta[id] ? G.meta[id].tm : null);
     const rows = m.stats.slice().sort((a, b) => b.dealt - a.dealt).map((s) => {
       const T = Art.TEAM[s.tm];
-      const deadCause = CAUSE[s.cause] || (G.dead[s.id] && CAUSE[G.dead[s.id].cause]) || '탈락';
+      let deadCause = CAUSE[s.cause] || (G.dead[s.id] && CAUSE[G.dead[s.id].cause]) || '탈락';
+      // 추락: 적이 발밑을 파서 떨어뜨렸으면 '격추(추락)', 아군 탄이면 '추락(아군)', 스스로 떨어지면 '추락'
+      const killer = s.by || (G.dead[s.id] && G.dead[s.id].by) || '';
+      if ((s.cause || (G.dead[s.id] && G.dead[s.id].cause)) === 'fall' && killer && killer !== s.id) {
+        deadCause = tmOf(killer) && tmOf(killer) === s.tm ? '추락(아군)' : '격추(추락)';
+      }
       const st = (s.alive ? '생존' : deadCause) + (s.ffk ? ` · <span style="color:#FF8A1F">아군 오사 ${s.ffk}</span>` : '');
       return `<tr${s.id === G.me ? ' style="color:#FFE27A"' : ''}><td style="color:${T.c}">${T.mark}${s.tm}</td><td>${esc(s.n)}</td><td>${KN[s.k]}</td><td>${s.shots}발</td><td>${s.hits}명중</td><td>${s.dealt}</td><td>${st}</td></tr>`;
     }).join('');
@@ -468,6 +494,11 @@
   function sendInput(d, force) {
     if (!G) return;
     if (d !== G.input || force) { G.input = d; Net.send({ t: 'tkin', d }); }
+  }
+  // 관전 대상 바꾸기: 판이 끝났거나(결과 대기 포함) 끝을 받은 뒤에는 보내지 않음
+  function sendSpec(d) {
+    if (!G || G.over || G.endSeen) return;
+    Net.send({ t: 'tkspec', d });
   }
   function myState() { return G && G.me ? G.cur && G.cur[G.me] : null; }
   function myKind() { return G && G.me ? G.meta[G.me].k : 'mongdol'; }
@@ -551,8 +582,8 @@
       }
     });
     $('#b-fire').addEventListener('pointerdown', (e) => { e.preventDefault(); SND.unlock(); fire(); });
-    $('#sp-prev').addEventListener('pointerdown', (e) => { e.preventDefault(); SND.SFX.click(); Net.send({ t: 'tkspec', d: -1 }); });
-    $('#sp-next').addEventListener('pointerdown', (e) => { e.preventDefault(); SND.SFX.click(); Net.send({ t: 'tkspec', d: 1 }); });
+    $('#sp-prev').addEventListener('pointerdown', (e) => { e.preventDefault(); SND.SFX.click(); sendSpec(-1); });
+    $('#sp-next').addEventListener('pointerdown', (e) => { e.preventDefault(); SND.SFX.click(); sendSpec(1); });
     $('#sp-back').addEventListener('click', () => { SND.SFX.click(); Net.send({ t: 'tkback' }); });
     $('#h-zoom').addEventListener('click', () => { if (!G) return; G.zoom = !G.zoom; $('#h-zoom').classList.toggle('on', G.zoom); SND.SFX.click(); });
     $('#h-menu').addEventListener('click', () => { $('#menu').hidden = !$('#menu').hidden; SND.SFX.click(); });
@@ -565,7 +596,7 @@
       keys[e.key] = true;
       if (e.key === ' ') fire();
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') onHoldChange();
-      if (G.spec && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.repeat) Net.send({ t: 'tkspec', d: e.key === 'ArrowLeft' ? -1 : 1 });
+      if (G.spec && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.repeat) sendSpec(e.key === 'ArrowLeft' ? -1 : 1);
     });
     window.addEventListener('keyup', (e) => { delete keys[e.key]; if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') onHoldChange(); });
     window.addEventListener('resize', resize);
@@ -805,7 +836,9 @@
     // 내 탱크 포신은 내 입력을 바로 보여 줌
     const me = G.me && G.cur[G.me];
     if (me && G.aim.a != null && canControl()) me.a = G.aim.a;
-    if (me && me.st === 2 && !G.spec && performance.now() - G.deadAt > 1400 && !G.over) {
+    // 내 탱크가 죽는 걸 처음 본 순간부터 1.4초 기다린 뒤 관전으로 (판이 끝났거나 끝을 받았으면 보내지 않음)
+    if (me && me.st === 2 && !G.deadAt) G.deadAt = performance.now();
+    if (me && me.st === 2 && !G.spec && G.deadAt && performance.now() - G.deadAt > 1400 && !G.over && !G.endSeen) {
       G.spec = true; setSpecUI(true); Net.send({ t: 'tkspec', d: 0 }); sendInput(0, true); SND.engine(false);
     }
     updateCam(dt, now, cur.shells);
@@ -827,6 +860,8 @@
     const vl = Math.max(0, Math.floor(G.cam.x - cw / 2 / s - 4)), vt = Math.max(0, Math.floor(G.cam.y - ch / 2 / s - 4));
     const vr = Math.min(WW, Math.ceil(G.cam.x + cw / 2 / s + 4)), vb = Math.min(WH, Math.ceil(G.cam.y + ch / 2 / s + 4));
     if (vr > vl && vb > vt) c.drawImage(G.T.cv, vl, vt, vr - vl, vb - vt, vl, vt, vr - vl, vb - vt);
+    // 맵 좌우 끝: 세로로 잘린 단면 대신 둥근 절벽 끝 + 안개 (캐시 그림)
+    G.T.drawCaps(c, G.cam.x - cw / 2 / s - 4, G.cam.x + cw / 2 / s + 4);
     Art.drawWaterfalls(c, G.geo, G.T, now);
     // 탱크
     const list = Object.values(G.cur).sort((a, b) => (a.id === G.me) - (b.id === G.me));
@@ -840,16 +875,20 @@
     // 화면 좌표 레이어
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     updateCountdownDom(now);
-    drawLabels(c, list, now, cur.shells);
+    const lab = drawLabels(c, list, now, cur.shells);
     // 포탄 (닉네임 위) + 폭발 이펙트 레이어
     c.setTransform(dpr * s, 0, 0, dpr * s, dpr * ox, dpr * oy);
     drawShells(c, cur.shells, s, now);
     drawPoolLayer(c, now, 1);
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const fxCtx = { avoid: getFxAvoidRects(), placed: [], labels: [] };
+    // 피해 숫자·배너는 버튼·카운트다운에 더해 이름표와 내 각도 숫자도 피함
+    const fxAvoid = getFxAvoidRects().concat(lab.boxes);
+    const showArc = !!(me && me.st !== 2 && canControl());
+    if (showArc) fxAvoid.push(arcLabelBox(me));
+    const fxCtx = { avoid: fxAvoid, placed: [], labels: [], nameBox: lab.byId };
     drawBanners(c, now, fxCtx);
     drawNums(c, now, fxCtx);
-    if (me && me.st !== 2 && canControl()) drawArc(c, me, now);
+    if (showArc) drawArc(c, me, now);
     drawArrows(c, cur.shells, list);
     drawOffscreenHits(c, now, fxCtx);
     if (window.__tankDbg && window.__tankDbg.fx) window.__tankDbg.fx.labels = fxCtx.labels;
@@ -914,6 +953,7 @@
   function drawLabels(c, list, now, shells) {
     c.textAlign = 'center'; c.textBaseline = 'alphabetic';
     const placed = [];
+    const byId = {};
     const tags = [];
     const foc = focusTank();
     const refX = foc ? foc.x : G.cam.x;
@@ -1063,6 +1103,7 @@
 
       const finalBox = makeBox();
       placed.push(finalBox);
+      byId[t.id] = finalBox;
       tags.push({ name: m.n, mode: 'text', x: Math.round(finalBox.l), y: Math.round(finalBox.t), w: Math.round(finalBox.r - finalBox.l), h: Math.round(finalBox.b - finalBox.t) });
 
       c.save(); c.globalAlpha = alpha;
@@ -1085,6 +1126,8 @@
     }
     if (window.__tankDbg) window.__tankDbg.tags = tags;
     void now;
+    // 피해 숫자·배너가 이름표(점 포함)를 피하도록 화면 상자를 돌려줌
+    return { boxes: placed, byId };
   }
 
   function drawShells(c, shells, s, now) {
@@ -1335,8 +1378,11 @@
       const topOff = m && m.k === 'mangru' ? 50 : 38;
       const wx = (t && t.st !== 2) ? t.x : n.x;
       const wy = (t && t.st !== 2) ? (t.y - topOff) : (n.y - 44);
-      const [rx, rawY] = toScreen(wx, wy);
-      const baseY = rawY - 34;
+      let [rx, rawY] = toScreen(wx, wy);
+      // 이름표(체력바 포함) 위로 띄움: 이름표가 옆·아래로 피했으면 그 상자 위, 없으면 기본 이름표 자리(rawY-44) 위
+      const nb = fxCtx && fxCtx.nameBox ? fxCtx.nameBox[n.id] : null;
+      let baseY = rawY - 50;
+      if (nb && t && t.st !== 2) { rx = (nb.l + nb.r) / 2; baseY = nb.t - 6; }
       if (n.mine) {
         const label = n.ff ? `아군 피격! -${n.dmg}` : `명중! -${n.dmg}`;
         const fs = 36;
@@ -1373,9 +1419,9 @@
         c.globalAlpha = 1 - Math.max(0, age - 0.65) / 0.45;
         c.lineJoin = 'round';
         c.lineWidth = 4;
-        c.strokeStyle = n.ally ? '#331200' : '#2d0a12';
+        c.strokeStyle = n.ff ? '#331200' : '#2d0a12';
         c.strokeText(label, cx, cy);
-        c.fillStyle = n.ally ? '#FF8A1F' : '#fff3d6';
+        c.fillStyle = n.ff ? '#FF8A1F' : (n.mate ? '#ff6a6a' : '#fff3d6');
         c.fillText(label, cx, cy);
         c.restore();
         pushFxLabel(fxCtx, label, box);
@@ -1423,12 +1469,12 @@
       const ax0 = Math.max(pad, Math.min(cw - pad, sx));
       const ay0 = Math.max(top, Math.min(ch - pad, sy));
       const ang = Math.atan2(sy - ay0, sx - ax0);
-      const col = oh.ff ? '#FF8A1F' : (oh.mine ? '#FFD23F' : (oh.anyAlly ? '#FF8A1F' : '#fff3d6'));
+      const col = oh.ff ? '#FF8A1F' : (oh.mine ? '#FFD23F' : (oh.anyFf ? '#FF8A1F' : (oh.anyMate ? '#ff6a6a' : '#fff3d6')));
       const alpha = 1 - Math.max(0, age - 0.85) / 0.35;
       c.save();
       c.globalAlpha = alpha;
       arrowAt(c, ax0, ay0, ang, col);
-      const label = oh.mine ? (oh.ff ? '아군 피격' : '명중') : (oh.anyAlly ? '아군 피격' : '명중');
+      const label = oh.mine ? (oh.ff ? '아군 피격' : '명중') : (oh.anyFf ? '아군 피격' : (oh.anyMate ? '피격' : '명중'));
       c.font = 'bold 16px Jua, sans-serif';
       const tw = c.measureText(label).width + 16;
       const dirX = Math.cos(ang), dirY = Math.sin(ang);
@@ -1452,6 +1498,14 @@
     c.textBaseline = 'alphabetic';
   }
 
+  // 각도 숫자(포신 호 끝 '00°') 화면 상자 — drawArc 와 같은 계산
+  function arcLabelBox(t) {
+    const [px, py] = toScreen(...pivot(t));
+    const ea = Math.max(-30, Math.min(85, t.bt + (G.aim.a != null ? G.aim.a : t.a)));
+    const r = 56 + 30, e = ea * Math.PI / 180;
+    const lx = px + t.fa * Math.cos(e) * r, ly = py - Math.sin(e) * r;
+    return { l: lx - 28, t: ly - 15, r: lx + 28, b: ly + 15 };
+  }
   // 포신 범위 호 (실제 발사각 = 차체 기울기 + 포신 각도, -30~85 자름)
   function drawArc(c, t, now) {
     const K = Art.STAT[G.meta[t.id].k];
@@ -1542,11 +1596,32 @@
       const side = myTeam ? G.side[myTeam] : null;
       const html = `<b>${n}</b>${side ? `<span>우리 진지: ${side === 'L' ? '← 왼쪽' : '오른쪽 →'}</span>` : '<span>곧 시작해요</span>'}`;
       if (el.innerHTML !== html) { el.innerHTML = html; SND.SFX.tick(); }
+      if (el.classList.contains('go')) el.classList.remove('go');
+      setStyle('#cdn', 'left', '50%');
       el.hidden = false; G.goT = now + 800;
     } else if (now < G.goT) {
-      if (!el.dataset.go) { el.innerHTML = '<b>출발!</b>'; el.dataset.go = '1'; SND.SFX.go(); }
+      if (!el.dataset.go) { el.innerHTML = '<b>출발!</b>'; el.dataset.go = '1'; el.classList.add('go'); SND.SFX.go(); }
+      // 「출발!」은 HUD 바로 아래(화면 위쪽 1/3)에 — 내 탱크·이름표 자리와 겹치면 옆으로 비킴
+      setStyle('#cdn', 'left', Math.round(goLeft()) + 'px');
       el.hidden = false;
-    } else { if (!el.hidden) el.hidden = true; if (el.dataset.go) delete el.dataset.go; }
+    } else {
+      if (!el.hidden) el.hidden = true;
+      if (el.dataset.go) { delete el.dataset.go; el.classList.remove('go'); setStyle('#cdn', 'left', '50%'); }
+    }
+  }
+  function goLeft() {
+    const half = 78;   // 「출발!」 글자 상자 절반 폭(여유 포함)
+    const t = focusTank();
+    if (!t || !G.cam.ok) return cw / 2;
+    const [tx, ty] = toScreen(t.x, t.y);
+    const s = scale();
+    const tankHalf = 60 * s * 0.5 + 56;           // 탱크 + 이름표 절반 폭
+    const top = ty - 90 * s, goB = 48 + 64;        // 탱크 위(이름표 포함) · 「출발!」 아래 끝
+    if (top > goB || Math.abs(tx - cw / 2) > tankHalf + half) return cw / 2;
+    const right = tx + tankHalf + half + 8, left = tx - tankHalf - half - 8;
+    if (right + half <= cw - 8 && (cw - tx >= tx || left - half < 8)) return right;
+    if (left - half >= 8) return left;
+    return cw / 2;
   }
   function drawCountdown(c, me, now) {
     updateCountdownDom(now);

@@ -683,6 +683,10 @@ class Tank:
         self.dealt = 0
         self.kills = 0
         self.ffk = 0
+        self.killer = ""           # 이 탱크를 격추(추락 포함)로 인정받은 쏜 사람 pid
+        # 추락 격추 인정용: 이 탱크를 맞히거나 발밑을 파낸 마지막 적/아군 포탄 (시각 ms, 쏜 사람 pid)
+        self.last_enemy = (0.0, "")
+        self.last_ally = (0.0, "")
         self.brain: Optional[dict] = None
 
     def center(self):
@@ -1040,7 +1044,8 @@ async def handle(ws, msg: dict) -> None:
             err(ws, res[0], "", ms=res[1])
     elif t == "tkspec":
         if rd is None or rd.over:
-            return err(ws, "not_round", "지금은 진행 중인 판이 없어요")
+            # 판 끝 직후(마지막 탱크 죽음과 판 끝이 거의 동시)나 판이 없을 때 늦게 온 관전 요청은 조용히 무시
+            return None
         if tk is not None and tk.alive and seat.st == "play":
             return err(ws, "bad_input")
         d = _parse_int(msg.get("d"), 0)
@@ -1298,6 +1303,7 @@ def _explode(rd: Round, sh: dict, x: float, y: float) -> None:
     shooter = rd.tanks.get(sh["own"])
     hit_enemy = False
     hit_ally = False
+    _note_fall_blame(rd, sh, ix, iy, max(r, cr), t)
     for tk in rd.tanks.values():
         if not tk.alive:
             continue
@@ -1355,6 +1361,37 @@ def _explode(rd: Round, sh: dict, x: float, y: float) -> None:
             _kill(rd, tk, "hit", by=sh["own"])
 
 
+FALL_CREDIT_MS = 8000        # 추락 직전 이 시간 안에 맞혔거나 발밑을 파낸 포탄 주인에게 격추 인정
+FALL_BLAME_DEPTH = 56        # 탱크 바닥에서 이 깊이까지의 흙을 판 것도 '발밑을 파냄'으로 봄
+
+
+def _note_fall_blame(rd: Round, sh: dict, ix: int, iy: int, rr: int, t: float) -> None:
+    """폭발이 탱크를 맞혔거나(폭발 반경) 탱크 발밑 흙을 팠으면 그 탱크의 '마지막 포탄 주인'으로 기록. 자기 탄은 제외."""
+    own = sh["own"]
+    for tk in rd.tanks.values():
+        if not tk.alive or tk.pid == own:
+            continue
+        K = tk.K
+        bx0, bx1 = tk.x - K["bw"] / 2, tk.x + K["bw"] / 2
+        by0, by1 = tk.y - K["bh"], tk.y + FALL_BLAME_DEPTH
+        dx = max(bx0 - ix, 0, ix - bx1)
+        dy = max(by0 - iy, 0, iy - by1)
+        if math.hypot(dx, dy) > rr:
+            continue
+        if sh["team"] == tk.team:
+            tk.last_ally = (t, own)
+        else:
+            tk.last_enemy = (t, own)
+
+
+def _fall_credit(rd: Round, tk: Tank, t: float) -> str:
+    """추락사 격추 인정 대상 pid. 최근 8초 안의 적 포탄 주인 우선, 없으면 아군(아군 격추로 처리). 없으면 '' (자멸)."""
+    for at, pid in (tk.last_enemy, tk.last_ally):
+        if pid and pid in rd.tanks and t - at <= FALL_CREDIT_MS:
+            return pid
+    return ""
+
+
 def _kill(rd: Round, tk: Tank, cause: str, by: str = "") -> None:
     t_now = now()
     since_go_ms = rd.rc(t_now)
@@ -1365,6 +1402,7 @@ def _kill(rd: Round, tk: Tank, cause: str, by: str = "") -> None:
     tk.f = 2
     tk.dead_at = t_now
     tk.cause = cause
+    tk.killer = by if (by and by != tk.pid) else ""
     log.info("[포격전 %s] death %s cause=%s since_go_ms=%d ai=%s by=%s ff=%d",
              rd.room.code, tk.pid, cause, since_go_ms, "1" if tk.ai else "0", by or "-", ff_flag)
     rd.room.cast({"t": "tkdeath", "k": rd.k, "id": tk.pid, "cause": cause, "by": by, "ff": ff_flag})
@@ -1505,7 +1543,15 @@ def step_tank(rd: Round, tk: Tank, t: float, playing: bool) -> None:
         tk.f = 0
     # 추락사
     if tk.alive and (tk.y > FALL_Y or tk.x < -20 or tk.x > W + 20):
-        _kill(rd, tk, "fall")
+        # 흙다리를 파여 떨어졌으면 마지막으로 맞히거나 발밑을 판 포탄 주인의 격추(아군이면 아군 격추·점수 제외)
+        by = _fall_credit(rd, tk, now())
+        shooter = rd.tanks.get(by) if by else None
+        if shooter is not None:
+            if shooter.team == tk.team:
+                shooter.ffk += 1
+            else:
+                shooter.kills += 1
+        _kill(rd, tk, "fall", by=by)
 
 
 def step_shells(rd: Round) -> None:
@@ -1583,7 +1629,8 @@ def _end_round(rd: Round, win: str, by: str) -> None:
     rd.result_until = now() + RESULT_MS + 2000
     alive = rd.alive_count()
     stats = [{"id": tk.pid, "n": tk.name, "tm": tk.team, "k": tk.kind, "shots": tk.shots, "hits": tk.hits,
-              "dealt": tk.dealt, "kills": tk.kills, "ffk": tk.ffk, "alive": 1 if tk.alive else 0, "cause": tk.cause}
+              "dealt": tk.dealt, "kills": tk.kills, "ffk": tk.ffk, "alive": 1 if tk.alive else 0, "cause": tk.cause,
+              "by": tk.killer}
              for tk in rd.tanks.values()]
     rd.result = {"t": "tkend", "k": rd.k, "win": win, "by": by, "alive": alive, "stats": stats, "back": RESULT_MS}
     rd.room.cast(rd.result)
@@ -1693,11 +1740,13 @@ def tick_round(room: TRoom, t: float) -> None:
                 if alive["A"] != alive["B"]:
                     win = "A" if alive["A"] > alive["B"] else "B"
                 else:
-                    hp = {"A": 0, "B": 0}
+                    # 살아 있는 수가 같으면 체력 '비율' 합 (기종마다 최대 체력이 달라서 원값 합은 불공평)
+                    hp = {"A": 0.0, "B": 0.0}
                     for tk in rd.tanks.values():
                         if tk.alive:
-                            hp[tk.team] += tk.hp
-                    win = "draw" if hp["A"] == hp["B"] else ("A" if hp["A"] > hp["B"] else "B")
+                            hp[tk.team] += max(0.0, tk.hp) / tk.K["hp"]
+                    gap = hp["A"] - hp["B"]
+                    win = "draw" if abs(gap) < 1e-6 else ("A" if gap > 0 else "B")
                 _end_round(rd, win, "time")
         except Exception as exc:
             _log_tick_exc(room, "judge", exc, t)
@@ -1829,8 +1878,8 @@ def _sim_land(x0, y0, ea, p, face, wind, tx, ty, sw=None):
     return None
 
 
-def _sim_impact(m: bytearray, x0, y0, ea, p, face, wind, sw=None, allies=None, own_pid: str = ""):
-    """지형(또는 아군 탱크)에 처음 닿는 자리. 맵 밖으로 빠지면 None."""
+def _sim_impact(m: bytearray, x0, y0, ea, p, face, wind, sw=None, allies=None, own_pid: str = "", pad: float = 0.0):
+    """지형(또는 아군 탱크)에 처음 닿는 자리. 맵 밖으로 빠지면 None. pad: 아군 판정 상자를 넓혀 '스치는' 궤적도 막힘으로."""
     v0 = 300 + 9 * p
     er = math.radians(ea)
     vx, vy = face * v0 * math.cos(er), -v0 * math.sin(er)
@@ -1854,9 +1903,49 @@ def _sim_impact(m: bytearray, x0, y0, ea, p, face, wind, sw=None, allies=None, o
                 if ally.pid == own_pid and tt < 0.35:
                     continue
                 AK = ally.K
-                if abs(x - ally.x) <= AK["bw"] / 2 and ally.y - AK["bh"] - 4 <= y <= ally.y + 2:
+                if abs(x - ally.x) <= AK["bw"] / 2 + pad and ally.y - AK["bh"] - 4 - pad <= y <= ally.y + 2 + pad:
                     return (x, y)
     return None
+
+
+AI_FF_PAD = 8          # 궤적이 아군 탱크를 스치는지 볼 때 판정 상자 여유
+AI_FF_MARGIN = 20      # 착탄점-아군(자기 포함) 거리 여유: max(폭발 반경, 파임 반경) + 이 값
+
+
+def _ff_danger(rd: Round, tk: Tank, imp, allies) -> bool:
+    """착탄점이 아군(자기 포함) 판정 상자에서 폭발·파임 반경+여유 안이면 True."""
+    ix, iy = imp
+    rr = max(tk.K["r"], carve_radius(int(round(ix)), tk.K["r"])) + AI_FF_MARGIN
+    for ally in allies:
+        AK = ally.K
+        adx = max(ally.x - AK["bw"] / 2 - ix, 0.0, ix - (ally.x + AK["bw"] / 2))
+        ady = max(ally.y - AK["bh"] - iy, 0.0, iy - ally.y)
+        if math.hypot(adx, ady) <= rr:
+            return True
+    return False
+
+
+def _ai_shot_unsafe(rd: Round, tk: Tank, a: float, p: float, face: int, lead_ms: float = 0.0) -> bool:
+    """실제로 쏠 각도·파워(오차 적용 뒤)로 진짜 바람·예정된 바람 변경을 넣어 착탄점을 계산해
+    아군을 맞히거나(스침 포함) 아군 근처에 떨어지면 True. 맵 밖으로 빠지면 안전."""
+    allies = [al for al in rd.tanks.values() if al.alive and al.team == tk.team]
+    wind = rd.wind
+    sw = None
+    lead = (rd.wn["at"] - rd.rc(now()) - lead_ms) / 1000.0
+    if lead <= 0:
+        wind = rd.wn["w"]
+    elif lead < SHELL_LIFE:
+        sw = (lead, rd.wn["w"])
+    save = tk.face
+    tk.face = face
+    try:
+        mx, my, ea = muzzle(tk, a)
+    finally:
+        tk.face = save
+    imp = _sim_impact(rd.mask, mx, my, ea, p, face, wind, sw, allies=allies, own_pid=tk.pid, pad=AI_FF_PAD)
+    if imp is None:
+        return False
+    return _ff_danger(rd, tk, imp, allies)
 
 
 def _plan(rd: Round, tk: Tank, target: Tank, L: dict) -> Optional[tuple]:
@@ -1875,12 +1964,13 @@ def _plan(rd: Round, tk: Tank, target: Tank, L: dict) -> Optional[tuple]:
     lo = max(-30.0, tk.bt + tk.K["amin"])
     hi = min(85.0, tk.bt + tk.K["amax"])
     pref = random.uniform(*L["pref"])
-    cands = sorted(range(int(math.ceil(lo)), int(hi) + 1, 3), key=lambda e: abs(e - pref))[:8]
+    # 선호 각에 가까운 순 — 아군 때문에 막히면 더 먼 각도까지 찾아봄(최대 16개)
+    cands = sorted(range(int(math.ceil(lo)), int(hi) + 1, 3), key=lambda e: abs(e - pref))[:16]
     if not cands:
         return None
     allies = [ally for ally in rd.tanks.values() if ally.alive and ally.team == tk.team]
-    safe_r = tk.K["r"] + 12
     avoided_ff = False
+    tried = 0
     save = tk.face
     tk.face = face
     try:
@@ -1888,6 +1978,10 @@ def _plan(rd: Round, tk: Tank, target: Tank, L: dict) -> Optional[tuple]:
             a = ea - tk.bt
             if a < tk.K["amin"] or a > tk.K["amax"]:
                 continue
+            # 아군 문제 없이 사거리 밖인 각도만 8개 넘게 보지는 않음 (계산량 유지)
+            if tried >= 8 and not avoided_ff:
+                break
+            tried += 1
             mx, my, _ = muzzle(tk, a)
 
             def over(p):
@@ -1913,20 +2007,10 @@ def _plan(rd: Round, tk: Tank, target: Tank, L: dict) -> Optional[tuple]:
                 avoided_ff = True
                 continue
             # 떠 있는 섬·진지·아군에 먼저 막히거나 아군/자기 폭발 반경+12px 안이면 버림
-            imp = _sim_impact(rd.mask, mx, my, ea, p, face, wind, sw, allies=allies, own_pid=tk.pid)
+            imp = _sim_impact(rd.mask, mx, my, ea, p, face, wind, sw, allies=allies, own_pid=tk.pid, pad=AI_FF_PAD)
             if imp is None:
                 continue
-            ff_hit = False
-            for ally in allies:
-                AK = ally.K
-                ax0, ax1 = ally.x - AK["bw"] / 2, ally.x + AK["bw"] / 2
-                ay0, ay1 = ally.y - AK["bh"], ally.y
-                adx = max(ax0 - imp[0], 0.0, imp[0] - ax1)
-                ady = max(ay0 - imp[1], 0.0, imp[1] - ay1)
-                if math.hypot(adx, ady) <= safe_r:
-                    ff_hit = True
-                    break
-            if ff_hit:
+            if _ff_danger(rd, tk, imp, allies):
                 avoided_ff = True
                 continue
             if math.hypot(imp[0] - tx, imp[1] - ty) > target.K["bw"] / 2 + 18:
@@ -1940,6 +2024,27 @@ def _plan(rd: Round, tk: Tank, target: Tank, L: dict) -> Optional[tuple]:
                 rd.last_ff_avoid_at = t_now
                 log.info("[포격전 %s] ai_ff_avoid %s", rd.room.code, tk.name)
     return None
+
+
+def _ai_hold_and_move(rd: Round, tk: Tank, b: dict, t: float, rng: random.Random, why: str) -> None:
+    """아군 오사 위험으로 이번엔 쏘지 않음: 가장 가까운 아군에서 멀어지는 쪽(안전하면)으로 잠깐 이동."""
+    b["plan"] = None
+    b["ready_at"] = t + 1500
+    mates = [al for al in rd.tanks.values() if al.alive and al.team == tk.team and al.pid != tk.pid]
+    if mates:
+        near = min(mates, key=lambda al: abs(al.x - tk.x))
+        md = 1 if tk.x >= near.x else -1
+    else:
+        md = rng.choice((-1, 1))
+    look = tk.K["speed"] * DT * 2 + 24
+    if not _safe_ahead(rd, tk, md, look):
+        md = -md if _safe_ahead(rd, tk, -md, look) else 0
+    b["move_dir"] = md
+    b["move_until"] = t + rng.uniform(900, 1500) if md else 0
+    t_now = now()
+    if t_now - rd.last_ff_avoid_at >= 1000:
+        rd.last_ff_avoid_at = t_now
+        log.info("[포격전 %s] ai_ff_hold %s (%s)", rd.room.code, tk.name, why)
 
 
 def ai_step(rd: Round, tk: Tank, t: float, playing: bool, may_plan: bool) -> int:
@@ -2003,15 +2108,26 @@ def ai_step(rd: Round, tk: Tank, t: float, playing: bool, may_plan: bool) -> int
                 b["move_dir"] = md
             b["ready_at"] = t + 1500
         else:
-            a, p, face = pl
+            a0, p0, face = pl
             E = b["E"] * b["mul"]
             EP = b["EP"] * b["mul"]
-            a = clamp(round(a + rng.uniform(-E, E)), tk.K["amin"], tk.K["amax"])
-            v0 = (300 + 9 * p) * (1 + rng.uniform(-EP, EP))
-            p = clamp(round((v0 - 300) / 9), 0, 100)
-            b["plan"] = (a, p, face)
-            b["plan_wind"] = wind_sig
-            b["ready_at"] = t + rng.uniform(*L["delay"])
+            # 난이도 오차는 그대로 넣되, 오차 적용 뒤 착탄점이 아군 근처면 오차를 다시 뽑음
+            # (조준 이동 시간만큼 뒤에 쏜다고 보고 바람 예고 반영). 끝내 안전한 게 없으면 이번엔 쏘지 않고 비켜 이동.
+            chosen = None
+            for _ in range(6):
+                a = clamp(round(a0 + rng.uniform(-E, E)), tk.K["amin"], tk.K["amax"])
+                v0 = (300 + 9 * p0) * (1 + rng.uniform(-EP, EP))
+                p = clamp(round((v0 - 300) / 9), 0, 100)
+                lead_ms = max(abs(a - tk.a) / 30.0, abs(p - tk.p) / 60.0) * 1000 + L["delay"][1]
+                if not _ai_shot_unsafe(rd, tk, a, p, face, lead_ms):
+                    chosen = (a, p)
+                    break
+            if chosen is None:
+                _ai_hold_and_move(rd, tk, b, t, rng, "plan")
+            else:
+                b["plan"] = (chosen[0], chosen[1], face)
+                b["plan_wind"] = wind_sig
+                b["ready_at"] = t + rng.uniform(*L["delay"])
     # 조준 움직이기 → 발사
     if b["plan"] is not None and t >= b["ready_at"]:
         a, p, face = b["plan"]
@@ -2021,6 +2137,11 @@ def ai_step(rd: Round, tk: Tank, t: float, playing: bool, may_plan: bool) -> int
         np_ = tk.p + clamp(p - tk.p, -60 * DT, 60 * DT)
         tk.a, tk.p = clamp(na, tk.K["amin"], tk.K["amax"]), clamp(np_, 0, 100)   # 사람 버튼 속도(30°/초·60/초)로만
         if abs(tk.a - a) < 0.5 and abs(tk.p - p) < 0.5 and tk.face == face and playing and t >= tk.cd_until:
+            # 조준하는 동안 아군이 끼어들었거나 바람이 바뀌었으면 쏘지 않고 비킴
+            if _ai_shot_unsafe(rd, tk, round(tk.a), round(tk.p), face):
+                _ai_hold_and_move(rd, tk, b, t, rng, "fire")
+                _set_input(tk, b["move_dir"] if _safe_ahead(rd, tk, b["move_dir"], tk.K["speed"] * DT * 2 + 24) else 0)
+                return planned
             res = _fire(rd, tk, round(tk.a), round(tk.p))
             if res:
                 log.info("[포격전 %s] ai_reject %s %s", rd.room.code, tk.name, res[0])

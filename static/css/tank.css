@@ -51,11 +51,19 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 
 /* ---------- 대기실 ---------- */
 #s-lobby { display: flex; flex-direction: column; background: linear-gradient(#5a2f6e, #b0507a 55%, #f0a060); }
-.lb-top { flex: none; height: 52px; display: flex; align-items: center; gap: 8px; padding: 4px 10px; background: rgba(30,16,44,.55); }
+.lb-top { flex: none; height: 52px; display: flex; align-items: center; gap: 8px; padding: 4px 10px;
+  padding: 4px max(10px, env(safe-area-inset-right)) 4px max(10px, env(safe-area-inset-left)); background: rgba(30,16,44,.55); }
+/* 위 줄 버튼·방 코드는 줄어들지 않음(글자가 버튼 밖으로 넘치지 않게) — 빈 칸(.grow)만 줄어듦 */
+.lb-top > * { flex-shrink: 0; }
+.lb-top > .grow { flex: 1 1 0; min-width: 0; }
 .lb-code { font-size: 16px; white-space: nowrap; } .lb-code b { font-size: 24px; color: #FFE27A; margin-left: 4px; letter-spacing: 2px; }
+.lb-info { flex: none; height: 24px; display: flex; align-items: center; gap: 12px; overflow: hidden; padding: 0 10px;
+  padding: 0 max(10px, env(safe-area-inset-right)) 0 max(10px, env(safe-area-inset-left)); background: rgba(30,16,44,.35); font-size: 16px; line-height: 24px; }
 .lb-count, .lb-warn, .lb-round { font-size: 16px; white-space: nowrap; }
+.lb-count, .lb-warn { flex: none; }
 .lb-warn { color: var(--yellow); }
-.lb-round { color: #bff5d6; overflow: hidden; text-overflow: ellipsis; }
+.lb-warn:empty, .lb-round:empty { display: none; }
+.lb-round { flex: 1 1 auto; min-width: 0; color: #bff5d6; overflow: hidden; text-overflow: ellipsis; }
 .lb-body { flex: 1; min-height: 0; display: flex; gap: 8px; padding: 6px 10px 8px; }
 .lb-team { flex: 1; min-width: 0; display: flex; flex-direction: column; background: rgba(30,16,44,.4); border-radius: 14px; padding: 4px 6px; }
 .lb-th { height: 28px; display: flex; align-items: center; gap: 6px; font-size: 17px; }
@@ -63,7 +71,7 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 .lb-team[data-team="A"] { box-shadow: inset 0 3px 0 var(--A); }
 .lb-team[data-team="B"] { box-shadow: inset 0 3px 0 var(--B); }
 .lb-list { flex: 1; min-height: 0; overflow-y: auto; }
-.prow { position: relative; display: flex; align-items: center; gap: 6px; height: calc((100dvh - 52px - 56px) / 8); max-height: 38px; min-height: 30px;
+.prow { position: relative; display: flex; align-items: center; gap: 6px; height: calc((100dvh - 52px - 24px - 56px) / 8); max-height: 38px; min-height: 30px;
   padding: 0 4px; border-radius: 10px; font-size: 16px; }
 .prow.me { background: rgba(255,255,255,.16); outline: 2px solid rgba(255,255,255,.7); }
 .prow.off { opacity: .5; }
@@ -178,6 +186,9 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
   text-shadow: 0 3px 0 rgba(0,0,0,.45); }
 .center-msg b { display: block; font-family: 'Black Han Sans', sans-serif; font-size: 60px; color: #FFE27A; }
 .center-msg span { display: block; font-size: 20px; margin-top: 4px; }
+/* 「출발!」: HUD(46px) 바로 아래 — 내 탱크·이름표를 가리지 않게 (가로 위치는 game.js 가 비킴) */
+.center-msg.go { top: 48px; transform: translate(-50%, 0); }
+.center-msg.go b { font-size: 52px; line-height: 64px; }
 .result { position: absolute; inset: 46px 0 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
   background: rgba(20,10,30,.55); z-index: 30; }
 .result h2 { margin: 0; font-family: 'Black Han Sans', sans-serif; font-weight: 400; font-size: 40px; color: #FFE27A; text-shadow: 0 3px 0 #7a3b5a; }
@@ -207,12 +218,15 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
   .join-card h1 { font-size: 28px; }
   .join-card { padding: 10px 16px; }
   .lb-top { height: 48px; }
+  .lb-info { height: 22px; line-height: 22px; }
+  .prow { min-height: 29px; }
+  .sheet { top: 48px; }
   .kind { height: 48px; }
   #lb-start, #lb-practice { min-height: 46px; }
   .lb-side { gap: 5px; }
-  .sheet { top: 48px; }
   .center-msg { top: 25%; }
   .center-msg b { font-size: 50px; }
+  .center-msg.go b { font-size: 46px; line-height: 58px; }
 }
 @media (max-width: 700px) {
   .lb-side { width: 236px; }
@@ -221,5 +235,4 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
   .prow .tag { padding: 0 4px; }
   .hteam i { width: 30px; }
   .hmini { width: 96px; }
-  .lb-round { display: none; }
 }

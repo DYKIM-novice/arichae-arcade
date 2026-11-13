@@ -1030,6 +1030,149 @@
         c.closePath(); c.fill();
       }
     }
+
+    // 7) 맵 좌우 끝 바깥 '둥근 절벽 끝' (따로 캐시 — 파일 때만 그 쪽만 다시 그림)
+    this.buildCap(-1);
+    this.buildCap(1);
+  };
+
+  // ---------------------------------------------------------------- 맵 좌우 끝: 둥글게 깎여 내려가는 절벽 끝 + 안개
+  // 지형 캔버스는 x=0·x=W 에서 세로로 잘리므로, 맵 밖(카메라가 최대 60px 보여 줌)에 흙·바위 단면이 둥글게 흘러내리는
+  // 끝 모양을 덧그림. 물리·충돌과는 무관(그리기 전용). 맵 안쪽 CAP_IN px 은 풀 띠만 겹쳐 그려 이음새를 숨김.
+  const CAP_W = 120, CAP_IN = 10;
+  Terrain.prototype.edgeSpans = function (side) {
+    const { gw, gh, mask, cell } = this;
+    const gx = side < 0 ? 0 : gw - 1;
+    const out = [];
+    let st = -1;
+    for (let gy = 0; gy <= gh; gy++) {
+      const v = gy < gh && mask[gy * gw + gx];
+      if (v && st < 0) st = gy;
+      else if (!v && st >= 0) { if (gy - st >= 2) out.push([st * cell, gy * cell]); st = -1; }
+    }
+    return out;
+  };
+  Terrain.prototype.buildCap = function (side) {
+    const W = this.W, H = this.H;
+    const key = side < 0 ? 'capL' : 'capR';
+    let cv = this[key];
+    if (!cv) { cv = document.createElement('canvas'); cv.width = CAP_W + CAP_IN; cv.height = H; this[key] = cv; }
+    const c = cv.getContext('2d');
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalCompositeOperation = 'source-over';
+    c.globalAlpha = 1;
+    c.clearRect(0, 0, cv.width, cv.height);
+    // 이 캔버스 안에서는 세계 좌표로 그림 (흙 패턴 무늬가 지형 캔버스와 이어지게)
+    c.translate(side < 0 ? CAP_W : -(W - CAP_IN), 0);
+    const ex = side < 0 ? 0 : W, o = side < 0 ? -1 : 1;
+    const X = (u) => ex + o * u;          // u = 맵 끝에서 바깥쪽 거리
+    const pat = ensureTerrainPatterns();
+    const spans = this.edgeSpans(side);
+    if (!spans.length) return;
+    const r = rng(side < 0 ? 501 : 777);
+    const shapes = spans.map(([y0, y1]) => {
+      const th = y1 - y0;
+      // 카메라는 맵 밖을 최대 60px(전체 보기 40px)까지 보여 줌 → 둥근 끝이 그 안에서 보이도록 바깥 폭 ≤ 50px
+      const R = Math.max(6, Math.min(36, th * 0.3));
+      const reach = Math.max(8, Math.min(50, R + 8 + th * 0.03));
+      const jag = [];
+      const n = th > 60 ? 5 : 2;
+      for (let k = 1; k <= n; k++) {
+        const t = k / (n + 1);
+        jag.push([reach * 0.72 * Math.pow(1 - t, 1.15) + (k % 2 ? 5 : -2) * Math.min(1, th / 120), y0 + th * (0.6 + 0.4 * t) + (k % 2 ? 0 : 7) * Math.min(1, th / 120)]);
+      }
+      return { y0, y1, th, R, reach, jag };
+    });
+    const body = (sh) => {
+      const { y0, y1, th, R, reach, jag } = sh;
+      c.beginPath();
+      c.moveTo(X(-1), y0);
+      if (th < 26) {
+        // 얇은 끝: 반달 모양으로 둥글게
+        c.bezierCurveTo(X(R * 1.2), y0 - 1, X(R * 1.2), y1 + 1, X(-1), y1);
+      } else {
+        // 위 어깨가 둥글게 꺾여 내려가고 → 바깥 면이 살짝 부풀었다가 → 아래로 갈수록 바위 끝처럼 들쭉날쭉 안으로
+        c.quadraticCurveTo(X(R * 0.85), y0 - 1, X(R), y0 + R * 0.8);
+        c.bezierCurveTo(X(reach), y0 + R * 1.5, X(reach * 0.96), y0 + th * 0.42, X(reach * 0.74), y0 + th * 0.58);
+        for (const [u, y] of jag) c.lineTo(X(u), y);
+        c.lineTo(X(2), y1 + 4);
+        c.lineTo(X(-1), y1);
+      }
+      c.closePath();
+    };
+    // 1) 끝 아래 뾰족 흙 돌기 (몸통 뒤)
+    for (const sh of shapes) {
+      if (sh.th < 40) continue;
+      for (let k = 0; k < 2; k++) {
+        const u = sh.reach * (0.18 + k * 0.28), y = sh.y1 - 2 - k * sh.th * 0.06;
+        const tipH = 9 + r() * 12, hw = 5 + r() * 4;
+        c.fillStyle = k ? '#3a1d13' : '#482619';
+        c.strokeStyle = '#210f0a'; c.lineWidth = 1.6;
+        c.beginPath(); c.moveTo(X(u - hw), y - 4); c.lineTo(X(u + (r() - 0.5) * 3), y + tipH); c.lineTo(X(u + hw), y - 4); c.closePath();
+        c.fill(); c.stroke();
+      }
+    }
+    // 2) 흙 단면 몸통 (지형과 같은 흙 패턴)
+    c.fillStyle = c.createPattern(pat.soil, 'repeat');
+    for (const sh of shapes) { body(sh); c.fill(); }
+    // 3) 음영: 지형과 같은 노을 세로 음영 + 바깥으로 갈수록 어둡게(둥근 면) + 바깥 끝은 노을 안개에 묻힘
+    c.globalCompositeOperation = 'source-atop';
+    const rim = c.createLinearGradient(0, 150, 0, 780);
+    rim.addColorStop(0, 'rgba(255,215,130,.18)'); rim.addColorStop(0.45, 'rgba(255,175,90,.04)'); rim.addColorStop(1, 'rgba(20,8,12,.36)');
+    c.fillStyle = rim; c.fillRect(X(-CAP_IN) - (o > 0 ? 0 : CAP_W + 2), 0, CAP_W + CAP_IN + 2, H);
+    const shade = c.createLinearGradient(X(0), 0, X(50), 0);
+    shade.addColorStop(0, 'rgba(26,10,14,0)'); shade.addColorStop(0.55, 'rgba(26,10,14,.22)'); shade.addColorStop(1, 'rgba(26,10,14,.42)');
+    c.fillStyle = shade; c.fillRect(Math.min(X(0), X(CAP_W)), 0, CAP_W, H);
+    for (const sh of shapes) {
+      // 둥근 어깨 바로 아래 노을 역광 줄
+      c.strokeStyle = 'rgba(255,190,120,.22)'; c.lineWidth = 3;
+      c.beginPath(); c.moveTo(X(sh.R * 0.4), sh.y0 + 8); c.quadraticCurveTo(X(sh.R * 0.95), sh.y0 + 10, X(sh.R * 0.98), sh.y0 + sh.R * 0.9 + 6); c.stroke();
+    }
+    c.globalCompositeOperation = 'source-over';
+    // 4) 풀 테두리: 맵 안 풀 띠를 이어받아 어깨를 따라 둥글게 감아 내려감 (끝은 둥근 마개)
+    const grassPat = c.createPattern(pat.grass, 'repeat');
+    for (const sh of shapes) {
+      const { y0, R, th } = sh;
+      const gIn = this.groundY(X(-CAP_IN + 1), y0 - 24, y0 + 24);
+      const inner = gIn != null && Math.abs(gIn - y0) <= 10;
+      const endU = th < 26 ? R * 0.9 : R * 1.02, endY = th < 26 ? y0 + Math.min(th * 0.45, R * 0.6) : y0 + R * 0.62;
+      const trace = (dy) => {
+        c.beginPath();
+        if (inner) { c.moveTo(X(-CAP_IN + 1), gIn + dy); c.lineTo(X(0), y0 + dy); } else c.moveTo(X(0), y0 + dy);
+        c.quadraticCurveTo(X(R * 0.8), y0 - 1 + dy, X(endU), endY + dy * 0.4);
+      };
+      c.lineJoin = 'round'; c.lineCap = 'round';
+      trace(3); c.strokeStyle = '#24470e'; c.lineWidth = 17; c.stroke();
+      trace(2); c.strokeStyle = grassPat; c.lineWidth = 13; c.stroke();
+      trace(0); c.strokeStyle = '#7ec231'; c.lineWidth = 7.5; c.stroke();
+      trace(-2.6); c.strokeStyle = '#c5ee56'; c.lineWidth = 3.2; c.stroke();
+      // 어깨 위 잔디 술 두어 개
+      for (let k = 0; k < 2; k++) {
+        const u = R * (0.2 + k * 0.32), yy = y0 + (u / Math.max(1, R)) * (u / Math.max(1, R)) * R * 0.35 - 1;
+        const h1 = 7 + r() * 6, h2 = 5 + r() * 5;
+        c.fillStyle = k ? '#7ac230' : '#b8ec50';
+        c.beginPath();
+        c.moveTo(X(u) - 4.2, yy + 0.5); c.lineTo(X(u) - 1.6, yy - h1); c.lineTo(X(u) + 0.8, yy - 1.8);
+        c.lineTo(X(u) + 3.4, yy - h2); c.lineTo(X(u) + 5.2, yy + 0.5); c.closePath(); c.fill();
+      }
+    }
+    // 5) 끝 바깥 노을 안개: 부드러운 덩어리로 바위 끝 윤곽을 흐리고 하늘(원경)로 이어지게 — 캔버스 끝에선 0
+    for (const sh of shapes) {
+      const yA = sh.y0 - 30, yB = sh.y1 + 50;
+      for (let y = yA; y <= yB; y += 34) {
+        const u = sh.reach * 0.9 + 8 + (r() - 0.5) * 10, rad = 30 + r() * 14;
+        const g = c.createRadialGradient(X(u), y, 2, X(u), y, rad);
+        const a = y < sh.y0 ? 0.16 : 0.26;
+        g.addColorStop(0, `rgba(255,214,186,${a})`); g.addColorStop(0.6, `rgba(255,200,170,${a * 0.45})`); g.addColorStop(1, 'rgba(255,200,170,0)');
+        c.fillStyle = g;
+        c.beginPath(); c.arc(X(u), y, rad, 0, Math.PI * 2); c.fill();
+      }
+    }
+  };
+  // 매 프레임: 보이는 쪽 끝 캐시만 붙여 그림 (세계 좌표 변환 상태에서 호출)
+  Terrain.prototype.drawCaps = function (c, viewL, viewR) {
+    if (this.capL && viewL < CAP_IN) c.drawImage(this.capL, -CAP_W, 0);
+    if (this.capR && viewR > this.W - CAP_IN) c.drawImage(this.capR, this.W - CAP_IN, 0);
   };
 
   Terrain.prototype.drawUnderside = function () {
@@ -1146,14 +1289,15 @@
       c.fillStyle = '#92d84a'; c.beginPath(); c.arc(2, -15, 6, Math.PI, 0); c.fill();
       c.restore();
     };
-    place(42, 380, 450, (x, y) => oak(x, y, 0.95));
-    place(78, 380, 450, (x, y) => bush(x, y, 1.0));
+    // 맵 끝(x<40, x>W-40)에서 나무가 잘리지 않게 안쪽으로 (참나무 잎 반폭 약 43px)
+    place(60, 380, 450, (x, y) => oak(x, y, 0.95));
+    place(104, 380, 450, (x, y) => bush(x, y, 1.0));
     place(185, 390, 460, (x, y) => rock(x, y, 0.75));
     place(355, 410, 480, (x, y) => pine(x, y, 0.85));
     place(475, 430, 500, (x, y) => bush(x, y, 0.9));
     place(512, 440, 510, (x, y) => rock(x, y, 0.85));
 
-    place(W - 44, 380, 450, (x, y) => pine(x, y, 1.05));
+    place(W - 54, 380, 450, (x, y) => pine(x, y, 1.05));
     place(W - 95, 380, 450, (x, y) => pine(x, y, 0.82));
     place(W - 220, 390, 460, (x, y) => bush(x, y, 1.0));
     place(W - 360, 410, 480, (x, y) => oak(x, y, 0.85));
@@ -1234,6 +1378,9 @@
     c.lineWidth = 2.6;
     c.beginPath(); c.arc(x, y, r + 1, 0, Math.PI * 2); c.stroke();
     c.restore();
+    // 맵 끝 근처를 팠으면 그 쪽 끝 모양만 다시 그림 (작은 캐시라 가벼움)
+    if (x - r < CAP_IN + 4) this.buildCap(-1);
+    if (x + r > this.W - CAP_IN - 4) this.buildCap(1);
   };
 
   // ---------------------------------------------------------------- 하늘 · 원경 이미지(bg_far_v3) + 패럴랙스
