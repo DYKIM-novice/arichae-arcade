@@ -3,7 +3,12 @@
 @font-face{font-family:'Jua';src:url('../fonts/Jua-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap;}
 
 :root {
-  --A: #2BB673; --B: #E0307A; --ink: #241634; --cream: #FFF6E6; --yellow: #FFD23F;
+  /* 팀색 — static/js/tank/art.js 의 TEAM.A.c / TEAM.B.c (· ink) 와 반드시 같은 값 (한쪽을 바꾸면 둘 다)
+     색약 안전 파랑(어둡고 차가움) ↔ 주황(밝음). --A-ink/--B-ink: 팀색 바탕 위 글자색(대비 5.7:1 · 8.5:1) */
+  --A: #1F5FD8; --B: #FF9F1C; --A-ink: #FFFFFF; --B-ink: #2A1400;
+  --A-soft: rgba(31,95,216,.30); --B-soft: rgba(255,159,28,.24);
+  --ff: #FF7AE6; /* 친선 사격 강조(art.js FF.c) */
+  --ink: #241634; --cream: #FFF6E6; --yellow: #FFD23F;
   --vh: 1dvh;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -28,7 +33,9 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
   background: rgba(40,20,60,.55); color: #fff; white-space: nowrap; }
 .sbtn:active { background: rgba(255,255,255,.25); }
 .sbtn.on { background: #fff; color: var(--ink); border-color: #fff; }
-.tmark { display: inline-block; font-size: 16px; line-height: 1; }
+/* 팀 모양 표지 ●(A)/▲(B): 팀색 + 흰 테두리 + 바깥 잉크 — 게임 속 표지(Art.teamMark)와 같은 모양 */
+.tmark { display: inline-block; font-size: 16px; line-height: 1; font-family: system-ui, sans-serif;
+  text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 2px #1d1530, 0 0 3px #1d1530; }
 .tmark.A { color: var(--A); } .tmark.B { color: var(--B); }
 
 /* ---------- 입장 ---------- */
@@ -68,8 +75,9 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 .lb-team { flex: 1; min-width: 0; display: flex; flex-direction: column; background: rgba(30,16,44,.4); border-radius: 14px; padding: 4px 6px; }
 .lb-th { height: 28px; display: flex; align-items: center; gap: 6px; font-size: 17px; }
 .lb-th small { font-size: 16px; opacity: .8; }
-.lb-team[data-team="A"] { box-shadow: inset 0 3px 0 var(--A); }
-.lb-team[data-team="B"] { box-shadow: inset 0 3px 0 var(--B); }
+/* 팀 열: 위 굵은 팀색 띠 + 옅은 팀색 바탕 (게임 속 탱크 차체색과 같은 팔레트) */
+.lb-team[data-team="A"], .ai-col[data-team="A"] { box-shadow: inset 0 4px 0 var(--A); background: linear-gradient(var(--A-soft), rgba(30,16,44,.4) 70%); }
+.lb-team[data-team="B"], .ai-col[data-team="B"] { box-shadow: inset 0 4px 0 var(--B); background: linear-gradient(var(--B-soft), rgba(30,16,44,.4) 70%); }
 .lb-list { flex: 1; min-height: 0; overflow-y: auto; }
 .prow { position: relative; display: flex; align-items: center; gap: 6px; height: calc((100dvh - 52px - 24px - 56px) / 8); max-height: 38px; min-height: 30px;
   padding: 0 4px; border-radius: 10px; font-size: 16px; }
@@ -103,8 +111,9 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 .kind.on { border-color: #FFE27A; background: rgba(255,226,122,.25); box-shadow: 0 0 0 2px #FFE27A; }
 .kind-info { font-size: 16px; line-height: 20px; height: 20px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #ffe9da; }
 .teams { display: flex; gap: 6px; } .teams .sbtn { flex: 1; }
-.tbtn.A.on { background: var(--A); border-color: var(--A); color: #fff; }
-.tbtn.B.on { background: var(--B); border-color: var(--B); color: #fff; }
+.tbtn.A { border-color: var(--A); } .tbtn.B { border-color: var(--B); }
+.tbtn.A.on { background: var(--A); border-color: #fff; color: var(--A-ink); }
+.tbtn.B.on { background: var(--B); border-color: #fff; color: var(--B-ink); }
 .emos { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .emo { height: 44px; border-radius: 12px; border: 2px solid rgba(255,255,255,.3); background: rgba(255,255,255,.9); padding: 3px; }
 .emo svg { width: 34px; height: 34px; display: block; margin: 0 auto; pointer-events: none; }
@@ -118,7 +127,7 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 .sheet-top { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 10px; flex-wrap: wrap; }
 .sheet-top b { font-size: 18px; margin-right: 6px; }
 .sheet-body { flex: 1; min-height: 0; display: flex; gap: 10px; padding: 0 10px 10px; }
-.ai-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
+.ai-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; border-radius: 14px; padding: 4px 6px; }
 .ai-list { display: flex; flex-direction: column; gap: 4px; }
 .ai-row { display: flex; align-items: center; gap: 6px; min-height: 48px; font-size: 16px; }
 .ai-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -137,13 +146,19 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 .hteam i { display: block; width: 44px; height: 8px; border-radius: 4px; background: rgba(255,255,255,.2); overflow: hidden; }
 .hteam em { display: block; height: 100%; width: 100%; }
 .hteam.A em { background: var(--A); } .hteam.B em { background: var(--B); }
-.hteam.A { box-shadow: inset 0 -3px 0 var(--A); } .hteam.B { box-shadow: inset 0 -3px 0 var(--B); }
+.hteam.A { box-shadow: inset 0 -3px 0 var(--A), inset 0 0 0 2px var(--A); } .hteam.B { box-shadow: inset 0 -3px 0 var(--B), inset 0 0 0 2px var(--B); }
+.hteam > * { flex: none; }
 .htime { margin-left: auto; min-width: 66px; text-align: center; font-size: 22px; text-shadow: 0 2px 0 rgba(0,0,0,.4); }
 .hwind { display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 8px; border-radius: 10px; background: rgba(0,0,0,.35); font-size: 16px; }
 .hwind svg { transition: transform .3s; }
 .hwind.blink svg, .hwind.blink #h-wlv { animation: windBlink .5s steps(1, end) infinite; }
 @keyframes windBlink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: .3; } }
-.hmini { width: 120px; height: 32px; border-radius: 6px; background: rgba(0,0,0,.35); margin-left: auto; }
+/* 미니맵: HUD 한 줄(46px) 안 — 줄지도 넘치지도 않게 flex:none. 백버퍼는 game.js 가 CSS 크기 × devicePixelRatio 로 맞춤
+   폭별 크기: HUD 다른 요소(팀 배지 2·시간·바람·전체·≡ + 틈 6×6 + 좌우 8) 합 ≈ 701px~: 504px · ~700px: 476px (Jua/Black Han Sans 실측)
+   → 740: 504+156=660(남음 80) · 701: 남음 41 · 640: 476+124=600(남음 40) · 600: 476+96=572
+   ≥701px 156×42 (740·844·915·1280) · 601~700px 124×34 (640) · ≤600px 96×26 */
+.hmini { flex: none; width: 156px; height: 42px; border-radius: 6px; background: rgba(0,0,0,.35); margin-left: auto;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); }
 .hbtn { min-width: 44px; height: 44px; padding: 0 8px; border-radius: 12px; border: 2px solid rgba(255,255,255,.35); background: rgba(30,14,44,.6); color: #fff; font-size: 18px; }
 .hbtn.on { background: #fff; color: var(--ink); }
 
@@ -179,6 +194,7 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 .spec-bar { left: 50%; top: 50px; transform: translateX(-50%); height: 36px; padding: 0 16px; border-radius: 12px; background: rgba(0,0,0,.5);
   display: flex; align-items: center; gap: 6px; font-size: 16px; white-space: nowrap; max-width: 90vw; pointer-events: none; }
 .spec-bar u { text-decoration: none; border-bottom: 3px solid currentColor; }
+.spec-bar u.tmA { border-bottom-color: var(--A); } .spec-bar u.tmB { border-bottom-color: var(--B); }
 #sp-prev { left: 12px; bottom: 12px; } #sp-next { left: 96px; bottom: 12px; }
 .sp-back { right: 16px; bottom: 16px; width: 160px; height: 56px; font-size: 20px; pointer-events: auto; }
 
@@ -234,5 +250,8 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
   .prow canvas { width: 38px; height: 22px; }
   .prow .tag { padding: 0 4px; }
   .hteam i { width: 30px; }
-  .hmini { width: 96px; }
+  .hmini { width: 124px; height: 34px; }
+}
+@media (max-width: 600px) {
+  .hmini { width: 96px; height: 26px; }
 }

@@ -17,6 +17,7 @@
   let me = (Net.seat() || {}).pid || null;
   let emoCool = 0;
   let joining = false;
+  let kindTeam;            // 기종 버튼 그림을 마지막으로 그린 팀 (팀이 바뀌면 팀색 차체로 다시 그림)
 
   // ---------------------------------------------------------------- 공통
   let toastT = 0;
@@ -118,6 +119,10 @@
     }
     if (mine) {
       $$('#lb-kinds .kind').forEach((b) => b.classList.toggle('on', b.dataset.kind === mine.k));
+      if (kindTeam !== mine.tm) {
+        kindTeam = mine.tm;
+        $$('#lb-kinds .kind canvas').forEach((cv) => Art.icon(cv, cv.closest('.kind').dataset.kind, mine.tm, 0));
+      }
       const S = Art.STAT[mine.k];
       $('#lb-kinfo').textContent = `체력 ${S.hp} · 폭발 ${S.r} · 포신 ${S.amin}~${S.amax}°`;
       $('#lb-kinfo').title = `${KN[mine.k]} · 체력 ${S.hp} · 이동 ${S.speed} · 폭발 반경 ${S.r} · 포신 ${S.amin}~${S.amax}°`;
@@ -369,7 +374,7 @@
     $$('#lb-kinds .kind canvas').forEach((cv) => Art.icon(cv, cv.closest('.kind').dataset.kind, null, 0));
     // 판 진행 중 남은 시간 갱신
     setInterval(() => { if (L && L.round && !$('#s-lobby').hidden) renderLobbyTime(); }, 500);
-    window.addEventListener('resize', () => { joinArt(); if (L && !$('#s-lobby').hidden) renderLobby(); });
+    window.addEventListener('resize', () => { kindTeam = undefined; joinArt(); if (L && !$('#s-lobby').hidden) renderLobby(); });
 
     if (Net.seat()) { $('#j-msg').textContent = '다시 들어가는 중…'; Net.connect(); }
     show('#s-join');

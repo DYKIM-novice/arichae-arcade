@@ -39,6 +39,7 @@
   let G = null;               // 현재 판 상태
   let cv, ctx, cw = 0, ch = 0, dpr = 1, raf = 0, lastT = 0;
   let btnRects = [];
+  let miniSz = null; // 미니맵 CSS 크기·백버퍼 배율 캐시 (화면 크기가 바뀌면 다시 잼)
   const keys = {};
 
   function toast(msg) { if (window.TankLobby) window.TankLobby.toast(msg); }
@@ -48,6 +49,7 @@
     dpr = Math.min(2, window.devicePixelRatio || 1);
     cw = window.innerWidth; ch = window.innerHeight;
     cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+    miniSz = null;
     btnRects = Array.from(document.querySelectorAll('#s-game .pad, #s-game .fire, #s-game .power, #s-game .sp-back, #s-game .aimread, #s-game .fuel, #s-game .hud > *'))
       .filter((e) => e.offsetParent !== null).map((e) => { const r = e.getBoundingClientRect(); return { l: r.left - 8, t: r.top - 8, r: r.right + 8, b: r.bottom + 8 }; });
   }
@@ -80,7 +82,9 @@
       fx: fxLog, booms: [], me: null, tanks: [],
       cam: { x: 0, y: 0, scale: 1, cw, ch }, map: { W: WW, H: WH },
       score: { kills: 0, hits: 0, dealt: 0, ffk: 0 },
-      cam_log: [], camMode: 'self', aim: { a: null, p: null }
+      cam_log: [], camMode: 'self', aim: { a: null, p: null },
+      minimap: { w: 0, h: 0, dpr: 1 },
+      teamStyle: { A: { c: Art.TEAM.A.c, mark: Art.TEAM.A.mark }, B: { c: Art.TEAM.B.c, mark: Art.TEAM.B.mark } }
     };
     $('#s-game').hidden = false;
     $('#result').hidden = true; $('#menu').hidden = true;
@@ -205,7 +209,7 @@
     const bar = $('#spec-bar');
     if (!m.id) { bar.textContent = '관전 중 · 남은 탱크가 없어요'; return; }
     const T = Art.TEAM[m.tm];
-    bar.innerHTML = `관전 중 · <u style="color:${T.c}">${T.mark}${m.tm}</u> <b>${esc(m.n)}</b> · ${KN[m.k] || ''}${m.ai ? ` <span class="tagai">AI ${m.lv === 'normal' ? '보통' : '쉬움'}</span>` : ''}`;
+    bar.innerHTML = `관전 중 · <u class="tm${m.tm}"><span class="tmark ${m.tm}">${T.mark}</span>${m.tm}</u> <b>${esc(m.n)}</b> · ${KN[m.k] || ''}${m.ai ? ` <span class="tagai">AI ${m.lv === 'normal' ? '보통' : '쉬움'}</span>` : ''}`;
     $('#sp-prev').classList.toggle('dim', (m.cnt || 0) <= 1);
     $('#sp-next').classList.toggle('dim', (m.cnt || 0) <= 1);
   }
@@ -353,13 +357,13 @@
           }
           if (killedAlly) {
             const akText = killAllyDmg > 0 ? `아군 격추 -${killAllyDmg}` : '아군 격추';
-            G.banners.push({ text: akText, color: '#FF8A1F', stroke: '#2c0a04', t, dur: 1.5 });
+            G.banners.push({ text: akText, color: Art.FF.c, stroke: Art.FF.stroke, t, dur: 1.5 });
           }
         }
       } else {
         hits.forEach((h) => {
           const ht = G.cur && G.cur[h.id];
-          // 주황 '아군 피격'은 같은 팀이 쏜 탄일 때만 — 적이 우리 편을 맞힌 건 일반 피해(빨강)
+          // 자홍 '아군 피격'은 같은 팀이 쏜 탄일 때만 — 적이 우리 편을 맞힌 건 일반 피해(빨강)
           const ff = isFf(e, h);
           const mate = !ff && !!(myTeam && h.team === myTeam);
           G.nums.push({ id: h.id, dmg: h.dmg, mine: false, ff, ally: ff, mate, x: ht ? ht.x : e.x, y: ht ? ht.y : e.y, t });
@@ -417,7 +421,7 @@
       // 흙다리를 파서 떨어뜨린 추락도 쏜 사람의 격추로 인정 (서버 by) — 내 탄이면 배너
       if (e.cause === 'fall' && e.by && e.by === G.me && e.id !== G.me) {
         const t = performance.now();
-        if (e.ff) G.banners.push({ text: '아군 추락', color: '#FF8A1F', stroke: '#2c0a04', t, dur: 1.5 });
+        if (e.ff) G.banners.push({ text: '아군 추락', color: Art.FF.c, stroke: Art.FF.stroke, t, dur: 1.5 });
         else { SND.SFX.kill(); G.banners.push({ text: '추락 격추!', color: '#FFE27A', stroke: '#2c0a10', t, dur: 1.5 }); }
         if (window.__tankDbg) pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: e.ff ? 'ff_fall_mine' : 'fall_kill_mine', id: e.id, dmg: 0, x: 0, y: 0, own: G.me }, 50);
       }
@@ -474,8 +478,8 @@
       if ((s.cause || (G.dead[s.id] && G.dead[s.id].cause)) === 'fall' && killer && killer !== s.id) {
         deadCause = tmOf(killer) && tmOf(killer) === s.tm ? '추락(아군)' : '격추(추락)';
       }
-      const st = (s.alive ? '생존' : deadCause) + (s.ffk ? ` · <span style="color:#FF8A1F">아군 오사 ${s.ffk}</span>` : '');
-      return `<tr${s.id === G.me ? ' style="color:#FFE27A"' : ''}><td style="color:${T.c}">${T.mark}${s.tm}</td><td>${esc(s.n)}</td><td>${KN[s.k]}</td><td>${s.shots}발</td><td>${s.hits}명중</td><td>${s.dealt}</td><td>${st}</td></tr>`;
+      const st = (s.alive ? '생존' : deadCause) + (s.ffk ? ` · <span style="color:${Art.FF.c}">아군 오사 ${s.ffk}</span>` : '');
+      return `<tr${s.id === G.me ? ' style="color:#FFE27A"' : ''}><td><span class="tmark ${s.tm}">${T.mark}</span>${s.tm}</td><td>${esc(s.n)}</td><td>${KN[s.k]}</td><td>${s.shots}발</td><td>${s.hits}명중</td><td>${s.dealt}</td><td>${st}</td></tr>`;
     }).join('');
     const box = $('#result');
     box.innerHTML = `<h2>${title}</h2><div class="sub">${by} · 팀 A ${m.alive.A}대 / 팀 B ${m.alive.B}대 남음</div>
@@ -950,6 +954,7 @@
     const w = Math.min(a.r, b.r) - Math.max(a.l, b.l), h = Math.min(a.b, b.b) - Math.max(a.t, b.t);
     return w > 0 && h > 0 ? w * h : 0;
   }
+  const TAG_MARK_W = 14; // 이름표 앞 팀 모양 표지 자리(px)
   function drawLabels(c, list, now, shells) {
     c.textAlign = 'center'; c.textBaseline = 'alphabetic';
     const placed = [];
@@ -1009,12 +1014,16 @@
 
       // 폰트 크기는 절대 16px 미만 금지
       c.font = mine ? 'bold 16px Jua, sans-serif' : '16px Jua, sans-serif';
-      const maxW = crowded && !mine ? 64 : 92;
+      // 표지 자리(14px)만큼 이름 칸을 줄여 이름표 전체 폭은 예전과 비슷하게
+      const maxW = crowded && !mine ? 54 : 84;
       const hw = crowded && !mine ? 36 : 44;
       const name = ellipsize(c, m.n, maxW);
-      const tw = Math.min(maxW + 10, c.measureText(name).width + 8);
+      // 이름표 = [팀 모양 표지 ●/▲] + 이름, 팀색 테두리 알약 (TAG_MARK_W: 표지 자리)
+      const nameW = Math.min(maxW + 2, c.measureText(name).width);
+      const tw = nameW + TAG_MARK_W + 14;
       let x = it.x, y = it.y;
-      const makeBox = () => ({ l: x - Math.max(tw, hw) / 2, t: y - 30, r: x + Math.max(tw, hw) / 2, b: y + 6 });
+      const boxHalf = Math.max(tw + 6, hw) / 2; // 내 이름표 흰 바깥선(2.5px)까지 상자에 포함
+      const makeBox = () => ({ l: x - boxHalf, t: y - 30, r: x + boxHalf, b: y + 6 });
 
       let alpha = mine ? 1.0 : (crowded ? 0.55 : 0.82);
 
@@ -1034,27 +1043,17 @@
         }
 
         if (hitCdn || hitSpec || hitShell || hitBtn || hitPlaced) {
-          // 팀색 점(지름 9px)으로 대체 — 만약 점마저 겹치거나 버튼/카운트다운/관전막대에 가리면 숨김
+          // 팀 모양 점(A 원·B 삼각, 흰 테두리)으로 대체 — 만약 점마저 겹치거나 버튼/카운트다운/관전막대에 가리면 숨김
           const dx = it.x, dy = it.y - 6;
-          const dotBox = { l: dx - 5.5, t: dy - 5.5, r: dx + 5.5, b: dy + 5.5 };
+          const dotBox = { l: dx - 7, t: dy - 7, r: dx + 7, b: dy + 7 };
           const dotBlocked = (cdnBox && overlapArea(cdnBox, dotBox) > 0) || (specBox && overlapArea(specBox, dotBox) > 0) || placed.some((p) => overlapArea(p, dotBox) > 0) || btnRects.some((br) => overlapArea(br, dotBox) > 0);
           if (dotBlocked) {
             tags.push({ name: m.n, mode: 'hidden', x: Math.round(dx), y: Math.round(dy), w: 0, h: 0 });
             continue;
           }
-          c.save();
-          c.globalAlpha = 0.88;
-          c.fillStyle = teamCol;
-          c.strokeStyle = 'rgba(20,10,30,.9)';
-          c.lineWidth = 2;
-          if (m.tm === 'A') {
-            c.beginPath(); c.arc(dx, dy, 4.5, 0, Math.PI * 2); c.fill(); c.stroke();
-          } else {
-            c.beginPath(); c.moveTo(dx, dy - 5); c.lineTo(dx + 5, dy + 4); c.lineTo(dx - 5, dy + 4); c.closePath(); c.fill(); c.stroke();
-          }
-          c.restore();
+          Art.teamMark(c, dx, dy, m.tm, 4.6, 0.92);
           placed.push(dotBox);
-          tags.push({ name: m.n, mode: 'dot', x: Math.round(dotBox.l), y: Math.round(dotBox.t), w: 11, h: 11 });
+          tags.push({ name: m.n, mode: 'dot', x: Math.round(dotBox.l), y: Math.round(dotBox.t), w: 14, h: 14 });
           continue;
         }
       } else {
@@ -1064,7 +1063,7 @@
           tags.push({ name: m.n, mode: 'hidden', x: Math.round(x), y: Math.round(y), w: 0, h: 0 });
           continue;
         }
-        const boxW = Math.max(tw, hw);
+        const boxW = boxHalf * 2;
         const makeAt = (cx, cy) => ({ l: cx - boxW / 2, t: cy - 30, r: cx + boxW / 2, b: cy + 6 });
         const hitsSpec = (bx) => !!(specBox && overlapArea(specBox, bx) > 0);
         const hitsCdn = (bx) => !!(cdnBox && overlapArea(cdnBox, bx) > 0);
@@ -1113,15 +1112,24 @@
       const r = Math.max(0, t.hp / maxHp);
       c.fillStyle = r > 0.5 ? '#7CE36A' : r > 0.25 ? '#FFD23F' : '#ff5a4a'; c.fillRect(x - hw / 2, y, hw * r, 5);
       if (mine) { c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.strokeRect(x - hw / 2 - 1, y - 1, hw + 2, 7); }
-      // 닉네임 (항상 16px 이상, 내 이름만 불투명 + 두꺼운 외곽선)
-      const ty = y - 6;
+      // 이름표 알약: 어두운 바탕(글자 가독성) + 팀색 테두리(내 것은 더 두껍게 + 흰 바깥선)
+      const pl = x - tw / 2, pt = y - 27, ph = 22;
+      Art.rr(c, pl, pt, tw, ph, 11);
+      c.fillStyle = mine ? 'rgba(18,8,28,.9)' : 'rgba(18,8,28,.74)';
+      c.fill();
+      if (mine) { c.strokeStyle = '#fff'; c.lineWidth = 5; c.stroke(); }
+      c.strokeStyle = teamCol; c.lineWidth = mine ? 3 : 2.2;
+      c.stroke();
+      // 팀 모양 표지 (A ● · B ▲, 흰 테두리)
+      Art.teamMark(c, pl + 5 + TAG_MARK_W / 2, pt + ph / 2 + (m.tm === 'B' ? 0.6 : 0), m.tm, 4.4);
+      // 닉네임 (항상 16px 이상, 내 이름만 불투명·굵게 + 두꺼운 외곽선)
+      const nx = pl + 5 + TAG_MARK_W + 4 + nameW / 2, ny = pt + 17; // 좌 5 · 표지 14 · 틈 4 · 이름 · 우 5
       c.lineWidth = mine ? 4.2 : 2.8;
+      c.lineJoin = 'round';
       c.strokeStyle = mine ? 'rgba(18,8,28,.96)' : 'rgba(18,8,28,.72)';
-      c.strokeText(name, x, ty - 3);
+      c.strokeText(name, nx, ny);
       c.fillStyle = mine ? '#fff' : '#f4ebf7';
-      c.fillText(name, x, ty - 3);
-      // 팀 색 언더라인
-      c.fillStyle = teamCol; c.fillRect(x - tw / 2 + 3, ty, tw - 6, 2);
+      c.fillText(name, nx, ny);
       c.restore();
     }
     if (window.__tankDbg) window.__tankDbg.tags = tags;
@@ -1401,9 +1409,9 @@
         c.globalAlpha = 1 - Math.max(0, age - 0.8) / 0.4;
         c.lineJoin = 'round';
         c.lineWidth = 6.5;
-        c.strokeStyle = n.ff ? '#331200' : '#2b0912';
+        c.strokeStyle = n.ff ? Art.FF.stroke : '#2b0912';
         c.strokeText(label, 0, 0);
-        c.fillStyle = n.ff ? '#FF8A1F' : '#FFE27A';
+        c.fillStyle = n.ff ? Art.FF.c : '#FFE27A';
         c.fillText(label, 0, 0);
         c.restore();
         pushFxLabel(fxCtx, label, box);
@@ -1419,9 +1427,9 @@
         c.globalAlpha = 1 - Math.max(0, age - 0.65) / 0.45;
         c.lineJoin = 'round';
         c.lineWidth = 4;
-        c.strokeStyle = n.ff ? '#331200' : '#2d0a12';
+        c.strokeStyle = n.ff ? Art.FF.stroke : '#2d0a12';
         c.strokeText(label, cx, cy);
-        c.fillStyle = n.ff ? '#FF8A1F' : (n.mate ? '#ff6a6a' : '#fff3d6');
+        c.fillStyle = n.ff ? Art.FF.c : (n.mate ? '#ff6a6a' : '#fff3d6');
         c.fillText(label, cx, cy);
         c.restore();
         pushFxLabel(fxCtx, label, box);
@@ -1469,7 +1477,7 @@
       const ax0 = Math.max(pad, Math.min(cw - pad, sx));
       const ay0 = Math.max(top, Math.min(ch - pad, sy));
       const ang = Math.atan2(sy - ay0, sx - ax0);
-      const col = oh.ff ? '#FF8A1F' : (oh.mine ? '#FFD23F' : (oh.anyFf ? '#FF8A1F' : (oh.anyMate ? '#ff6a6a' : '#fff3d6')));
+      const col = oh.ff ? Art.FF.c : (oh.mine ? '#FFD23F' : (oh.anyFf ? Art.FF.c : (oh.anyMate ? '#ff6a6a' : '#fff3d6')));
       const alpha = 1 - Math.max(0, age - 0.85) / 0.35;
       c.save();
       c.globalAlpha = alpha;
@@ -1552,24 +1560,73 @@
     c.beginPath(); c.moveTo(12, 0); c.lineTo(-8, -9); c.lineTo(-4, 0); c.lineTo(-8, 9); c.closePath(); c.fill(); c.stroke();
     c.restore();
   }
-  function drawArrows(c, shells, list) {
+  // 화면 밖 화살표 자리: 화면 가장자리 안쪽 둘레를 따라 원래 자리에서 가까운 순으로 훑어
+  // 조작 버튼·HUD(btnRects)와 이미 놓은 화살표를 피한 첫 자리. 다 막히면 버튼만 피한 자리, 그것도 없으면 원래 자리.
+  function placeEdgeArrow(x, y, withMark, placed) {
     const pad = 22, top = 56;
-    const clampPt = (x, y) => [Math.max(pad, Math.min(cw - pad, x)), Math.max(top, Math.min(ch - pad, y))];
+    const L = pad, R = Math.max(pad + 1, cw - pad), T = top, B = Math.max(top + 1, ch - pad);
+    const W = R - L, H = B - T, P = 2 * (W + H);
+    const ax0 = Math.max(L, Math.min(R, x)), ay0 = Math.max(T, Math.min(B, y));
+    // 둘레 위치 s (왼쪽 위에서 시계 방향)
+    const dl = ax0 - L, dr = R - ax0, dt = ay0 - T, db = B - ay0, dm = Math.min(dl, dr, dt, db);
+    const s0 = dm === dt ? dl : dm === dr ? W + dt : dm === db ? W + H + dr : 2 * W + H + db;
+    const at = (s) => {
+      s = ((s % P) + P) % P;
+      if (s < W) return [L + s, T];
+      if (s < W + H) return [R, T + s - W];
+      if (s < 2 * W + H) return [R - (s - W - H), B];
+      return [L, B - (s - 2 * W - H)];
+    };
+    // 화살표(반경 약 13) + 안쪽 17px 팀 표지(반경 약 7)를 덮는 상자
+    const boxOf = (ax, ay) => {
+      const ang = Math.atan2(y - ay, x - ax);
+      const b = { l: ax - 13, t: ay - 13, r: ax + 13, b: ay + 13 };
+      if (withMark) {
+        const mx = ax - Math.cos(ang) * 17, my = ay - Math.sin(ang) * 17;
+        b.l = Math.min(b.l, mx - 7); b.t = Math.min(b.t, my - 7); b.r = Math.max(b.r, mx + 7); b.b = Math.max(b.b, my + 7);
+      }
+      return b;
+    };
+    const hitBtn = (b) => b.t < 46 || btnRects.some((r) => overlapArea(r, b) > 0);
+    const hitPlaced = (b) => placed.some((r) => overlapArea(r, b) > 0);
+    let fallback = null;
+    const step = 6, maxD = P / 2;
+    for (let d = 0; d <= maxD; d += step) {
+      for (const sg of d ? [1, -1] : [1]) {
+        const [ax, ay] = at(s0 + sg * d);
+        const b = boxOf(ax, ay);
+        if (hitBtn(b)) continue;
+        if (!hitPlaced(b)) return { ax, ay, box: b };
+        if (!fallback) fallback = { ax, ay, box: b };
+      }
+    }
+    return fallback || { ax: ax0, ay: ay0, box: boxOf(ax0, ay0) };
+  }
+  function drawArrows(c, shells, list) {
+    const placed = [];
     for (const sh of shells) {
       const [x, y] = toScreen(sh.x, sh.y);
       if (x >= 0 && x <= cw && y >= 46 && y <= ch) continue;
-      const [ax, ay] = clampPt(x, y);
-      arrowAt(c, ax, ay, Math.atan2(y - ay, x - ax), '#fff');
+      const p = placeEdgeArrow(x, y, false, placed);
+      placed.push(p.box);
+      arrowAt(c, p.ax, p.ay, Math.atan2(y - p.ay, x - p.ax), '#fff');
     }
     // 화면 밖 탱크 (팀 색)
     for (const t of list) {
       if (t.st === 2) continue;
       const [x, y] = toScreen(t.x, t.y - 20);
       if (x >= 0 && x <= cw && y >= 46 && y <= ch) continue;
-      const [ax, ay] = clampPt(x, y);
+      const p = placeEdgeArrow(x, y, true, placed);
+      placed.push(p.box);
+      const ax = p.ax, ay = p.ay;
       const m = G.meta[t.id];
-      c.save(); c.globalAlpha = 0.85; arrowAt(c, ax, ay, Math.atan2(y - ay, x - ax), Art.TEAM[m.tm].c); c.restore();
+      const ang = Math.atan2(y - ay, x - ax);
+      c.save(); c.globalAlpha = 0.85; arrowAt(c, ax, ay, ang, Art.TEAM[m.tm].c); c.restore();
+      // 화살표 안쪽에 팀 모양 표지(●/▲) — 색을 못 가려도 어느 팀인지
+      Art.teamMark(c, ax - Math.cos(ang) * 17, ay - Math.sin(ang) * 17, m.tm, 3.6, 0.9);
     }
+    // QA 읽기 전용: 이번 프레임 화면 밖 화살표 상자
+    if (window.__tankDbg) window.__tankDbg.arrows = placed.map((b) => ({ l: Math.round(b.l), t: Math.round(b.t), r: Math.round(b.r), b: Math.round(b.b) }));
   }
   function drawEdgeWarn(c, me, now) {
     if (!me || me.st !== 0 || G.spec) return;
@@ -1696,34 +1753,74 @@
     const hasOwnerShell = !!(ownerId && G.lastShells && G.lastShells.some((sh) => G.shellOwn[sh.sid] === ownerId));
     if (now - G.minimapT > (hasOwnerShell ? 60 : 200)) { G.minimapT = now; minimap(now); }
   }
+  // 미니맵 백버퍼를 CSS 크기 × devicePixelRatio(최대 3)로 맞춤 — 그리기 좌표는 CSS px 기준
+  function miniSize(mc) {
+    if (miniSz && miniSz.el === mc) return miniSz;
+    const w = mc.clientWidth || 120, h = mc.clientHeight || 32;
+    const d = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+    const bw = Math.round(w * d), bh = Math.round(h * d);
+    if (mc.width !== bw || mc.height !== bh) { mc.width = bw; mc.height = bh; }
+    // 아직 배치 전(clientWidth 0)이면 캐시하지 않고 다음 번에 다시 잼
+    miniSz = mc.clientWidth ? { el: mc, w, h, d } : null;
+    if (window.__tankDbg) window.__tankDbg.minimap = { w, h, dpr: d };
+    return { el: mc, w, h, d };
+  }
+  function miniStar(c, x, y, r) {
+    c.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r;
+      if (i) c.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); else c.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+    }
+    c.closePath();
+  }
   function minimap(now) {
     now = now || performance.now();
     const mc = $('#h-mini'); const c = mc.getContext('2d');
-    const w = mc.width, h = mc.height, T = G.T;
+    const M = miniSize(mc);
+    const w = M.w, h = M.h, T = G.T;
+    const k = h / 32; // 예전 크기(120x32) 대비 배율 — 포탄 점·착탄 표지 비율 유지
+    c.setTransform(M.d, 0, 0, M.d, 0, 0);
     c.clearRect(0, 0, w, h);
+    c.imageSmoothingEnabled = true;
     c.drawImage(T.cv, 0, 0, WW, WH, 0, 0, w, h);
+    // 탱크 점: A 원 · B 삼각 (팀색 + 흰 테두리 + 잉크선, 지름 약 5~6px) · 내 탱크/관전 대상은 흰 링
+    const dotR = Math.max(2.5, 2.2 * k);
+    let meDot = null;
     for (const id in G.cur) {
       const t = G.cur[id], m = G.meta[id]; if (!m || t.st === 2) continue;
-      const x = t.x / WW * w, y = Math.max(2, Math.min(h - 2, t.y / WH * h - 1));
-      c.fillStyle = Art.TEAM[m.tm].c; c.beginPath(); c.arc(x, y, 2.5, 0, Math.PI * 2); c.fill();
-      if (id === G.me || id === G.specId) { c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.stroke(); }
+      const x = t.x / WW * w, y = Math.max(dotR + 1, Math.min(h - dotR - 1, t.y / WH * h - 1));
+      if (id === G.me || id === G.specId) { meDot = [x, y, m.tm]; continue; }
+      Art.teamMark(c, x, y, m.tm, dotR);
     }
-    // 착탄 지점 표지 (3초 유지: 명중 빨강 · 빗나감 회색/흰 X · 아군 피격 주황)
+    if (meDot) {
+      Art.teamMark(c, meDot[0], meDot[1], meDot[2], dotR);
+      c.strokeStyle = '#fff'; c.lineWidth = 1.6;
+      c.beginPath(); c.arc(meDot[0], meDot[1], dotR + 3.2, 0, Math.PI * 2); c.stroke();
+    }
+    // 착탄 지점 표지 (3초 유지) — 팀 점(원·삼각)과 헷갈리지 않게: 빗나감 흰 X · 명중 빨강 별 · 아군 피격 자홍 네모
     G.miniMarks = G.miniMarks.filter((mk) => {
       const age = (now - mk.t) / 1000;
       if (age > 3.0) return false;
-      const mx = Math.max(3, Math.min(w - 3, mk.x / WW * w));
-      const my = Math.max(3, Math.min(h - 3, mk.y / WH * h));
+      const mx = Math.max(3 * k, Math.min(w - 3 * k, mk.x / WW * w));
+      const my = Math.max(3 * k, Math.min(h - 3 * k, mk.y / WH * h));
       c.save();
       c.globalAlpha = 1 - Math.max(0, age - 2.4) / 0.6;
+      c.lineJoin = 'round'; c.lineCap = 'round';
       if (mk.kind === 'miss') {
-        c.strokeStyle = '#e8ecf5'; c.lineWidth = 1.6; c.lineCap = 'round';
-        c.beginPath(); c.moveTo(mx - 2.6, my - 2.6); c.lineTo(mx + 2.6, my + 2.6);
-        c.moveTo(mx + 2.6, my - 2.6); c.lineTo(mx - 2.6, my + 2.6); c.stroke();
+        const q = 2.6 * k;
+        c.beginPath(); c.moveTo(mx - q, my - q); c.lineTo(mx + q, my + q);
+        c.moveTo(mx + q, my - q); c.lineTo(mx - q, my + q);
+        c.strokeStyle = 'rgba(20,10,30,.85)'; c.lineWidth = 3.2 * k; c.stroke();
+        c.strokeStyle = '#e8ecf5'; c.lineWidth = 1.6 * k; c.stroke();
+      } else if (mk.kind === 'ff') {
+        const q = 2.6 * k;
+        c.beginPath(); c.rect(mx - q, my - q, q * 2, q * 2);
+        c.fillStyle = Art.FF.c; c.fill();
+        c.strokeStyle = Art.FF.stroke; c.lineWidth = 1.2 * k; c.stroke();
       } else {
-        c.fillStyle = mk.kind === 'ff' ? '#FF8A1F' : '#ff3838';
-        c.strokeStyle = '#fff'; c.lineWidth = 1;
-        c.beginPath(); c.arc(mx, my, 3.0, 0, Math.PI * 2); c.fill(); c.stroke();
+        miniStar(c, mx, my, 3.6 * k);
+        c.fillStyle = '#ff3838'; c.fill();
+        c.strokeStyle = '#fff'; c.lineWidth = 1 * k; c.stroke();
       }
       c.restore();
       return true;
@@ -1733,10 +1830,10 @@
     if (ownerId && G.lastShells) {
       for (const sh of G.lastShells) {
         if (G.shellOwn[sh.sid] !== ownerId) continue;
-        const sx = sh.x / WW * w, sy = Math.max(2, Math.min(h - 2, sh.y / WH * h));
+        const sx = sh.x / WW * w, sy = Math.max(2 * k, Math.min(h - 2 * k, sh.y / WH * h));
         c.fillStyle = '#fff9b8';
-        c.beginPath(); c.arc(sx, sy, 2.4, 0, Math.PI * 2); c.fill();
-        c.strokeStyle = '#ffaa22'; c.lineWidth = 1; c.stroke();
+        c.beginPath(); c.arc(sx, sy, 2.4 * k, 0, Math.PI * 2); c.fill();
+        c.strokeStyle = '#ffaa22'; c.lineWidth = 1 * k; c.stroke();
       }
     }
     const s = scale();
