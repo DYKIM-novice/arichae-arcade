@@ -10,6 +10,32 @@
   const KN = { mongdol: '몽돌', mangru: '망루' };
   const I = { id: 0, x: 1, y: 2, fa: 3, bt: 4, a: 5, p: 6, hp: 7, fu: 8, cd: 9, inv: 10, f: 11, st: 12, mv: 13 };
 
+  const IS_MOBILE = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const MAX_PARTS = IS_MOBILE ? 160 : 300;
+  const PART_POOL = [];
+  for (let i = 0; i < MAX_PARTS; i++) {
+    PART_POOL.push({ active: false, seq: 0, kind: '', x: 0, y: 0, vx: 0, vy: 0, t: 0, life: 0, s: 0, s2: 0, rot: 0, vrot: 0, c: '', c2: '', grav: 0, bounced: false, layer: 0 });
+  }
+  let partSeq = 0;
+  function resetPool() {
+    for (let i = 0; i < MAX_PARTS; i++) PART_POOL[i].active = false;
+    partSeq = 0;
+  }
+  function spawnPart(kind, x, y, vx, vy, t, life, s, s2, c, c2, rot, vrot, grav, layer) {
+    let slot = null;
+    let oldest = null;
+    for (let i = 0; i < MAX_PARTS; i++) {
+      const p = PART_POOL[i];
+      if (!p.active) { slot = p; break; }
+      if (!oldest || p.seq < oldest.seq) oldest = p;
+    }
+    const p = slot || oldest;
+    p.active = true; p.seq = ++partSeq; p.kind = kind;
+    p.x = x; p.y = y; p.vx = vx; p.vy = vy; p.t = t; p.life = life;
+    p.s = s; p.s2 = s2; p.c = c; p.c2 = c2; p.rot = rot; p.vrot = vrot;
+    p.grav = grav; p.bounced = false; p.layer = layer;
+  }
+
   let G = null;               // 현재 판 상태
   let cv, ctx, cw = 0, ch = 0, dpr = 1, raf = 0, lastT = 0;
   let btnRects = [];
@@ -35,16 +61,17 @@
     m.tanks.forEach((t) => { meta[t.id] = t; });
     const me = meta[m.me] ? m.me : null;
     const wn = m.wn || m.next || null;
+    resetPool();
     G = {
       T, geo: m.geo || null, meta, me, side: m.side, snaps: [], events: [], est: null, renderK: m.k || 0, appliedK: m.k || 0,
       wind: m.wind, wn, lastWindAt: null, windBlink: false, rc: m.rc != null ? m.rc : -(m.cdn || 0),
       tl: m.endsIn, cdn: m.cdn, startCdn: m.cdn, startedAt: performance.now(),
       aim: { a: null, p: null, sentA: null, sentP: null, sentAt: 0, edge: 0, edgeSide: 0 },
       input: 0, cam: { x: 0, y: 0, ok: false }, zoom: false, spec: !me || !!m.spec, specId: null, specInfo: null, specAsked: false,
-      dead: {}, deadAt: 0, trails: {}, fx: [], parts: [], nums: [], phase: {}, recoil: {}, lastShotP: null,
+      dead: {}, deadAt: 0, trails: {}, faceAnim: {}, nums: [], phase: {}, recoil: {}, lastShotP: null,
       over: null, shake: 0, minimapT: 0, goT: 0, moving: false
     };
-    window.__tankDbg = { wind: m.wind, windNextAt: wn ? wn.at : null, windChanges: [], blinkStarts: [] };
+    window.__tankDbg = { wind: m.wind, windNextAt: wn ? wn.at : null, windChanges: [], blinkStarts: [], tags: [] };
     $('#s-game').hidden = false;
     $('#result').hidden = true; $('#menu').hidden = true;
     setSpecUI(G.spec);
@@ -102,26 +129,55 @@
   function applyEvent(e) {
     const T = G.T;
     if (e.t === 'tkshot') {
-      G.recoil[e.id] = performance.now();
-      G.fx.push({ kind: 'flash', x: e.x, y: e.y, t: performance.now(), r: 14 });
+      const t = performance.now();
+      G.recoil[e.id] = t;
+      spawnPart('flash', e.x, e.y, 0, 0, t, 0.12, 14, 24, '#ffe68c', '#ff9d2e', 0, 0, 0, 1);
+      for (let i = 0; i < 4; i++) {
+        const a = Math.random() * Math.PI * 2, v = 60 + Math.random() * 140;
+        spawnPart('spark', e.x, e.y, Math.cos(a) * v, Math.sin(a) * v - 20, t, 0.18 + Math.random() * 0.14, 2.2, 0.5, '#fff3a8', '#ff8820', 0, 0, 220, 1);
+      }
+      for (let i = 0; i < 2; i++) {
+        spawnPart('smoke', e.x + (Math.random() - 0.5) * 8, e.y + (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 18, -18 - Math.random() * 16, t, 0.45 + Math.random() * 0.25, 6, 14, 'rgba(210,195,185,.45)', '', 0, 0, -25, 1);
+      }
       if (e.id !== G.me) SND.SFX.fire();
       if (e.id === G.me) G.lastShotP = Math.round(G.aim.p);
     } else if (e.t === 'tkboom') {
+      const nearTop = !T.solid(e.x, e.y - 10);
       T.carve(e.x, e.y, e.cr || e.r);
       G.minimapT = 0;
       const t = performance.now();
-      G.fx.push({ kind: 'boom', x: e.x, y: e.y, r: e.r, t });
-      for (let i = 0; i < 18; i++) {
-        const a = Math.random() * Math.PI * 2, v = 120 + Math.random() * 260;
-        G.parts.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 200, t, life: 0.7 + Math.random() * 0.6, c: Math.random() < 0.5 ? '#6e4129' : '#a8683a', s: 3 + Math.random() * 5 });
+      const er = e.r || 36;
+      // 폭발: 섬광 코어 + 섬광 링 + 불꽃 구 + 연기 덩어리 + 불티
+      spawnPart('flash', e.x, e.y, 0, 0, t, 0.16, er * 0.55, er * 1.15, '#fffce0', '#ffaa38', 0, 0, 0, 1);
+      spawnPart('ring', e.x, e.y, 0, 0, t, 0.30, er * 0.45, er * 1.95, '#fff7cc', '#ff8e30', 0, 0, 0, 1);
+      for (let i = 0; i < 4; i++) {
+        const ang = Math.random() * Math.PI * 2, dist = Math.random() * er * 0.35;
+        spawnPart('fire', e.x + Math.cos(ang) * dist, e.y + Math.sin(ang) * dist, (Math.random() - 0.5) * 45, -25 - Math.random() * 45, t + i * 20, 0.28 + Math.random() * 0.16, er * 0.35, er * 0.85, '#fff09c', '#ff6418', 0, 0, -40, 1);
       }
-      for (let i = 0; i < 6; i++) G.fx.push({ kind: 'smoke', x: e.x + (Math.random() - 0.5) * e.r, y: e.y + (Math.random() - 0.5) * e.r * 0.6, t: t + i * 40, r: 10 + Math.random() * 14 });
+      for (let i = 0; i < 6; i++) {
+        const ang = Math.random() * Math.PI * 2, dist = Math.random() * er * 0.55;
+        spawnPart('smoke', e.x + Math.cos(ang) * dist, e.y + Math.sin(ang) * dist * 0.65, (Math.random() - 0.5) * 28, -28 - Math.random() * 28, t + i * 35, 0.8 + Math.random() * 0.45, 10 + Math.random() * 8, 22 + Math.random() * 14, i < 2 ? '#785046' : '#52424a', '', 0, 0, -30, 1);
+      }
+      for (let i = 0; i < 10; i++) {
+        const ang = Math.random() * Math.PI * 2, spd = 150 + Math.random() * 260;
+        spawnPart('spark', e.x, e.y, Math.cos(ang) * spd, Math.sin(ang) * spd - 90, t, 0.32 + Math.random() * 0.32, 2.8, 0.6, '#fff296', '#ff6b1a', 0, 0, 420, 1);
+      }
+      // 흙 파편 (지형 색 · 중력 · 회전 · 지면 튕김 1회)
+      const soilCols = ['#5c3320', '#7a452a', '#3f2115', '#68473f'];
+      for (let i = 0; i < 14; i++) {
+        const ang = -Math.PI * (0.1 + Math.random() * 0.8), spd = 110 + Math.random() * 250;
+        const col = (nearTop && i < 3) ? '#6aa628' : soilCols[(Math.random() * soilCols.length) | 0];
+        spawnPart('soil', e.x + (Math.random() - 0.5) * 12, e.y - 2, Math.cos(ang) * spd, Math.sin(ang) * spd - 60, t, 0.85 + Math.random() * 0.65, 3.5 + Math.random() * 4.5, 0, col, '#28130b', Math.random() * 6.28, (Math.random() - 0.5) * 14, 880, 0);
+      }
       const near = nearFactor(e.x, e.y);
       SND.SFX.boom(near);
-      G.shake = Math.max(G.shake, near * (e.r / 44) * 8);
+      // 거리 감쇠된 화면 흔들림
+      const distCam = G.cam.ok ? Math.hypot(e.x - G.cam.x, e.y - G.cam.y) : 600;
+      const shakeAtten = Math.max(0, 1 - distCam / 1150);
+      G.shake = Math.max(G.shake, shakeAtten * shakeAtten * (er / 44) * 11);
       e.hits.forEach((h) => {
         G.nums.push({ id: h.id, dmg: h.dmg, t });
-        if (h.id === G.me) { SND.SFX.hit(); try { navigator.vibrate && navigator.vibrate(40); } catch (er) { /* 무시 */ } }
+        if (h.id === G.me) { SND.SFX.hit(); try { navigator.vibrate && navigator.vibrate(40); } catch (er2) { /* 무시 */ } }
       });
       if (e.hits.length && !e.hits.some((h) => h.id === G.me)) SND.SFX.hit();
       delete G.trails[e.sid];
@@ -419,15 +475,16 @@
     for (const t of list) drawOneTank(c, t, now, dt);
     if (me && me.mv && !G.spec) anyMoving = true;
     if (anyMoving !== G.moving) { G.moving = anyMoving; SND.engine(anyMoving); }
-    // 입자
-    drawParticles(c, now, dt);
+    // 입자 물리 1패스 갱신 + 바닥 레이어 입자(흙 파편 · 포탄 연기 점)
+    stepPool(now, dt);
+    drawPoolLayer(c, now, 0);
     // 화면 좌표 레이어
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawLabels(c, list, now, cur.shells);
-    // 포탄 (닉네임 위)
+    // 포탄 (닉네임 위) + 폭발 이펙트 레이어
     c.setTransform(dpr * s, 0, 0, dpr * s, dpr * ox, dpr * oy);
-    drawShells(c, cur.shells, s);
-    drawFx(c, now);
+    drawShells(c, cur.shells, s, now);
+    drawPoolLayer(c, now, 1);
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawNums(c, now);
     if (me && me.st !== 2 && canControl()) drawArc(c, me, now);
@@ -454,10 +511,30 @@
     }
     if (t.inv > 0) alpha *= 0.55 + 0.35 * Math.sin(now / 70);
     const rc = G.recoil[t.id] ? Math.max(0, 1 - (now - G.recoil[t.id]) / 180) * 5 : 0;
+    // 표정 전환 & 눈 깜빡임 보간
+    const targetF = t.st === 2 ? 2 : t.f;
+    let fa = G.faceAnim[t.id];
+    if (!fa) {
+      fa = { cur: targetF, prev: targetF, t: now, nextBlink: now + 1800 + Math.random() * 2800, blinkEnd: 0 };
+      G.faceAnim[t.id] = fa;
+    } else if (fa.cur !== targetF) {
+      fa.prev = fa.cur; fa.cur = targetF; fa.t = now;
+    }
+    const fLerp = Math.min(1, (now - fa.t) / 160);
+    if (fa.cur === 0 && fLerp >= 1 && now >= fa.nextBlink) {
+      fa.blinkEnd = now + 140;
+      fa.nextBlink = now + 2600 + Math.random() * 3400;
+    }
+    const blink = now < fa.blinkEnd;
     // 그림자
     c.save(); c.globalAlpha = 0.25 * alpha; c.fillStyle = '#2a1020';
     c.beginPath(); c.ellipse(t.x, t.y + 1, Art.KIND[m.k].bw / 2 + 2, 4, 0, 0, Math.PI * 2); c.fill(); c.restore();
-    Art.drawTank(c, t.x, t.y, { kind: m.k, face: t.fa, bt: t.bt, a: t.a, f: t.st === 2 ? 2 : t.f, phase: ph.v, team: m.tm, alpha, recoil: rc, shield: t.inv > 0 && t.st !== 2 });
+    Art.drawTank(c, t.x, t.y, {
+      kind: m.k, face: t.fa, bt: t.bt, a: t.a,
+      f: fa.cur, fPrev: fa.prev, fLerp, blink,
+      phase: ph.v, team: m.tm, alpha, recoil: rc, shield: t.inv > 0 && t.st !== 2
+    });
+    void dt;
   }
 
   function ellipsize(c, text, maxW) {
@@ -471,131 +548,259 @@
     return w > 0 && h > 0 ? w * h : 0;
   }
   function drawLabels(c, list, now, shells) {
-    c.font = '16px Jua, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+    c.textAlign = 'center'; c.textBaseline = 'alphabetic';
     const placed = [];
-    const shPts = (shells || []).map((sh) => toScreen(sh.x, sh.y));
-    const items = list.filter((t) => t.st !== 2 && t.y < WH + 100).map((t) => {
+    const tags = [];
+    const foc = focusTank();
+    const refX = foc ? foc.x : G.cam.x;
+    const refY = foc ? foc.y : G.cam.y;
+
+    // 포탄 화면 사각형 (겹치면 남의 이름표는 점으로)
+    const shRects = [];
+    if (shells) {
+      for (let i = 0; i < shells.length; i++) {
+        const [sx, sy] = toScreen(shells[i].x, shells[i].y);
+        shRects.push({ l: sx - 20, t: sy - 20, r: sx + 20, b: sy + 20 });
+      }
+    }
+
+    const items = [];
+    for (let i = 0; i < list.length; i++) {
+      const t = list[i];
+      if (t.st === 2 || t.y >= WH + 100) continue;
       const m = G.meta[t.id], K = Art.KIND[m.k];
       const [x, y] = toScreen(t.x, t.y - K.bh - 28);
       const mine = t.id === G.me || (G.spec && t.id === G.specId);
-      return { t, m, K, x, y, mine };
-    }).sort((a, b) => (b.mine ? 1 : 0) - (a.mine ? 1 : 0) || b.y - a.y);
+      const dist = Math.hypot(t.x - refX, t.y - refY);
+      items.push({ t, m, K, x, y, mine, dist });
+    }
+    // 우선순위: 나(또는 관전 대상) > 가까운 순
+    items.sort((a, b) => (b.mine ? 1 : 0) - (a.mine ? 1 : 0) || a.dist - b.dist);
 
-    for (const it of items) {
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
       const { t, m, mine } = it;
       const teamCol = Art.TEAM[m.tm].c;
-      const nearOthers = !mine && items.some((o) => o !== it && Math.hypot(o.x - it.x, o.y - it.y) < 110);
-      const maxW = nearOthers ? 54 : 88;
-      const hw = nearOthers ? 32 : 44;
-      const name = ellipsize(c, m.n, maxW);
-      const tw = Math.min(maxW + 8, c.measureText(name).width + 6);
-      let y = it.y, x = it.x;
-      const box = () => ({ l: x - Math.max(tw, hw) / 2, t: y - 32, r: x + Math.max(tw, hw) / 2, b: y + 4 });
 
-      let alpha = mine ? 0.95 : (nearOthers ? 0.42 : 0.6);
-      // 닉네임끼리 겹치면 위로 1칸(16px) 피해보고, 그래도 겹치면 (남의 것만) 팀 색 점으로 축약
-      if (!mine && placed.some((p) => overlapArea(p, box()) > 0)) y -= 16;
-      const hitLabel = !mine && placed.some((p) => overlapArea(p, box()) > 0);
-      // 포탄이 이름표 위에 지나가면 남의 이름표를 어둡게
-      if (!mine && shPts.some(([sx, sy]) => { const b = box(); return sx >= b.l - 12 && sx <= b.r + 12 && sy >= b.t - 12 && sy <= b.b + 12; })) {
-        alpha = Math.min(alpha, 0.3);
+      // 주변 밀집도: 탱크가 4대 이상 가까이 몰리면 남의 이름은 alpha 0.55
+      let cluster = 0;
+      for (let j = 0; j < items.length; j++) {
+        if (Math.hypot(items[j].x - it.x, items[j].y - it.y) < 170) cluster++;
       }
-      // 버튼 회피
-      let b = box(), area = (b.r - b.l) * (b.b - b.t);
-      let ov = Math.max(0, ...btnRects.map((r) => overlapArea(r, b)));
-      if (ov > 0) {
-        alpha = mine ? 0.6 : Math.min(alpha, 0.3);
-        if (ov > area * 0.35) {
-          y -= 24; b = box();
-          if (b.t < 50 || Math.max(0, ...btnRects.map((r) => overlapArea(r, b))) > area * 0.35) {
-            y += 24; x += (x < cw / 2 ? 1 : -1) * 72; b = box();
-            ov = Math.max(0, ...btnRects.map((r) => overlapArea(r, b)));
+      const crowded = cluster >= 4;
+
+      // 폰트 크기는 절대 16px 미만 금지
+      c.font = mine ? 'bold 16px Jua, sans-serif' : '16px Jua, sans-serif';
+      const maxW = crowded && !mine ? 64 : 92;
+      const hw = crowded && !mine ? 36 : 44;
+      const name = ellipsize(c, m.n, maxW);
+      const tw = Math.min(maxW + 10, c.measureText(name).width + 8);
+      let x = it.x, y = it.y;
+      const makeBox = () => ({ l: x - Math.max(tw, hw) / 2, t: y - 30, r: x + Math.max(tw, hw) / 2, b: y + 6 });
+
+      let alpha = mine ? 1.0 : (crowded ? 0.55 : 0.82);
+
+      if (!mine) {
+        let b = makeBox();
+        const hitShell = shRects.some((sr) => overlapArea(sr, b) > 0);
+        const hitBtn = btnRects.some((br) => overlapArea(br, b) > 0);
+        let hitPlaced = placed.some((p) => overlapArea(p, b) > 0);
+
+        // 다른 이름표와 겹치면 위로 한 번 피해 보고, 그래도 겹치면 점으로
+        if (!hitShell && !hitBtn && hitPlaced) {
+          y -= 18;
+          b = makeBox();
+          hitPlaced = placed.some((p) => overlapArea(p, b) > 0) || shRects.some((sr) => overlapArea(sr, b) > 0) || btnRects.some((br) => overlapArea(br, b) > 0);
+        }
+
+        if (hitShell || hitBtn || hitPlaced) {
+          // 팀색 점(지름 9px)으로 대체 — 만약 점마저 겹치거나 버튼에 가리면 숨김
+          const dx = it.x, dy = it.y - 6;
+          const dotBox = { l: dx - 5.5, t: dy - 5.5, r: dx + 5.5, b: dy + 5.5 };
+          const dotBlocked = placed.some((p) => overlapArea(p, dotBox) > 0) || btnRects.some((br) => overlapArea(br, dotBox) > 0);
+          if (dotBlocked) {
+            tags.push({ name: m.n, mode: 'hidden', x: Math.round(dx), y: Math.round(dy), w: 0, h: 0 });
+            continue;
+          }
+          c.save();
+          c.globalAlpha = 0.88;
+          c.fillStyle = teamCol;
+          c.strokeStyle = 'rgba(20,10,30,.9)';
+          c.lineWidth = 2;
+          if (m.tm === 'A') {
+            c.beginPath(); c.arc(dx, dy, 4.5, 0, Math.PI * 2); c.fill(); c.stroke();
           } else {
-            ov = Math.max(0, ...btnRects.map((r) => overlapArea(r, b)));
+            c.beginPath(); c.moveTo(dx, dy - 5); c.lineTo(dx + 5, dy + 4); c.lineTo(dx - 5, dy + 4); c.closePath(); c.fill(); c.stroke();
+          }
+          c.restore();
+          placed.push(dotBox);
+          tags.push({ name: m.n, mode: 'dot', x: Math.round(dotBox.l), y: Math.round(dotBox.t), w: 11, h: 11 });
+          continue;
+        }
+      } else {
+        // 내(또는 관전 대상) 이름표는 불투명 + 외곽선 유지, 버튼 영역과 심하게 겹칠 때만 살짝 위로 피함
+        let b = makeBox();
+        if (btnRects.some((br) => overlapArea(br, b) > (b.r - b.l) * (b.b - b.t) * 0.35)) {
+          y -= 24;
+          b = makeBox();
+          if (b.t < 48 || btnRects.some((br) => overlapArea(br, b) > (b.r - b.l) * (b.b - b.t) * 0.35)) {
+            y = it.y;
           }
         }
       }
-      const hitBtn = !mine && ov > area * 0.35;
-      if (!mine && (hitLabel || hitBtn)) {
-        // 글자를 16px 미만으로 줄이지 않고 팀 색 점으로 대체 (겹침 방지)
-        const dx = it.x, dy = it.y - 6;
-        c.save(); c.globalAlpha = 0.8;
-        c.fillStyle = teamCol; c.strokeStyle = 'rgba(20,10,30,.85)'; c.lineWidth = 2;
-        if (m.tm === 'A') { c.beginPath(); c.arc(dx, dy, 5, 0, Math.PI * 2); c.fill(); c.stroke(); }
-        else { c.beginPath(); c.moveTo(dx, dy - 6); c.lineTo(dx + 5.5, dy + 4); c.lineTo(dx - 5.5, dy + 4); c.closePath(); c.fill(); c.stroke(); }
-        c.restore();
-        placed.push({ l: dx - 7, t: dy - 7, r: dx + 7, b: dy + 7 });
-        continue;
-      }
 
-      placed.push(box());
+      const finalBox = makeBox();
+      placed.push(finalBox);
+      tags.push({ name: m.n, mode: 'text', x: Math.round(finalBox.l), y: Math.round(finalBox.t), w: Math.round(finalBox.r - finalBox.l), h: Math.round(finalBox.b - finalBox.t) });
+
       c.save(); c.globalAlpha = alpha;
       // 체력바
       const maxHp = Art.STAT[m.k].hp;
-      c.fillStyle = 'rgba(0,0,0,.55)'; c.fillRect(x - hw / 2 - 1, y - 1, hw + 2, 7);
+      c.fillStyle = 'rgba(0,0,0,.58)'; c.fillRect(x - hw / 2 - 1, y - 1, hw + 2, 7);
       const r = Math.max(0, t.hp / maxHp);
       c.fillStyle = r > 0.5 ? '#7CE36A' : r > 0.25 ? '#FFD23F' : '#ff5a4a'; c.fillRect(x - hw / 2, y, hw * r, 5);
       if (mine) { c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.strokeRect(x - hw / 2 - 1, y - 1, hw + 2, 7); }
-      // 닉네임 (항상 16px 이상)
+      // 닉네임 (항상 16px 이상, 내 이름만 불투명 + 두꺼운 외곽선)
       const ty = y - 6;
-      c.lineWidth = mine ? 4 : (nearOthers ? 2.5 : 3);
-      c.strokeStyle = mine ? 'rgba(20,10,30,.95)' : (nearOthers ? 'rgba(14,8,22,.8)' : 'rgba(20,10,30,.55)');
+      c.lineWidth = mine ? 4.2 : 2.8;
+      c.strokeStyle = mine ? 'rgba(18,8,28,.96)' : 'rgba(18,8,28,.72)';
       c.strokeText(name, x, ty - 3);
-      c.fillStyle = mine ? '#fff' : (nearOthers ? '#e2d6e8' : '#fff');
+      c.fillStyle = mine ? '#fff' : '#f4ebf7';
       c.fillText(name, x, ty - 3);
       // 팀 색 언더라인
       c.fillStyle = teamCol; c.fillRect(x - tw / 2 + 3, ty, tw - 6, 2);
       c.restore();
     }
+    if (window.__tankDbg) window.__tankDbg.tags = tags;
     void now;
   }
 
-  function drawShells(c, shells, s) {
-    for (const sh of shells) {
-      const tr = G.trails[sh.sid] || (G.trails[sh.sid] = []);
+  function drawShells(c, shells, s, now) {
+    for (let k = 0; k < shells.length; k++) {
+      const sh = shells[k];
+      let tr = G.trails[sh.sid];
+      if (!tr) { tr = G.trails[sh.sid] = []; }
       const last = tr[tr.length - 1];
-      if (!last || Math.hypot(last[0] - sh.x, last[1] - sh.y) > 6) { tr.push([sh.x, sh.y]); if (tr.length > 14) tr.shift(); }
+      if (!last || Math.hypot(last[0] - sh.x, last[1] - sh.y) > 6) {
+        if (tr.length >= 16) {
+          const reused = tr.shift();
+          reused[0] = sh.x; reused[1] = sh.y;
+          tr.push(reused);
+        } else {
+          tr.push([sh.x, sh.y]);
+        }
+        // 모든 클라에서 보이는 포탄 꼬리 연기 점
+        spawnPart('trail', sh.x + (Math.random() - 0.5) * 3, sh.y + (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 14, -10 - Math.random() * 14, now, 0.42, 3.6, 7.5, 'rgba(255,220,160,.65)', 'rgba(130,115,120,.35)', 0, 0, -18, 0);
+      }
+      const invS = 1 / Math.max(0.5, s);
+      c.lineCap = 'round';
       for (let i = 1; i < tr.length; i++) {
-        c.strokeStyle = `rgba(255,248,220,${(i / tr.length) * 0.7})`; c.lineWidth = (2 + 4 * i / tr.length) / Math.max(0.5, s) * 0.6; c.lineCap = 'round';
+        const ratio = i / tr.length;
+        // 빛나는 바깥 꼬리
+        c.strokeStyle = `rgba(255,176,72,${ratio * 0.45})`;
+        c.lineWidth = (3.5 + 6.5 * ratio) * invS * 0.65;
+        c.beginPath(); c.moveTo(tr[i - 1][0], tr[i - 1][1]); c.lineTo(tr[i][0], tr[i][1]); c.stroke();
+        // 밝은 중심 꼬리
+        c.strokeStyle = `rgba(255,250,225,${ratio * 0.85})`;
+        c.lineWidth = (1.5 + 3.0 * ratio) * invS * 0.6;
         c.beginPath(); c.moveTo(tr[i - 1][0], tr[i - 1][1]); c.lineTo(tr[i][0], tr[i][1]); c.stroke();
       }
-      c.fillStyle = '#2a2433'; c.strokeStyle = '#fff'; c.lineWidth = 1.5;
+      // 포탄 본체 + 빛무리
+      c.fillStyle = 'rgba(255,215,120,.35)';
+      c.beginPath(); c.arc(sh.x, sh.y, 9.5, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#2a2433'; c.strokeStyle = '#fff'; c.lineWidth = 1.6;
       c.beginPath(); c.arc(sh.x, sh.y, 6, 0, Math.PI * 2); c.fill(); c.stroke();
-      c.fillStyle = 'rgba(255,255,255,.7)'; c.beginPath(); c.arc(sh.x - 2, sh.y - 2, 2, 0, Math.PI * 2); c.fill();
+      c.fillStyle = 'rgba(255,255,255,.8)'; c.beginPath(); c.arc(sh.x - 2, sh.y - 2, 2.2, 0, Math.PI * 2); c.fill();
     }
   }
-  function drawFx(c, now) {
-    G.fx = G.fx.filter((f) => {
-      const age = (now - f.t) / 1000;
-      if (age < 0) return true;
-      if (f.kind === 'flash') {
-        if (age > 0.12) return false;
-        c.fillStyle = `rgba(255,230,140,${1 - age / 0.12})`; c.beginPath(); c.arc(f.x, f.y, f.r * (1 + age * 6), 0, Math.PI * 2); c.fill(); return true;
-      }
-      if (f.kind === 'boom') {
-        if (age > 0.45) return false;
-        const k = age / 0.45;
-        c.fillStyle = `rgba(255,${Math.round(220 - 120 * k)},80,${1 - k})`;
-        c.beginPath(); c.arc(f.x, f.y, f.r * (0.6 + 0.8 * k), 0, Math.PI * 2); c.fill();
-        c.fillStyle = `rgba(255,255,230,${Math.max(0, 1 - k * 2.5)})`; c.beginPath(); c.arc(f.x, f.y, f.r * 0.6, 0, Math.PI * 2); c.fill();
-        c.strokeStyle = `rgba(255,255,255,${0.8 * (1 - k)})`; c.lineWidth = 4; c.beginPath(); c.arc(f.x, f.y, f.r * (0.9 + 1.2 * k), 0, Math.PI * 2); c.stroke();
-        return true;
-      }
-      if (f.kind === 'smoke') {
-        if (age > 1.2) return false;
-        c.fillStyle = `rgba(90,80,90,${0.45 * (1 - age / 1.2)})`; c.beginPath(); c.arc(f.x, f.y - age * 40, f.r * (1 + age * 1.5), 0, Math.PI * 2); c.fill(); return true;
-      }
-      return false;
-    });
-  }
-  function drawParticles(c, now, dt) {
-    G.parts = G.parts.filter((p) => {
+
+  function stepPool(now, dt) {
+    const T = G.T;
+    for (let i = 0; i < MAX_PARTS; i++) {
+      const p = PART_POOL[i];
+      if (!p.active) continue;
       const age = (now - p.t) / 1000;
-      if (age > p.life) return false;
-      p.vy += 900 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
-      c.globalAlpha = 1 - age / p.life; c.fillStyle = p.c; c.fillRect(p.x - p.s / 2, p.y - p.s / 2, p.s, p.s); c.globalAlpha = 1;
-      return true;
-    });
+      if (age < 0) continue;
+      if (age > p.life) { p.active = false; continue; }
+      if (p.grav) p.vy += p.grav * dt;
+      const nx = p.x + p.vx * dt;
+      const ny = p.y + p.vy * dt;
+      if (p.kind === 'soil') {
+        p.rot += p.vrot * dt;
+        if (p.vy > 0 && T.solid(nx, ny)) {
+          if (!p.bounced) {
+            p.bounced = true;
+            p.vy = -p.vy * 0.36;
+            p.vx *= 0.55;
+            p.vrot *= -0.5;
+            continue;
+          } else {
+            p.vx = 0; p.vy = 0; p.vrot = 0; p.grav = 0;
+            continue;
+          }
+        }
+      }
+      p.x = nx; p.y = ny;
+    }
+  }
+
+  function drawPoolLayer(c, now, layer) {
+    for (let i = 0; i < MAX_PARTS; i++) {
+      const p = PART_POOL[i];
+      if (!p.active || p.layer !== layer) continue;
+      const age = (now - p.t) / 1000;
+      if (age < 0 || age > p.life) continue;
+      const k = age / p.life;
+      if (p.kind === 'soil') {
+        c.save();
+        c.globalAlpha = 1 - Math.max(0, k - 0.55) / 0.45;
+        c.translate(p.x, p.y);
+        c.rotate(p.rot);
+        c.fillStyle = p.c;
+        c.strokeStyle = p.c2;
+        c.lineWidth = 1;
+        const hs = p.s * 0.5;
+        c.fillRect(-hs, -hs * 0.8, p.s, p.s * 0.8);
+        c.strokeRect(-hs, -hs * 0.8, p.s, p.s * 0.8);
+        c.restore();
+      } else if (p.kind === 'trail') {
+        const rad = p.s + (p.s2 - p.s) * k;
+        c.globalAlpha = (1 - k) * 0.72;
+        c.fillStyle = k < 0.35 ? p.c : p.c2;
+        c.beginPath(); c.arc(p.x, p.y, rad, 0, Math.PI * 2); c.fill();
+      } else if (p.kind === 'flash') {
+        const rad = p.s + (p.s2 - p.s) * k;
+        c.globalAlpha = 1 - k;
+        c.fillStyle = k < 0.45 ? p.c : p.c2;
+        c.beginPath(); c.arc(p.x, p.y, rad, 0, Math.PI * 2); c.fill();
+      } else if (p.kind === 'ring') {
+        const rad = p.s + (p.s2 - p.s) * (1 - (1 - k) * (1 - k));
+        c.globalAlpha = 0.9 * (1 - k);
+        c.strokeStyle = k < 0.4 ? p.c : p.c2;
+        c.lineWidth = Math.max(1, 5.5 * (1 - k));
+        c.beginPath(); c.arc(p.x, p.y, rad, 0, Math.PI * 2); c.stroke();
+      } else if (p.kind === 'fire') {
+        const rad = p.s + (p.s2 - p.s) * Math.sin(k * Math.PI * 0.65);
+        c.globalAlpha = (1 - k * k) * 0.92;
+        c.fillStyle = k < 0.35 ? p.c : p.c2;
+        c.beginPath(); c.arc(p.x, p.y, rad, 0, Math.PI * 2); c.fill();
+      } else if (p.kind === 'smoke') {
+        const rad = p.s + (p.s2 - p.s) * k;
+        c.globalAlpha = 0.52 * (1 - k);
+        c.fillStyle = p.c;
+        c.beginPath(); c.arc(p.x, p.y, rad, 0, Math.PI * 2); c.fill();
+      } else if (p.kind === 'spark') {
+        c.globalAlpha = 1 - k;
+        c.strokeStyle = k < 0.4 ? p.c : p.c2;
+        c.lineWidth = Math.max(0.8, p.s * (1 - k * 0.7));
+        c.lineCap = 'round';
+        c.beginPath();
+        c.moveTo(p.x, p.y);
+        c.lineTo(p.x - p.vx * 0.025, p.y - p.vy * 0.025);
+        c.stroke();
+      }
+    }
+    c.globalAlpha = 1;
   }
   function drawNums(c, now) {
     c.font = '20px "Black Han Sans", Jua, sans-serif'; c.textAlign = 'center';

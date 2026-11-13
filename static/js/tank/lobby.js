@@ -267,6 +267,7 @@
     if (Net.seat()) { $('#j-msg').textContent = '다시 들어가는 중…'; Net.connect(); }
     show('#s-join');
     joinArt();
+    if (Art.onBgReady) Art.onBgReady(joinArt);
   }
   function renderLobbyTime() {
     const rd = L.round;
