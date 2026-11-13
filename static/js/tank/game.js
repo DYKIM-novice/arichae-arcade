@@ -73,9 +73,11 @@
       dead: {}, deadAt: 0, trails: {}, faceAnim: {}, nums: [], phase: {}, recoil: {}, lastShotP: null, lastLocalFireAt: 0,
       over: null, resultTimer: 0, shake: 0, hitShakeUntil: 0, hitShakeAmp: 0, minimapT: 0, goT: 0, moving: false
     };
+    const fxLog = [];
+    fxLog.labels = [];
     window.__tankDbg = {
       wind: m.wind, windNextAt: wn ? wn.at : null, windChanges: [], blinkStarts: [], tags: [],
-      fx: [], booms: [], me: null, tanks: [],
+      fx: fxLog, booms: [], me: null, tanks: [],
       cam: { x: 0, y: 0, scale: 1, cw, ch }, map: { W: WW, H: WH },
       score: { kills: 0, hits: 0, dealt: 0, ffk: 0 },
       cam_log: [], camMode: 'self', aim: { a: null, p: null }
@@ -310,20 +312,23 @@
           }
         } else {
           let hitEnemy = false, hitAlly = false, killedEnemy = false, killedAlly = false;
+          let killEnemyDmg = 0, killAllyDmg = 0;
           hits.forEach((h) => {
             const ht = G.cur && G.cur[h.id];
             const ff = !!h.ff;
-            G.nums.push({ id: h.id, dmg: h.dmg, mine: true, ff, ally: ff, x: ht ? ht.x : e.x, y: ht ? ht.y : e.y, t });
+            if (!h.kill) {
+              G.nums.push({ id: h.id, dmg: h.dmg, mine: true, ff, ally: ff, x: ht ? ht.x : e.x, y: ht ? ht.y : e.y, t });
+            }
             if (ff) {
               hitAlly = true;
-              if (h.kill) killedAlly = true;
+              if (h.kill) { killedAlly = true; killAllyDmg += (h.dmg || 0); }
               if (window.__tankDbg) {
                 pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'ff_mine', id: h.id, dmg: h.dmg, x: e.x, y: e.y, own: shooter }, 50);
                 if (h.kill) pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'ff_kill_mine', id: h.id, dmg: h.dmg, x: e.x, y: e.y, own: shooter }, 50);
               }
             } else {
               hitEnemy = true;
-              if (h.kill) killedEnemy = true;
+              if (h.kill) { killedEnemy = true; killEnemyDmg += (h.dmg || 0); }
               if (window.__tankDbg) {
                 pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'hit_mine', id: h.id, dmg: h.dmg, x: e.x, y: e.y, own: shooter }, 50);
                 if (h.kill) pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'kill_mine', id: h.id, dmg: h.dmg, x: e.x, y: e.y, own: shooter }, 50);
@@ -338,9 +343,12 @@
           if (hitAlly) SND.SFX.allyHit();
           if (killedEnemy) {
             SND.SFX.kill();
-            G.banners.push({ text: '격추!', color: '#FFE27A', stroke: '#2c0a10', t, dur: 1.5 });
-          } else if (killedAlly) {
-            G.banners.push({ text: '아군 격추', color: '#FF8A1F', stroke: '#2c0a04', t, dur: 1.5 });
+            const kText = killEnemyDmg > 0 ? `격추! -${killEnemyDmg}` : '격추!';
+            G.banners.push({ text: kText, color: '#FFE27A', stroke: '#2c0a10', t, dur: 1.5 });
+          }
+          if (killedAlly) {
+            const akText = killAllyDmg > 0 ? `아군 격추 -${killAllyDmg}` : '아군 격추';
+            G.banners.push({ text: akText, color: '#FF8A1F', stroke: '#2c0a04', t, dur: 1.5 });
           }
         }
       } else {
@@ -666,9 +674,9 @@
   function selfTarget(s) {
     const t = focusTank();
     if (!t) return [G.cam.ok ? G.cam.x : WW / 2, G.cam.ok ? G.cam.y : 500];
-    // 탱크를 HUD 아래·버튼 위 사이 45% 높이에
-    const playTop = 50, playBot = ch - 96;
-    const want = playTop + (playBot - playTop) * 0.45;
+    // 탱크를 HUD(또는 관전 막대) 아래·버튼 위 사이 높이에
+    const playTop = G.spec ? 94 : 50, playBot = ch - 96;
+    const want = playTop + (playBot - playTop) * (G.spec ? 0.48 : 0.45);
     return [t.x, (t.y - 20) + (ch / 2 - want) / s];
   }
   function clampCam(tx, ty, s) {
@@ -833,11 +841,13 @@
     drawShells(c, cur.shells, s, now);
     drawPoolLayer(c, now, 1);
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawNums(c, now);
+    const fxCtx = { avoid: getFxAvoidRects(), placed: [], labels: [] };
+    drawBanners(c, now, fxCtx);
+    drawNums(c, now, fxCtx);
     if (me && me.st !== 2 && canControl()) drawArc(c, me, now);
     drawArrows(c, cur.shells, list);
-    drawOffscreenHits(c, now);
-    drawBanners(c, now);
+    drawOffscreenHits(c, now, fxCtx);
+    if (window.__tankDbg && window.__tankDbg.fx) window.__tankDbg.fx.labels = fxCtx.labels;
     drawEdgeWarn(c, me, now);
     drawCountdown(c, me, now);
     hud(me, now);
@@ -909,6 +919,12 @@
       const r = cdnEl.getBoundingClientRect();
       if (r.width > 0 && r.height > 0) cdnBox = { l: r.left - 8, t: r.top - 8, r: r.right + 8, b: r.bottom + 8 };
     }
+    const specEl = $('#spec-bar');
+    let specBox = null;
+    if (G.spec && specEl && !$('#spec').hidden) {
+      const r = specEl.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) specBox = { l: r.left - 6, t: r.top - 6, r: r.right + 6, b: r.bottom + 6 };
+    }
 
     // 포탄 화면 사각형 (겹치면 남의 이름표는 점으로)
     const shRects = [];
@@ -960,22 +976,23 @@
       if (!mine) {
         let b = makeBox();
         const hitCdn = !!(cdnBox && overlapArea(cdnBox, b) > 0);
+        const hitSpec = !!(specBox && overlapArea(specBox, b) > 0);
         const hitShell = shRects.some((sr) => overlapArea(sr, b) > 0);
         const hitBtn = btnRects.some((br) => overlapArea(br, b) > 0);
         let hitPlaced = placed.some((p) => overlapArea(p, b) > 0);
 
         // 다른 이름표와 겹치면 위로 한 번 피해 보고, 그래도 겹치면 점으로
-        if (!hitCdn && !hitShell && !hitBtn && hitPlaced) {
+        if (!hitCdn && !hitSpec && !hitShell && !hitBtn && hitPlaced) {
           y -= 18;
           b = makeBox();
-          hitPlaced = placed.some((p) => overlapArea(p, b) > 0) || shRects.some((sr) => overlapArea(sr, b) > 0) || btnRects.some((br) => overlapArea(br, b) > 0) || !!(cdnBox && overlapArea(cdnBox, b) > 0);
+          hitPlaced = placed.some((p) => overlapArea(p, b) > 0) || shRects.some((sr) => overlapArea(sr, b) > 0) || btnRects.some((br) => overlapArea(br, b) > 0) || !!(cdnBox && overlapArea(cdnBox, b) > 0) || !!(specBox && overlapArea(specBox, b) > 0);
         }
 
-        if (hitCdn || hitShell || hitBtn || hitPlaced) {
-          // 팀색 점(지름 9px)으로 대체 — 만약 점마저 겹치거나 버튼/카운트다운에 가리면 숨김
+        if (hitCdn || hitSpec || hitShell || hitBtn || hitPlaced) {
+          // 팀색 점(지름 9px)으로 대체 — 만약 점마저 겹치거나 버튼/카운트다운/관전막대에 가리면 숨김
           const dx = it.x, dy = it.y - 6;
           const dotBox = { l: dx - 5.5, t: dy - 5.5, r: dx + 5.5, b: dy + 5.5 };
-          const dotBlocked = (cdnBox && overlapArea(cdnBox, dotBox) > 0) || placed.some((p) => overlapArea(p, dotBox) > 0) || btnRects.some((br) => overlapArea(br, dotBox) > 0);
+          const dotBlocked = (cdnBox && overlapArea(cdnBox, dotBox) > 0) || (specBox && overlapArea(specBox, dotBox) > 0) || placed.some((p) => overlapArea(p, dotBox) > 0) || btnRects.some((br) => overlapArea(br, dotBox) > 0);
           if (dotBlocked) {
             tags.push({ name: m.n, mode: 'hidden', x: Math.round(dx), y: Math.round(dy), w: 0, h: 0 });
             continue;
@@ -996,18 +1013,46 @@
           continue;
         }
       } else {
-        // 내(또는 관전 대상) 이름표는 불투명 + 외곽선 유지, 카운트다운이나 버튼과 겹치면 위로 피하거나 카운트다운과 겹칠 땐 잠깐 숨김
+        // 내(또는 관전 대상) 이름표는 불투명 + 외곽선 유지, 관전 막대·버튼과 겹치면 탱크 아래/옆으로 피해 겹침 0
         let b = makeBox();
         if (cdnBox && overlapArea(cdnBox, b) > 0) {
           tags.push({ name: m.n, mode: 'hidden', x: Math.round(x), y: Math.round(y), w: 0, h: 0 });
           continue;
         }
-        if (btnRects.some((br) => overlapArea(br, b) > (b.r - b.l) * (b.b - b.t) * 0.35)) {
-          y -= 24;
-          b = makeBox();
-          if (b.t < 48 || (cdnBox && overlapArea(cdnBox, b) > 0) || btnRects.some((br) => overlapArea(br, b) > (b.r - b.l) * (b.b - b.t) * 0.35)) {
-            y = it.y;
+        const boxW = Math.max(tw, hw);
+        const makeAt = (cx, cy) => ({ l: cx - boxW / 2, t: cy - 30, r: cx + boxW / 2, b: cy + 6 });
+        const hitsSpec = (bx) => !!(specBox && overlapArea(specBox, bx) > 0);
+        const hitsCdn = (bx) => !!(cdnBox && overlapArea(cdnBox, bx) > 0);
+        const hitsBtnAny = (bx) => btnRects.some((br) => overlapArea(br, bx) > 0);
+        const hitsBtnHeavy = (bx) => btnRects.some((br) => overlapArea(br, bx) > (bx.r - bx.l) * (bx.b - bx.t) * 0.35);
+        const inBounds = (bx) => bx.t >= 48 && bx.b <= ch - 4 && bx.l >= 4 && bx.r <= cw - 4;
+        if (hitsSpec(b) || b.t < 48 || hitsBtnHeavy(b)) {
+          const [, tankBotY] = toScreen(t.x, t.y);
+          const tankHalfW = (it.K.bw / 2) * scale();
+          const sideOff = Math.ceil(tankHalfW + boxW / 2 + 10);
+          const side1 = it.x <= cw / 2 ? 1 : -1;
+          const clampX = (cx) => Math.max(boxW / 2 + 8, Math.min(cw - boxW / 2 - 8, cx));
+          const sideY = Math.max(Math.round(it.y + 36), specBox ? Math.round(specBox.b + 32) : 80);
+          const cands = [];
+          if (!hitsSpec(b) && b.t >= 48) cands.push([it.x, it.y - 24]);
+          cands.push([it.x, Math.round(tankBotY + 38)]);
+          cands.push([clampX(it.x + side1 * sideOff), sideY]);
+          cands.push([clampX(it.x - side1 * sideOff), sideY]);
+          if (specBox) cands.push([it.x, Math.round(specBox.b + 32)]);
+          let picked = null;
+          for (let ci = 0; ci < cands.length; ci++) {
+            const [cx, cy] = cands[ci];
+            const cb = makeAt(cx, cy);
+            if (inBounds(cb) && !hitsSpec(cb) && !hitsCdn(cb) && !hitsBtnAny(cb)) { picked = [cx, cy]; break; }
           }
+          if (!picked) {
+            for (let ci = 0; ci < cands.length; ci++) {
+              const [cx, cy] = cands[ci];
+              const cb = makeAt(cx, cy);
+              if (cb.t >= 48 && cb.b <= ch - 4 && !hitsSpec(cb) && !hitsCdn(cb) && !hitsBtnHeavy(cb)) { picked = [cx, cy]; break; }
+            }
+          }
+          if (picked) { x = picked[0]; y = picked[1]; }
         }
       }
 
@@ -1164,42 +1209,121 @@
     }
     c.globalAlpha = 1;
   }
-  function avoidUI(x, y, halfW, h) {
-    let cx = Math.max(halfW + 10, Math.min(cw - halfW - 10, x));
-    let cy = y;
-    for (let pass = 0; pass < 4; pass++) {
-      const box = { l: cx - halfW, t: cy - h, r: cx + halfW, b: cy };
-      const hit = btnRects.find((br) => overlapArea(br, box) > 0);
-      if (!hit) break;
-      cy = hit.t - 6;
+  function getFxAvoidRects() {
+    const rects = btnRects.slice();
+    const specEl = $('#spec-bar');
+    if (G && G.spec && specEl && !$('#spec').hidden) {
+      const r = specEl.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) rects.push({ l: r.left - 6, t: r.top - 6, r: r.right + 6, b: r.bottom + 6 });
     }
-    if (cy - h < 52) cy = 52 + h;
-    return [cx, cy];
+    const cdnEl = $('#cdn');
+    if (cdnEl && !cdnEl.hidden) {
+      const r = cdnEl.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) rects.push({ l: r.left - 6, t: r.top - 6, r: r.right + 6, b: r.bottom + 6 });
+    }
+    return rects;
   }
-  function drawNums(c, now) {
-    c.textAlign = 'center';
-    c.textBaseline = 'alphabetic';
-    G.nums = G.nums.filter((n) => {
+  function placeFxBox(cx, topY, w, h, fxCtx, gap) {
+    const padX = 10, topMin = 52, botMax = Math.max(topMin + h, ch - 12);
+    const x = Math.max(w / 2 + padX, Math.min(cw - w / 2 - padX, cx));
+    const clampY = (y) => Math.max(topMin, Math.min(botMax - h, y));
+    const y0 = clampY(topY);
+    const make = (y) => ({ l: x - w / 2, t: y, r: x + w / 2, b: y + h });
+    const g = gap != null ? gap : Math.max(8, Math.round(h * 0.22));
+    const avoid = fxCtx ? fxCtx.avoid : btnRects;
+    const placed = fxCtx ? fxCtx.placed : [];
+    const blockers = (box) => {
+      const hits = [];
+      for (let i = 0; i < placed.length; i++) {
+        if (overlapArea(placed[i], box) > 0) hits.push(placed[i]);
+      }
+      for (let i = 0; i < avoid.length; i++) {
+        if (overlapArea(avoid[i], box) > 0) hits.push(avoid[i]);
+      }
+      return hits;
+    };
+
+    const frontier = [y0];
+    const seen = new Set();
+    let bestY = y0, bestOv = Infinity, bestDist = Infinity;
+
+    for (let step = 0; step < 32 && frontier.length > 0; step++) {
+      let bestIdx = 0;
+      for (let i = 1; i < frontier.length; i++) {
+        if (Math.abs(frontier[i] - y0) < Math.abs(frontier[bestIdx] - y0)) bestIdx = i;
+      }
+      const cy = clampY(frontier.splice(bestIdx, 1)[0]);
+      const key = Math.round(cy);
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const box = make(cy);
+      const hits = blockers(box);
+      if (hits.length === 0) return box;
+
+      let ov = 0;
+      for (let i = 0; i < hits.length; i++) ov += overlapArea(hits[i], box);
+      const dist = Math.abs(cy - y0);
+      if (ov < bestOv || (ov === bestOv && dist < bestDist)) {
+        bestOv = ov; bestDist = dist; bestY = cy;
+      }
+      for (let i = 0; i < hits.length; i++) {
+        const hr = hits[i];
+        const up = hr.t - h - g;
+        const dn = hr.b + g;
+        if (up >= topMin && !seen.has(Math.round(up))) frontier.push(up);
+        if (dn + h <= botMax && !seen.has(Math.round(dn))) frontier.push(dn);
+      }
+    }
+    return make(bestY);
+  }
+  function pushFxLabel(fxCtx, text, box) {
+    if (!fxCtx) return;
+    fxCtx.placed.push(box);
+    fxCtx.labels.push({
+      text,
+      x: Math.round(box.l),
+      y: Math.round(box.t),
+      w: Math.round(box.r - box.l),
+      h: Math.round(box.b - box.t)
+    });
+  }
+  function drawNums(c, now, fxCtx) {
+    const active = [];
+    for (let i = 0; i < G.nums.length; i++) {
+      const n = G.nums[i];
       const age = (now - n.t) / 1000;
       const maxAge = n.miss ? 0.9 : (n.mine ? 1.2 : 1.1);
-      if (age > maxAge) return false;
+      if (age <= maxAge) active.push(n);
+    }
+    G.nums = active;
+    const ordered = active.slice().sort((a, b) => ((b.mine && !b.miss) ? 1 : 0) - ((a.mine && !a.miss) ? 1 : 0) || a.t - b.t);
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    for (let i = 0; i < ordered.length; i++) {
+      const n = ordered[i];
+      const age = (now - n.t) / 1000;
       if (n.miss) {
         const [rx, ry] = toScreen(n.x, n.y - 16);
         const onScreen = rx >= 0 && rx <= cw && ry >= 46 && ry <= ch;
         const atImpactCam = G.camState && (G.camState.mode === 'impact' || G.camState.mode === 'follow');
         const fs = (onScreen || atImpactCam) ? 24 : 17;
-        const clampedY = Math.max(52 + fs + 4, Math.min(ch - 20, ry - age * 26));
-        const [x, y] = avoidUI(rx, clampedY, fs * 1.8, fs + 4);
+        c.font = `${fs}px "Black Han Sans", Jua, sans-serif`;
+        const w = Math.ceil(c.measureText('빗나감').width + 10);
+        const h = Math.ceil(fs * 1.2) + 4;
+        const box = placeFxBox(rx, ry - age * 26 - h, w, h, fxCtx);
+        const cx = (box.l + box.r) / 2, cy = (box.t + box.b) / 2;
         c.save();
         c.globalAlpha = 0.82 * (1 - Math.max(0, age - 0.5) / 0.4);
-        c.font = `${fs}px "Black Han Sans", Jua, sans-serif`;
+        c.lineJoin = 'round';
         c.lineWidth = fs >= 24 ? 5 : 3.5;
         c.strokeStyle = 'rgba(20,10,30,.9)';
-        c.strokeText('빗나감', x, y);
+        c.strokeText('빗나감', cx, cy);
         c.fillStyle = '#ece8f4';
-        c.fillText('빗나감', x, y);
+        c.fillText('빗나감', cx, cy);
         c.restore();
-        return true;
+        pushFxLabel(fxCtx, '빗나감', box);
+        continue;
       }
       const t = G.cur[n.id];
       const m = G.meta[n.id];
@@ -1215,12 +1339,15 @@
           ? 0.72 + 0.42 * Math.sin((age / 0.18) * Math.PI * 0.72)
           : (age < 0.30 ? 1.14 - 0.14 * ((age - 0.18) / 0.12) : 1);
         const rise = Math.sin(Math.min(1, age * 1.6) * Math.PI * 0.5) * 30 + age * 16;
-        const [x, y] = avoidUI(rx, baseY - rise, n.ff ? 105 : 85, fs + 6);
+        c.font = `${fs}px "Black Han Sans", Jua, sans-serif`;
+        const w = Math.ceil((c.measureText(label).width + 10) * bounce);
+        const h = Math.ceil((fs * 1.2 + 4) * bounce);
+        const box = placeFxBox(rx, baseY - rise - h, w, h, fxCtx);
+        const cx = (box.l + box.r) / 2, cy = (box.t + box.b) / 2;
         c.save();
-        c.translate(x, y);
+        c.translate(cx, cy);
         c.scale(bounce, bounce);
         c.globalAlpha = 1 - Math.max(0, age - 0.8) / 0.4;
-        c.font = `${fs}px "Black Han Sans", Jua, sans-serif`;
         c.lineJoin = 'round';
         c.lineWidth = 6.5;
         c.strokeStyle = n.ff ? '#331200' : '#2b0912';
@@ -1228,35 +1355,45 @@
         c.fillStyle = n.ff ? '#FF8A1F' : '#FFE27A';
         c.fillText(label, 0, 0);
         c.restore();
+        pushFxLabel(fxCtx, label, box);
       } else {
+        const label = '-' + n.dmg;
         const fs = 17;
-        const [x, y] = avoidUI(rx + 14, baseY - age * 36, 28, fs + 4);
+        c.font = `${fs}px "Black Han Sans", Jua, sans-serif`;
+        const w = Math.ceil(c.measureText(label).width + 8);
+        const h = Math.ceil(fs * 1.2) + 4;
+        const box = placeFxBox(rx + 14, baseY - age * 36 - h, w, h, fxCtx);
+        const cx = (box.l + box.r) / 2, cy = (box.t + box.b) / 2;
         c.save();
         c.globalAlpha = 1 - Math.max(0, age - 0.65) / 0.45;
-        c.font = `${fs}px "Black Han Sans", Jua, sans-serif`;
         c.lineJoin = 'round';
         c.lineWidth = 4;
         c.strokeStyle = n.ally ? '#331200' : '#2d0a12';
-        c.strokeText('-' + n.dmg, x, y);
+        c.strokeText(label, cx, cy);
         c.fillStyle = n.ally ? '#FF8A1F' : '#fff3d6';
-        c.fillText('-' + n.dmg, x, y);
+        c.fillText(label, cx, cy);
         c.restore();
+        pushFxLabel(fxCtx, label, box);
       }
-      return true;
-    });
+    }
+    c.textBaseline = 'alphabetic';
   }
-  function drawBanners(c, now) {
+  function drawBanners(c, now, fxCtx) {
     G.banners = G.banners.filter((b) => {
       const age = (now - b.t) / 1000;
       if (age > b.dur) return false;
       const pop = age < 0.16 ? 0.65 + 0.45 * Math.sin((age / 0.16) * Math.PI * 0.7) : 1;
       const alpha = 1 - Math.max(0, age - (b.dur - 0.35)) / 0.35;
-      const by = G.spec ? 132 : 108;
+      c.font = '44px "Black Han Sans", Jua, sans-serif';
+      const w = Math.ceil((c.measureText(b.text).width + 12) * pop);
+      const h = Math.ceil(48 * pop);
+      const by = G.spec ? 136 : 108;
+      const box = placeFxBox(cw / 2, by - h / 2, w, h, fxCtx);
+      const cx = (box.l + box.r) / 2, cy = (box.t + box.b) / 2;
       c.save();
-      c.translate(cw / 2, by);
+      c.translate(cx, cy);
       c.scale(pop, pop);
       c.globalAlpha = alpha;
-      c.font = '44px "Black Han Sans", Jua, sans-serif';
       c.textAlign = 'center';
       c.textBaseline = 'middle';
       c.lineJoin = 'round';
@@ -1266,10 +1403,12 @@
       c.fillStyle = b.color;
       c.fillText(b.text, 0, 0);
       c.restore();
+      pushFxLabel(fxCtx, b.text, box);
       return true;
     });
+    c.textBaseline = 'alphabetic';
   }
-  function drawOffscreenHits(c, now) {
+  function drawOffscreenHits(c, now, fxCtx) {
     const pad = 28, top = 60;
     G.offHits = G.offHits.filter((oh) => {
       const age = (now - oh.t) / 1000;
@@ -1290,18 +1429,22 @@
       const dirX = Math.cos(ang), dirY = Math.sin(ang);
       const bx0 = ax0 - dirX * (tw * 0.5 + 18);
       const by0 = ay0 - dirY * 22 + 8;
-      const [bx, by] = avoidUI(bx0, by0, tw / 2 + 4, 28);
+      const th = 26;
+      const box = placeFxBox(bx0, by0 - th, Math.ceil(tw + 4), th, fxCtx);
+      const bx = (box.l + box.r) / 2, cy = (box.t + box.b) / 2;
       c.fillStyle = col;
       c.strokeStyle = 'rgba(20,10,30,.92)';
       c.lineWidth = 2.4;
-      Art.rr(c, bx - tw / 2, by - 24, tw, 24, 12);
+      Art.rr(c, bx - tw / 2, cy - 12, tw, 24, 12);
       c.fill(); c.stroke();
       c.fillStyle = '#1d1530';
       c.textAlign = 'center'; c.textBaseline = 'middle';
-      c.fillText(label, bx, by - 12);
+      c.fillText(label, bx, cy);
       c.restore();
+      pushFxLabel(fxCtx, label, box);
       return true;
     });
+    c.textBaseline = 'alphabetic';
   }
 
   // 포신 범위 호 (실제 발사각 = 차체 기울기 + 포신 각도, -30~85 자름)
