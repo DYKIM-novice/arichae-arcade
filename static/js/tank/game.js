@@ -421,7 +421,7 @@
       delete G.trails[e.sid];
       delete G.shellOwn[e.sid];
     } else if (e.t === 'tkdeath') {
-      G.dead[e.id] = { t: performance.now(), cause: e.cause, by: e.by || '', ff: !!e.ff };
+      G.dead[e.id] = { t: performance.now(), cause: e.cause, by: e.by || '', ff: !!e.ff, self: !!e.self };
       if (e.cause === 'fall') SND.SFX.fall();
       // 흙다리를 파서 떨어뜨린 추락도 쏜 사람의 격추로 인정 (서버 by) — 내 탄이면 배너
       if (e.cause === 'fall' && e.by && e.by === G.me && e.id !== G.me) {
@@ -480,10 +480,13 @@
   }
   function showResult(m) {
     G.over = m;
-    if (window.__tankDbg && G.me) {
-      const ms = m.stats.find((s) => s.id === G.me);
-      if (ms) {
-        window.__tankDbg.score = { kills: ms.kills || 0, hits: ms.hits || 0, dealt: ms.dealt || 0, ffk: ms.ffk || 0 };
+    if (window.__tankDbg) {
+      window.__tankDbg.lastResult = m;
+      if (G.me) {
+        const ms = m.stats.find((s) => s.id === G.me);
+        if (ms) {
+          window.__tankDbg.score = { kills: ms.kills || 0, hits: ms.hits || 0, dealt: ms.dealt || 0, ffk: ms.ffk || 0 };
+        }
       }
     }
     const myTeam = G.me && G.meta[G.me] ? G.meta[G.me].tm : null;
@@ -493,23 +496,69 @@
     else title = `팀 ${m.win} 승리!`;
     if (myTeam && m.win === myTeam) SND.SFX.win(); else SND.SFX.lose();
     const by = m.by === 'wipe' ? '상대 팀을 모두 물리쳤어요' : '시간 끝 · 남은 탱크 수, 같으면 체력 비율로 판정';
-    const CAUSE = { hit: '격추', fall: '추락' };
-    const tmOf = (id) => (G.meta[id] ? G.meta[id].tm : null);
-    const rows = m.stats.slice().sort((a, b) => b.dealt - a.dealt).map((s) => {
-      const T = Art.TEAM[s.tm];
-      let deadCause = CAUSE[s.cause] || (G.dead[s.id] && CAUSE[G.dead[s.id].cause]) || '탈락';
-      // 추락: 적이 발밑을 파서 떨어뜨렸으면 '격추(추락)', 아군 탄이면 '추락(아군)', 스스로 떨어지면 '추락'
-      const killer = s.by || (G.dead[s.id] && G.dead[s.id].by) || '';
-      if ((s.cause || (G.dead[s.id] && G.dead[s.id].cause)) === 'fall' && killer && killer !== s.id) {
-        deadCause = tmOf(killer) && tmOf(killer) === s.tm ? '추락(아군)' : '격추(추락)';
+    const tmOf = (id) => (G.meta[id] ? G.meta[id].tm : (m.stats.find((x) => x.id === id) || {}).tm || null);
+    const nameOf = (id) => (G.meta[id] ? G.meta[id].n : (m.stats.find((x) => x.id === id) || {}).n || id);
+    const whoBadge = (tm, name, role) => {
+      const T = Art.TEAM[tm] || Art.TEAM.A;
+      return `<span class="kwho ${tm}${role ? ' ' + role : ''}" data-team="${tm}" style="color:${T.c}"><span class="tmark ${tm}">${T.mark}</span>${esc(name)}</span>`;
+    };
+    const rows = m.stats.slice().sort((a, b) => (b.kills || 0) - (a.kills || 0) || b.dealt - a.dealt).map((s) => {
+      const T = Art.TEAM[s.tm] || Art.TEAM.A;
+      const drec = G.dead[s.id] || {};
+      const cause = s.cause || drec.cause || '';
+      const killer = s.by || drec.by || '';
+      const isSelf = !!(s.self || drec.self || cause === 'self' || (cause === 'hit' && (!killer || killer === s.id)));
+      let deadCause = '탈락';
+      if (isSelf) {
+        deadCause = '<span class="ktag self">자폭</span>';
+      } else if (cause === 'fall') {
+        if (killer && killer !== s.id) {
+          deadCause = tmOf(killer) && tmOf(killer) === s.tm
+            ? `<span class="ktag ff" style="color:${Art.FF.c}">팀킬</span>·낙사`
+            : '격추(낙사)';
+        } else {
+          deadCause = '<span class="ktag fall">낙사</span>';
+        }
+      } else if (cause === 'hit') {
+        if (killer && tmOf(killer) && tmOf(killer) === s.tm) {
+          deadCause = `<span class="ktag ff" style="color:${Art.FF.c}">팀킬</span>`;
+        } else {
+          deadCause = '격추';
+        }
       }
-      const st = (s.alive ? '생존' : deadCause) + (s.ffk ? ` · <span style="color:${Art.FF.c}">아군 오사 ${s.ffk}</span>` : '');
-      return `<tr${s.id === G.me ? ' style="color:#FFE27A"' : ''}><td><span class="tmark ${s.tm}">${T.mark}</span>${s.tm}</td><td>${esc(s.n)}</td><td>${KN[s.k]}</td><td>${s.shots}발</td><td>${s.hits}명중</td><td>${s.dealt}</td><td>${st}</td></tr>`;
+      const st = (s.alive ? '생존' : deadCause) + (s.ffk ? ` · <span class="ktag ff" style="color:${Art.FF.c}">팀킬 ${s.ffk}</span>` : '');
+      const kcnt = s.kills || 0;
+      return `<tr class="rrow" data-id="${esc(s.id)}" data-team="${s.tm}" data-kills="${kcnt}"${s.id === G.me ? ' style="color:#FFE27A"' : ''}><td><span class="tmark ${s.tm}">${T.mark}</span>${s.tm}</td><td>${whoBadge(s.tm, s.n, 'player')}</td><td>${KN[s.k]}</td><td class="rkcnt">${kcnt}킬</td><td>${s.shots}발</td><td>${s.hits}명중</td><td>${s.dealt}</td><td>${st}</td></tr>`;
     }).join('');
+    const kills = Array.isArray(m.kills) ? m.kills : [];
+    const killItems = kills.length ? kills.map((k) => {
+      const vTm = k.tm || tmOf(k.id) || 'A';
+      const vName = k.n || nameOf(k.id);
+      const isSelf = !!(k.self || k.cause === 'self' || (k.cause === 'hit' && (!k.by || k.by === k.id)));
+      if (isSelf) {
+        return `<div class="kitem self" data-cause="self" data-ff="0">${whoBadge(vTm, vName, 'attacker')} <span class="karr">→</span> ${whoBadge(vTm, vName, 'victim')} <span class="ktag self">자폭</span></div>`;
+      }
+      if (k.by) {
+        const aTm = k.byTm || tmOf(k.by) || 'A';
+        const aName = k.byN || nameOf(k.by);
+        const isFfKill = !!(k.ff || aTm === vTm);
+        let tag = '';
+        if (isFfKill) {
+          tag = ` <span class="ktag ff" style="color:${Art.FF.c}">팀킬${k.cause === 'fall' ? '·낙사' : ''}</span>`;
+        } else if (k.cause === 'fall') {
+          tag = ' <span class="ktag fall">낙사</span>';
+        }
+        return `<div class="kitem${isFfKill ? ' ff' : ''}" data-cause="${esc(k.cause || 'hit')}" data-ff="${isFfKill ? 1 : 0}">${whoBadge(aTm, aName, 'attacker')} <span class="karr">→</span> ${whoBadge(vTm, vName, 'victim')}${tag}</div>`;
+      }
+      return `<div class="kitem fall" data-cause="fall" data-ff="0">${whoBadge(vTm, vName, 'victim')} <span class="karr">→</span> <span class="ktag fall">낙사</span></div>`;
+    }).join('') : '<div class="kempty">격파 기록 없음</div>';
     const box = $('#result');
-    box.innerHTML = `<h2>${title}</h2><div class="sub">${by} · 팀 A ${m.alive.A}대 / 팀 B ${m.alive.B}대 남음</div>
-      <div class="rlist"><table><tr><th>팀</th><th>이름</th><th>기종</th><th>발사</th><th>명중</th><th>피해</th><th></th></tr>${rows}</table></div>
-      <div class="sub" id="r-left"></div><button type="button" class="btn btn-yellow" id="r-back">대기실로</button>`;
+    box.innerHTML = `<div class="rhead"><h2>${title}</h2><div class="sub">${by} · 팀 A ${m.alive.A}대 / 팀 B ${m.alive.B}대 남음</div></div>
+      <div class="rbody">
+        <div class="rlist" id="r-stats"><table><tr><th>팀</th><th>이름</th><th>기종</th><th>킬</th><th>발사</th><th>명중</th><th>피해</th><th>결과</th></tr>${rows}</table></div>
+        <div class="rkills" id="r-kills"><div class="rkhead">킬 기록 (${kills.length})</div><div class="rklist" id="r-kill-list">${killItems}</div></div>
+      </div>
+      <div class="rfoot"><div class="sub" id="r-left"></div><button type="button" class="btn btn-yellow" id="r-back">대기실로</button></div>`;
     box.hidden = false;
     const until = performance.now() + (m.back || 8000);
     const tick = () => { if (!G || G.over !== m) return; const s = Math.max(0, Math.ceil((until - performance.now()) / 1000)); const el = $('#r-left'); if (el) el.textContent = `${s}초 뒤 대기실로 돌아가요`; if (s > 0) setTimeout(tick, 250); };

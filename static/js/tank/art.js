@@ -935,14 +935,6 @@
     for (const n of rle) { m.fill(v, i, i + n); i += n; v ^= 1; }
     this.geo = geo || null;
     this.bedMask.fill(0);
-    if (this.geo && this.geo.bed) {
-      const { gw, gh, cell } = this;
-      for (const [x0, x1, y0, y1] of this.geo.bed) {
-        const gx0 = Math.max(0, Math.floor(x0 / cell)), gx1 = Math.min(gw, Math.ceil(x1 / cell));
-        const gy0 = Math.max(0, Math.floor(y0 / cell)), gy1 = Math.min(gh, Math.ceil(y1 / cell));
-        for (let gy = gy0; gy < gy1; gy++) for (let gx = gx0; gx < gx1; gx++) this.bedMask[gy * gw + gx] = 1;
-      }
-    }
     this.paint();
   };
   Terrain.prototype.solid = function (x, y) {
@@ -985,21 +977,8 @@
     c.fillStyle = c.createPattern(pat.soil, 'repeat');
     c.fillRect(0, 0, this.W, this.H);
 
-    // 3) 기반암 구역 & 깊이감 + 노을 역광 음영
+    // 3) 깊이감 + 노을 역광 음영 (기반암 구역 없음)
     c.globalCompositeOperation = 'source-atop';
-    if (this.geo && this.geo.bed) {
-      const r = rng(88);
-      for (const [x0, x1, y0, y1] of this.geo.bed) {
-        c.fillStyle = 'rgba(38,24,42,.58)';
-        c.fillRect(x0, y0, x1 - x0, y1 - y0);
-        c.fillStyle = 'rgba(138,108,128,.28)';
-        c.fillRect(x0, y0, x1 - x0, 4);
-        c.strokeStyle = 'rgba(18,10,22,.5)'; c.lineWidth = 1.5;
-        for (let yy = y0 + 14; yy < y1 - 4; yy += 16) {
-          c.beginPath(); c.moveTo(x0, yy); c.lineTo(x1, yy + (r() - 0.5) * 4); c.stroke();
-        }
-      }
-    }
     const rim = c.createLinearGradient(0, 150, 0, 780);
     rim.addColorStop(0, 'rgba(255,215,130,.18)');
     rim.addColorStop(0.45, 'rgba(255,175,90,.04)');
@@ -1357,7 +1336,7 @@
 
   // 바뀐 영역만 부분 굽기 (파인 구멍 + 그을린 가장자리)
   Terrain.prototype.carve = function (x, y, r) {
-    const { gw, gh, mask, bedMask, cell } = this;
+    const { gw, gh, mask, cell } = this;
     const r2 = r * r;
     const gx0 = Math.max(0, Math.floor((x - r) / cell)), gx1 = Math.min(gw - 1, Math.floor((x + r) / cell));
     const gy0 = Math.max(0, Math.floor((y - r) / cell)), gy1 = Math.min(gh - 1, Math.floor((y + r) / cell));
@@ -1365,28 +1344,16 @@
       const cy = gy * cell + 2 - y;
       for (let gx = gx0; gx <= gx1; gx++) {
         const cx = gx * cell + 2 - x, idx = gy * gw + gx;
-        if (cx * cx + cy * cy <= r2 && !bedMask[idx]) mask[idx] = 0;
+        if (cx * cx + cy * cy <= r2) mask[idx] = 0;
       }
     }
     const c = this.c;
     const pad = r + 18;
     c.save();
-    // 바뀐 영역 사각형 클립 (+ 기반암 사각형 제외)
+    // 바뀐 영역 사각형 클립 (기반암 보호 없음)
     c.beginPath();
     c.rect(Math.max(0, x - pad), Math.max(0, y - pad), pad * 2, pad * 2);
-    if (this.geo && this.geo.bed) {
-      const hit = this.geo.bed.filter(([bx0, bx1, by0, by1]) => bx1 >= x - pad && bx0 <= x + pad && by1 >= y - pad && by0 <= y + pad);
-      if (hit.length) {
-        c.beginPath();
-        c.rect(Math.max(0, x - pad), Math.max(0, y - pad), pad * 2, pad * 2);
-        for (const [bx0, bx1, by0, by1] of hit) c.rect(bx0, by0, bx1 - bx0, by1 - by0);
-        c.clip('evenodd');
-      } else {
-        c.clip();
-      }
-    } else {
-      c.clip();
-    }
+    c.clip();
 
     // 파인 구멍 (거친 가장자리로 판정 반경과 일치)
     c.globalCompositeOperation = 'destination-out';

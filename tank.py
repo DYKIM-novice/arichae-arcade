@@ -33,7 +33,7 @@ CELL = 4
 GW, GH = W // CELL, H // CELL
 GRAV = 600.0
 COOLDOWN_MS = 5000
-ROUND_MS = 300_000
+ROUND_MS = 180_000
 COUNTDOWN_MS = 3000
 INV_MS = 1500
 RESULT_MS = 8000
@@ -156,24 +156,8 @@ def build_mask() -> bytearray:
 
 
 def build_bedrock() -> tuple:
-    """기반암: 스폰 구간 16px 띠마다 [x0, x1, y0, y1] 사각형 (서버·클라 같은 표). 마스크는 칸마다 1."""
-    rects = []
-    for (zx0, zx1) in BED_ZONES:
-        for x in range(zx0, zx1, 16):
-            xs = [x + i for i in range(0, 17, 4)]
-            ms = [xx if xx < W / 2 else W - xx for xx in xs]
-            top = max(main_top(mm) for mm in ms) + BED_DEPTH
-            bot = min(main_bot(mm) for mm in ms) - 8
-            y0 = int(math.ceil(top / CELL)) * CELL
-            y1 = int(bot // CELL) * CELL
-            if y1 > y0:
-                rects.append([x, x + 16, y0, y1])
-    bm = bytearray(GW * GH)
-    for (x0, x1, y0, y1) in rects:
-        for gy in range(y0 // CELL, y1 // CELL):
-            for gx in range(x0 // CELL, x1 // CELL):
-                bm[gy * GW + gx] = 1
-    return rects, bm
+    """안전한 땅(기반암·보호 구역) 제거: 모든 지형이 파괴 가능하도록 빈 목록과 0 마스크를 돌려줌."""
+    return [], bytearray(GW * GH)
 
 
 def clamp(v, a, b):
@@ -268,6 +252,8 @@ def _step_col(m: bytearray, x: float, y: float, up: float = 8, down: float = 12)
         cy = c - k
         if cy < 0:
             break
+        if cy >= GH:
+            continue
         if m[cy * GW + gx] == 1:
             top = cy
             while top > 0 and m[(top - 1) * GW + gx] == 1:
@@ -403,19 +389,18 @@ def carve_radius(x: float, r: int) -> int:
 
 
 def carve(m: bytearray, x: int, y: int, r: int) -> None:
-    """클라이언트와 똑같은 규칙: 칸 가운데가 원 안이면 지움 · 기반암 칸은 남김."""
+    """클라이언트와 똑같은 규칙: 칸 가운데가 원 안이면 지움 (기반암 없음)."""
     r2 = r * r
     gx0 = max(0, (x - r) // CELL)
     gx1 = min(GW - 1, (x + r) // CELL)
     gy0 = max(0, (y - r) // CELL)
     gy1 = min(GH - 1, (y + r) // CELL)
-    bm = BEDROCK
     for gy in range(gy0, gy1 + 1):
         cy = gy * CELL + 2 - y
         row = gy * GW
         for gx in range(gx0, gx1 + 1):
             cx = gx * CELL + 2 - x
-            if cx * cx + cy * cy <= r2 and not bm[row + gx]:
+            if cx * cx + cy * cy <= r2:
                 m[row + gx] = 0
 
 
@@ -451,8 +436,7 @@ def check_slots() -> bool:
             m = x if x < W / 2 else W - x
             if m < MAIN_W:
                 far_edge = 96 <= m and (MAIN_W - m) >= 100
-                gx = int(x // CELL)
-                safe = far_edge and BEDROCK[(int(s + BED_DEPTH + 8) // CELL) * GW + gx] == 1
+                safe = far_edge and solid(BASE_MASK, x, s + 40)
             else:
                 safe = (edge_dist(BASE_MASK, x, s, -1, 80) >= 60
                         and edge_dist(BASE_MASK, x, s, 1, 80) >= 60
@@ -687,6 +671,7 @@ class Tank:
         self.dealt = 0
         self.kills = 0
         self.ffk = 0
+        self.self_kill = 0
         self.killer = ""           # 이 탱크를 격추(추락 포함)로 인정받은 쏜 사람 pid
         # 추락 격추 인정용: 이 탱크를 맞히거나 발밑을 파낸 마지막 적/아군 포탄 (시각 ms, 쏜 사람 pid)
         self.last_enemy = (0.0, "")
@@ -755,6 +740,7 @@ class Round:
         self.over = False
         self.result: Optional[dict] = None
         self.result_until = 0.0
+        self.kills: List[dict] = []            # 킬 로그 기록 (공격자 → 피해자, 팀킬·낙사·자폭 구분)
         self.recent_carves: List[tuple] = []   # (t, x, r) — AI 추락 원인 기록용
         self.last_ff_avoid_at = 0.0
 
@@ -1407,11 +1393,6 @@ def _explode(rd: Round, sh: dict, x: float, y: float) -> None:
     for h in hits:
         tk = rd.tanks[h["id"]]
         if tk.hp <= 0 and tk.alive:
-            if shooter is not None:
-                if h["ff"]:
-                    shooter.ffk += 1
-                else:
-                    shooter.kills += 1
             _kill(rd, tk, "hit", by=sh["own"])
 
 
@@ -1447,19 +1428,42 @@ def _fall_credit(rd: Round, tk: Tank, t: float) -> str:
 
 
 def _kill(rd: Round, tk: Tank, cause: str, by: str = "") -> None:
+    if not tk.alive:
+        return
     t_now = rd.now()
     since_go_ms = rd.rc(t_now)
-    ff_flag = 1 if (by and by in rd.tanks and rd.tanks[by].team == tk.team) else 0
+    is_self = (cause == "self") or (cause == "hit" and (not by or by == tk.pid))
+    shooter = rd.tanks.get(by) if (by and not is_self) else None
+    ff_flag = 1 if (shooter is not None and shooter.team == tk.team) else 0
+    if shooter is not None:
+        if ff_flag:
+            shooter.ffk += 1
+        else:
+            shooter.kills += 1
     tk.alive = False
     tk.hp = 0
     tk.d = 0
     tk.f = 2
     tk.dead_at = t_now
-    tk.cause = cause
-    tk.killer = by if (by and by != tk.pid) else ""
-    log.info("[포격전 %s] death %s cause=%s since_go_ms=%d ai=%s by=%s ff=%d",
-             rd.room.code, tk.pid, cause, since_go_ms, "1" if tk.ai else "0", by or "-", ff_flag)
-    rd.room.cast({"t": "tkdeath", "k": rd.k, "id": tk.pid, "cause": cause, "by": by, "ff": ff_flag})
+    tk.cause = "hit" if cause == "self" else cause
+    tk.self_kill = 1 if is_self else 0
+    tk.killer = shooter.pid if shooter is not None else ""
+    rd.kills.append({
+        "k": rd.k,
+        "rc": since_go_ms,
+        "by": shooter.pid if shooter is not None else (tk.pid if is_self else ""),
+        "byN": shooter.name if shooter is not None else (tk.name if is_self else ""),
+        "byTm": shooter.team if shooter is not None else (tk.team if is_self else ""),
+        "id": tk.pid,
+        "n": tk.name,
+        "tm": tk.team,
+        "cause": "self" if is_self else cause,
+        "ff": ff_flag,
+        "self": 1 if is_self else 0,
+    })
+    log.info("[포격전 %s] death %s cause=%s since_go_ms=%d ai=%s by=%s ff=%d self=%d",
+             rd.room.code, tk.pid, cause, since_go_ms, "1" if tk.ai else "0", by or "-", ff_flag, tk.self_kill)
+    rd.room.cast({"t": "tkdeath", "k": rd.k, "id": tk.pid, "cause": tk.cause, "by": by, "ff": ff_flag, "self": tk.self_kill})
     if tk.ai and cause == "fall":
         terr = any(t_now - ct < 2000 and abs(cx - tk.x) <= tk.K["bw"] / 2 + cr for ct, cx, cr in rd.recent_carves)
         log.info("[포격전 %s] ai_fall %s %s", rd.room.code, tk.name, "terrain" if terr else "self")
@@ -1599,12 +1603,6 @@ def step_tank(rd: Round, tk: Tank, t: float, playing: bool) -> None:
     if tk.alive and (tk.y > FALL_Y or tk.x < -20 or tk.x > W + 20):
         # 흙다리를 파여 떨어졌으면 마지막으로 맞히거나 발밑을 판 포탄 주인의 격추(아군이면 아군 격추·점수 제외)
         by = _fall_credit(rd, tk, rd.now())
-        shooter = rd.tanks.get(by) if by else None
-        if shooter is not None:
-            if shooter.team == tk.team:
-                shooter.ffk += 1
-            else:
-                shooter.kills += 1
         _kill(rd, tk, "fall", by=by)
 
 
@@ -1684,9 +1682,10 @@ def _end_round(rd: Round, win: str, by: str) -> None:
     alive = rd.alive_count()
     stats = [{"id": tk.pid, "n": tk.name, "tm": tk.team, "k": tk.kind, "shots": tk.shots, "hits": tk.hits,
               "dealt": tk.dealt, "kills": tk.kills, "ffk": tk.ffk, "alive": 1 if tk.alive else 0, "cause": tk.cause,
-              "by": tk.killer}
+              "by": tk.killer, "self": tk.self_kill}
              for tk in rd.tanks.values()]
-    rd.result = {"t": "tkend", "k": rd.k, "win": win, "by": by, "alive": alive, "stats": stats, "back": RESULT_MS}
+    rd.result = {"t": "tkend", "k": rd.k, "win": win, "by": by, "alive": alive, "stats": stats,
+                 "kills": list(rd.kills), "back": RESULT_MS}
     rd.room.cast(rd.result)
     if rd.scale != 1 or rd.fast_ms:
         log.info("[포격전 %s] spec_fast 판 끝: 4배속 벽시계 %.0fms", rd.room.code, rd.fast_ms)
