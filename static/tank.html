@@ -73,6 +73,7 @@
       <span class="grow"></span>
       <button class="sbtn" id="lb-watch" type="button" hidden>판 보기</button>
       <button class="sbtn" id="lb-ai" type="button" hidden>AI ⚙</button>
+      <button type="button" class="sbtn inst-btn" id="lb-install" aria-label="홈 화면에 추가" hidden><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.6" stroke="#fff" stroke-width="2" fill="none"/><path d="M12 7.5v7M8.8 11.5 12 14.7l3.2-3.2" stroke="#FFD23F" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lg">홈 화면에 추가</span></button>
       <button class="sbtn mute-btn" type="button" aria-label="소리 켜기/끄기"></button>
       <button class="sbtn" id="lb-leave" type="button">나가기</button>
     </header>
@@ -94,14 +95,15 @@
         <div class="teams">
           <button type="button" class="sbtn tbtn A" data-team="A">● 팀 A로</button>
           <button type="button" class="sbtn tbtn B" data-team="B">▲ 팀 B로</button>
+          <button type="button" class="sbtn emo-btn" id="lb-emo-btn" aria-label="이모티콘 보내기" aria-expanded="false" aria-controls="lb-emos"></button>
         </div>
-        <div class="emos" id="lb-emos"></div>
         <button type="button" class="btn btn-green" id="lb-start">시작하기</button>
         <button type="button" class="btn btn-yellow" id="lb-practice" hidden>연습(AI) 채우기</button>
         <div class="lb-why" id="lb-why"></div>
-        <button type="button" class="sbtn inst-btn" id="lb-install" hidden><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.6" stroke="#fff" stroke-width="2" fill="none"/><path d="M12 7.5v7M8.8 11.5 12 14.7l3.2-3.2" stroke="#FFD23F" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>홈 화면에 추가</span></button>
       </aside>
     </div>
+    <!-- 이모티콘 8개: 오른쪽 칸을 짧게 두려고 버튼 하나(😊)로 접고, 누르면 그 아래 뜨는 작은 판 (바깥 톡·Esc·보내면 닫힘) -->
+    <div class="emos emo-pop" id="lb-emos" role="group" aria-label="이모티콘" hidden></div>
     <div class="lb-bubbles" id="lb-bubbles" aria-hidden="true"></div>
     <!-- AI 설정 창 (방장만) -->
     <div class="sheet" id="ai-sheet" hidden>

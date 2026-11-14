@@ -260,7 +260,10 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 .inst-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .inst-btn svg { flex: none; }
 .corner-btn.right2 { right: 72px; gap: 6px; }
-#lb-install { flex: none; min-height: 44px; }
+/* v3.3.1 대기실 「홈 화면에 추가」는 위 줄 아이콘 버튼(넓은 화면 ≥900px만 글자도) — 오른쪽 칸이 넘치지 않게 */
+#lb-install { flex: none; min-height: 44px; padding: 0 10px; }
+#lb-install .lg { display: none; }
+@media (min-width: 900px) { #lb-install .lg { display: inline; } }
 .menu-body .inst-btn { justify-content: flex-start; }
 /* 초대받은 방: 입장 버튼 강조 (은은한 빛 고리) */
 #j-enter.hl { box-shadow: 0 4px 0 rgba(0,0,0,.28), 0 0 0 3px #FFE27A; animation: tkhl 1.4s ease-in-out infinite; }
@@ -287,3 +290,14 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 .inst-n { font-size: 20px; color: #7CE3A6; }
 .inst-btns { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .inst-btns .btn { min-height: 48px; }
+
+/* ---------- v3.3.1 대기실 오른쪽 칸 줄이기: 이모티콘은 팀 줄의 😊 버튼 하나 → 누르면 뜨는 판 ---------- */
+.teams .tbtn { padding: 0 6px; min-width: 0; }
+.teams .emo-btn { flex: none; width: 44px; padding: 0 4px; background: rgba(255,255,255,.9); border-color: rgba(255,255,255,.5); }
+.teams .emo-btn svg { width: 32px; height: 32px; display: block; margin: 0 auto; pointer-events: none; }
+.teams .emo-btn[aria-expanded="true"] { box-shadow: 0 0 0 3px #FFE27A; }
+.emo-pop { position: absolute; z-index: 30; width: 248px; padding: 6px; border-radius: 14px;
+  background: rgba(28,14,42,.96); border: 2px solid rgba(255,255,255,.35); box-shadow: 0 6px 16px rgba(0,0,0,.45); }
+.emo-pop[hidden] { display: none; }
+/* 시작 이유는 짧게(한 줄 요약) — 그래도 넘치면 2줄까지 */
+.lb-why { flex: none; overflow-wrap: anywhere; }

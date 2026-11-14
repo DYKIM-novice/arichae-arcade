@@ -16,6 +16,23 @@
   let lobbyAt = 0;
   let me = (Net.seat() || {}).pid || null;
   let emoCool = 0;
+
+  // 서버의 긴 시작 이유를 대기실 오른쪽 칸용 한 줄로 (토스트는 원문 그대로)
+  function shortWhy(w) {
+    const m = /팀마다 (\d+)명 이상.*A (\d+)명\s*·\s*B (\d+)명/.exec(w || '');
+    return m ? `팀마다 ${m[1]}명 이상 필요 · A ${m[2]} · B ${m[3]}` : (w || '');
+  }
+  function emoPop(open) {
+    const pop = $('#lb-emos'), btn = $('#lb-emo-btn');
+    pop.hidden = !open; btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) return;
+    const host = $('#s-lobby').getBoundingClientRect(), r = btn.getBoundingClientRect();
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    const left = Math.max(4, Math.min(r.right - host.left - pw, host.width - pw - 4));
+    let top = r.bottom - host.top + 6;
+    if (top + ph > host.height - 4) top = Math.max(4, r.top - host.top - ph - 6);
+    pop.style.left = left + 'px'; pop.style.top = top + 'px';
+  }
   let joining = false;
   let kindTeam;            // 기종 버튼 그림을 마지막으로 그린 팀 (팀이 바뀌면 팀색 차체로 다시 그림)
   // 초대 링크(?room=CODE)로 연 경우: { code, phase, hadSeat }
@@ -193,7 +210,7 @@
     let why = '';
     if (rd) why = '판이 끝나면 다음 판이 시작돼요' + (mine ? ' · 기종·팀은 다음 판에 적용' : '');
     else if (!host) why = '방장이 시작하면 바로 출발해요';
-    else if (!L.canStart) why = L.why;
+    else if (!L.canStart) why = shortWhy(L.why);
     $('#lb-why').textContent = why;
     renderAI();
   }
@@ -231,6 +248,7 @@
   function clearBubbles() {
     const layer = $('#lb-bubbles');
     if (layer) layer.innerHTML = '';
+    if ($('#lb-emos') && !$('#lb-emos').hidden) emoPop(false);   // 화면이 바뀌면 이모티콘 판도 닫음
   }
   function bubble(id, e) {
     const row = document.querySelector(`.prow[data-id="${CSS.escape(id)}"]`);
@@ -420,6 +438,14 @@
     $('#lb-kinds').addEventListener('click', (e) => { const b = e.target.closest('[data-kind]'); if (b) { SND.SFX.click(); Net.send({ t: 'tkpick', kind: b.dataset.kind }); } });
     $$('.teams .tbtn').forEach((b) => b.addEventListener('click', () => { SND.SFX.click(); Net.send({ t: 'tkteam', team: b.dataset.team }); }));
     $('#lb-emos').innerHTML = Art.EMO.map((e, i) => `<button type="button" class="emo" data-emo="${i}" aria-label="${e.n}">${e.svg}</button>`).join('');
+    // 이모티콘 판: 😊 버튼으로 열고 닫음 · 버튼 바로 아래(화면 안으로 맞춤) · 바깥 톡·Esc·보내면 닫힘
+    $('#lb-emo-btn').innerHTML = Art.EMO[0] ? Art.EMO[0].svg : '😊';
+    $('#lb-emo-btn').addEventListener('click', () => { SND.SFX.click(); emoPop($('#lb-emos').hidden); });
+    document.addEventListener('pointerdown', (e) => {
+      if (!$('#lb-emos').hidden && !e.target.closest('#lb-emos, #lb-emo-btn')) emoPop(false);
+    }, true);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#lb-emos').hidden) emoPop(false); });
+    window.addEventListener('resize', () => { if (!$('#lb-emos').hidden) emoPop(true); });
     $('#lb-emos').addEventListener('click', (e) => {
       const b = e.target.closest('[data-emo]'); if (!b) return;
       const now = performance.now();
@@ -428,6 +454,7 @@
       $$('.emo').forEach((x) => x.classList.add('cool'));
       setTimeout(() => $$('.emo').forEach((x) => x.classList.remove('cool')), 1000);
       Net.send({ t: 'tkemo', e: Number(b.dataset.emo) });
+      emoPop(false);
     });
     $('#lb-start').addEventListener('click', () => {
       SND.unlock();
