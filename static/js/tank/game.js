@@ -941,7 +941,8 @@
     Art.drawTank(c, t.x, t.y, {
       kind: m.k, face: t.fa, bt: t.bt, a: t.a,
       f: fa.cur, fPrev: fa.prev, fLerp, blink,
-      phase: ph.v, team: m.tm, alpha, recoil: rc, shield: t.inv > 0 && t.st !== 2
+      phase: ph.v, team: m.tm, alpha, recoil: rc, shield: t.inv > 0 && t.st !== 2,
+      zs: scale() // 「전체」 줌처럼 작게 그릴 때 잉크 외곽을 화면 기준 두께로 유지
     });
     void dt;
   }
@@ -956,7 +957,11 @@
     const w = Math.min(a.r, b.r) - Math.max(a.l, b.l), h = Math.min(a.b, b.b) - Math.max(a.t, b.t);
     return w > 0 && h > 0 ? w * h : 0;
   }
-  const TAG_MARK_W = 14; // 이름표 앞 팀 모양 표지 자리(px)
+  // 이름표 안 왼쪽 작은 팀 모양 표지 자리(px). 좌 3 · 표지 8 · 틈 1.5 · 이름 · 우 3.5 → 알약 폭 = 이름 + 16
+  // (v3.2 는 +28 이라 평균 폭이 v3.1 대비 +24px → v3.3 은 상자 기준 v3.1 대비 남 +10px · 나 +13px)
+  const TAG_MARK_W = 8, TAG_PAD_L = 3, TAG_GAP = 1.5, TAG_PAD_R = 3.5;
+  const TAG_HUD_B = 46; // 이름표 상자 위쪽 한계(HUD 아래)
+  const TAG_EDGE = 4;   // 이름표 상자 좌우 화면 여백
   function drawLabels(c, list, now, shells) {
     c.textAlign = 'center'; c.textBaseline = 'alphabetic';
     const placed = [];
@@ -1016,16 +1021,21 @@
 
       // 폰트 크기는 절대 16px 미만 금지
       c.font = mine ? 'bold 16px Jua, sans-serif' : '16px Jua, sans-serif';
-      // 표지 자리(14px)만큼 이름 칸을 줄여 이름표 전체 폭은 예전과 비슷하게
       const maxW = crowded && !mine ? 54 : 84;
       const hw = crowded && !mine ? 36 : 44;
       const name = ellipsize(c, m.n, maxW);
       // 이름표 = [팀 모양 표지 ●/▲] + 이름, 팀색 테두리 알약 (TAG_MARK_W: 표지 자리)
       const nameW = Math.min(maxW + 2, c.measureText(name).width);
-      const tw = nameW + TAG_MARK_W + 14;
+      const tw = nameW + TAG_PAD_L + TAG_MARK_W + TAG_GAP + TAG_PAD_R;
       let x = it.x, y = it.y;
-      const boxHalf = Math.max(tw + 6, hw) / 2; // 내 이름표 흰 바깥선(2.5px)까지 상자에 포함
+      // 상자에는 테두리 바깥 절반까지 포함(남 2.2px 선 → 1.1, 내 흰 바깥선 5px → 2.5)
+      const boxHalf = Math.max(tw + (mine ? 5 : 2.2), hw) / 2;
       const makeBox = () => ({ l: x - boxHalf, t: y - 30, r: x + boxHalf, b: y + 6 });
+      // 이름표 상자를 화면 안으로(좌우 4px, 위는 HUD 아래, 아래 4px)
+      const clampX = (cx) => Math.max(TAG_EDGE + boxHalf, Math.min(cw - TAG_EDGE - boxHalf, cx));
+      const clampY = (cy) => Math.max(TAG_HUD_B + 30, Math.min(ch - TAG_EDGE - 6, cy));
+      x = clampX(x);
+      if (!mine) y = clampY(y);
 
       let alpha = mine ? 1.0 : (crowded ? 0.55 : 0.82);
 
@@ -1039,14 +1049,15 @@
 
         // 다른 이름표와 겹치면 위로 한 번 피해 보고, 그래도 겹치면 점으로
         if (!hitCdn && !hitSpec && !hitShell && !hitBtn && hitPlaced) {
-          y -= 18;
+          y = clampY(y - 18);
           b = makeBox();
           hitPlaced = placed.some((p) => overlapArea(p, b) > 0) || shRects.some((sr) => overlapArea(sr, b) > 0) || btnRects.some((br) => overlapArea(br, b) > 0) || !!(cdnBox && overlapArea(cdnBox, b) > 0) || !!(specBox && overlapArea(specBox, b) > 0);
         }
 
         if (hitCdn || hitSpec || hitShell || hitBtn || hitPlaced) {
           // 팀 모양 점(A 원·B 삼각, 흰 테두리)으로 대체 — 만약 점마저 겹치거나 버튼/카운트다운/관전막대에 가리면 숨김
-          const dx = it.x, dy = it.y - 6;
+          const dx = Math.max(TAG_EDGE + 7, Math.min(cw - TAG_EDGE - 7, it.x));
+          const dy = Math.max(TAG_HUD_B + 7, Math.min(ch - TAG_EDGE - 7, it.y - 6));
           const dotBox = { l: dx - 7, t: dy - 7, r: dx + 7, b: dy + 7 };
           const dotBlocked = (cdnBox && overlapArea(cdnBox, dotBox) > 0) || (specBox && overlapArea(specBox, dotBox) > 0) || placed.some((p) => overlapArea(p, dotBox) > 0) || btnRects.some((br) => overlapArea(br, dotBox) > 0);
           if (dotBlocked) {
@@ -1077,14 +1088,14 @@
           const tankHalfW = (it.K.bw / 2) * scale();
           const sideOff = Math.ceil(tankHalfW + boxW / 2 + 10);
           const side1 = it.x <= cw / 2 ? 1 : -1;
-          const clampX = (cx) => Math.max(boxW / 2 + 8, Math.min(cw - boxW / 2 - 8, cx));
+          const clampSideX = (cx) => Math.max(boxW / 2 + 8, Math.min(cw - boxW / 2 - 8, cx));
           const sideY = Math.max(Math.round(it.y + 36), specBox ? Math.round(specBox.b + 32) : 80);
           const cands = [];
-          if (!hitsSpec(b) && b.t >= 48) cands.push([it.x, it.y - 24]);
-          cands.push([it.x, Math.round(tankBotY + 38)]);
-          cands.push([clampX(it.x + side1 * sideOff), sideY]);
-          cands.push([clampX(it.x - side1 * sideOff), sideY]);
-          if (specBox) cands.push([it.x, Math.round(specBox.b + 32)]);
+          if (!hitsSpec(b) && b.t >= 48) cands.push([x, it.y - 24]);
+          cands.push([x, Math.round(tankBotY + 38)]);
+          cands.push([clampSideX(it.x + side1 * sideOff), sideY]);
+          cands.push([clampSideX(it.x - side1 * sideOff), sideY]);
+          if (specBox) cands.push([x, Math.round(specBox.b + 32)]);
           let picked = null;
           for (let ci = 0; ci < cands.length; ci++) {
             const [cx, cy] = cands[ci];
@@ -1100,6 +1111,7 @@
           }
           if (picked) { x = picked[0]; y = picked[1]; }
         }
+        x = clampX(x); y = clampY(y);
       }
 
       const finalBox = makeBox();
@@ -1122,10 +1134,10 @@
       if (mine) { c.strokeStyle = '#fff'; c.lineWidth = 5; c.stroke(); }
       c.strokeStyle = teamCol; c.lineWidth = mine ? 3 : 2.2;
       c.stroke();
-      // 팀 모양 표지 (A ● · B ▲, 흰 테두리)
-      Art.teamMark(c, pl + 5 + TAG_MARK_W / 2, pt + ph / 2 + (m.tm === 'B' ? 0.6 : 0), m.tm, 4.4);
+      // 팀 모양 표지 (A ● · B ▲, 흰 테두리) — 이름표 안 왼쪽에 작게
+      Art.teamMark(c, pl + TAG_PAD_L + TAG_MARK_W / 2, pt + ph / 2 + (m.tm === 'B' ? 0.6 : 0), m.tm, 3.1);
       // 닉네임 (항상 16px 이상, 내 이름만 불투명·굵게 + 두꺼운 외곽선)
-      const nx = pl + 5 + TAG_MARK_W + 4 + nameW / 2, ny = pt + 17; // 좌 5 · 표지 14 · 틈 4 · 이름 · 우 5
+      const nx = pl + TAG_PAD_L + TAG_MARK_W + TAG_GAP + nameW / 2, ny = pt + 17;
       c.lineWidth = mine ? 4.2 : 2.8;
       c.lineJoin = 'round';
       c.strokeStyle = mine ? 'rgba(18,8,28,.96)' : 'rgba(18,8,28,.72)';
@@ -1335,6 +1347,29 @@
     }
     return make(bestY);
   }
+  // 피해 숫자 자리: 이름표(nb) 위가 먼저, 위가 HUD 에 막혀 이름표 아래(탱크 위)로 밀리면 이름표 옆으로.
+  // 일반·아군 사격(자홍)·내 명중 숫자가 모두 이 길을 탐. 점 표지는 fxCtx.avoid 로 피함
+  function placeNearTag(cx, topY, w, h, fxCtx, nb, rise) {
+    if (!nb) return placeFxBox(cx, topY, w, h, fxCtx);
+    const free = (box) => {
+      const avoid = fxCtx ? fxCtx.avoid : btnRects;
+      const placed = fxCtx ? fxCtx.placed : [];
+      for (let i = 0; i < placed.length; i++) if (overlapArea(placed[i], box) > 0) return false;
+      for (let i = 0; i < avoid.length; i++) if (overlapArea(avoid[i], box) > 0) return false;
+      return box.l >= 4 && box.r <= cw - 4;
+    };
+    const up = placeFxBox(cx, topY, w, h, fxCtx);
+    if (free(up) && up.b <= nb.t + 1) return up;
+    // 옆: 이름표 알약 높이에 맞춰(위로 조금씩 떠오름), 화면 가운데 쪽을 먼저
+    const sideY = Math.round(nb.t + 2 - (rise || 0) * 0.5);
+    const sides = [nb.r + 6 + w / 2, nb.l - 6 - w / 2];
+    if ((nb.l + nb.r) / 2 > cw / 2) sides.reverse();
+    for (let i = 0; i < sides.length; i++) {
+      const sb = placeFxBox(sides[i], sideY, w, h, fxCtx);
+      if (free(sb) && sb.t < nb.b && sb.b <= nb.b + 4 && (sb.l >= nb.r || sb.r <= nb.l)) return sb;
+    }
+    return up;
+  }
   function pushFxLabel(fxCtx, text, box) {
     if (!fxCtx) return;
     fxCtx.placed.push(box);
@@ -1403,7 +1438,7 @@
         c.font = `${fs}px "Black Han Sans", Jua, sans-serif`;
         const w = Math.ceil((c.measureText(label).width + 10) * bounce);
         const h = Math.ceil((fs * 1.2 + 4) * bounce);
-        const box = placeFxBox(rx, baseY - rise - h, w, h, fxCtx);
+        const box = placeNearTag(rx, baseY - rise - h, w, h, fxCtx, (nb && t && t.st !== 2) ? nb : null, rise);
         const cx = (box.l + box.r) / 2, cy = (box.t + box.b) / 2;
         c.save();
         c.translate(cx, cy);
@@ -1423,7 +1458,7 @@
         c.font = `${fs}px "Black Han Sans", Jua, sans-serif`;
         const w = Math.ceil(c.measureText(label).width + 8);
         const h = Math.ceil(fs * 1.2) + 4;
-        const box = placeFxBox(rx + 14, baseY - age * 36 - h, w, h, fxCtx);
+        const box = placeNearTag(rx + 14, baseY - age * 36 - h, w, h, fxCtx, (nb && t && t.st !== 2) ? nb : null, age * 36);
         const cx = (box.l + box.r) / 2, cy = (box.t + box.b) / 2;
         c.save();
         c.globalAlpha = 1 - Math.max(0, age - 0.65) / 0.45;

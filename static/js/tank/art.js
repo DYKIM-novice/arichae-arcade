@@ -93,6 +93,14 @@
   // 팀 테두리 두께(스프라이트 단위): 팀색 선 바깥에 잉크 선을 한 겹 더 — 차체 잉크 외곽(2.5) 바깥으로 팀색 약 2.5px + 잉크 약 1.4px
   const OUT_TEAM_W = 7.6;
   const OUT_INK_W = 10.4;
+  const OUT_RING = (OUT_INK_W - OUT_TEAM_W) / 2; // 기본 잉크 띠 1.4
+  // 작게 그릴 때(「전체」 줌, 화면 배율 < 0.7) 잉크 띠가 화면에서 약 2.75px 로 남도록 띠 두께(스프라이트 단위)를 0.5 단위 구간으로 키움.
+  // 구간별로 캐시하므로 매 프레임 새로 만들지 않음. 큰 배율은 0 → 예전 스프라이트 그대로
+  const INK_PX = 2.75;
+  function inkBand(zs) {
+    if (!(zs > 0) || zs >= 0.7) return 0;
+    return Math.min(10, Math.max(OUT_RING, Math.round((INK_PX / zs) * 2) / 2));
+  }
 
   // 뒤쪽 안테나 깃발: 팀색 진한 천 + 가운데 팀 모양 표지(●/▲, 흰 테두리) — 색을 못 가려도 모양으로 팀 구분
   function drawFlag(c, x, top, team) {
@@ -202,13 +210,15 @@
   }
 
   // 포신 스프라이트 캐시 (팀 외곽선 / 본체 — 본체도 팀색이라 키에 팀 포함)
-  function getBarrelSprite(kind, team, isOutline) {
-    const key = kind + '_' + (isOutline ? 'out_' : 'main_') + (team || 'N');
+  function getBarrelSprite(kind, team, isOutline, band) {
+    const ring = isOutline && band ? band : 0;
+    const key = kind + '_' + (isOutline ? 'out_' : 'main_') + (team || 'N') + (ring ? '_k' + ring : '');
     if (BARREL_CACHE[key]) return BARREL_CACHE[key];
     const P = pal(team);
     const K = Object.assign({}, KIND[kind], { body: P.c, dark: P.dark, deep: P.deep, light: P.light, spec: P.spec });
     const pad = 10;
-    const lx = -10, ly = -12, lw = K.pl + 22, lh = 24;
+    const gx = ring ? Math.ceil(ring - OUT_RING) + 1 : 0; // 두꺼운 띠가 잘리지 않게 캔버스 여유
+    const lx = -10 - gx, ly = -12 - gx, lw = K.pl + 22 + gx * 2, lh = 24 + gx * 2;
     const [cv, c] = makeCv(Math.ceil(lw * CACHE_SCALE), Math.ceil(lh * CACHE_SCALE));
     c.scale(CACHE_SCALE, CACHE_SCALE);
     c.translate(-lx, -ly);
@@ -221,7 +231,7 @@
         else rr(c, -4, -5.2, K.pl + 7, 10.4, 3.5);
       };
       c.lineJoin = 'round';
-      c.strokeStyle = INK; c.lineWidth = OUT_INK_W;
+      c.strokeStyle = INK; c.lineWidth = ring ? OUT_TEAM_W + ring * 2 : OUT_INK_W;
       shape(); c.stroke();
       c.fillStyle = T.c; c.strokeStyle = T.c; c.lineWidth = OUT_TEAM_W;
       shape(); c.fill(); c.stroke();
@@ -322,13 +332,15 @@
 
   // 차체(포신·바퀴·표정 제외) 정적 스프라이트 캐시
   // 판정 크기 준수: mongdol bw=56, bh=30 (±15%: w<=64.4, h<=34.5) / mangru bw=48, bh=40 (±15%: w<=55.2, h<=46)
-  function getChassisSprite(kind, team, outline) {
-    const key = kind + '_' + (team || 'N') + '_' + (outline ? 1 : 0);
+  function getChassisSprite(kind, team, outline, band) {
+    const ring = TEAM[team] && outline && band ? band : 0;
+    const key = kind + '_' + (team || 'N') + '_' + (outline ? 1 : 0) + (ring ? '_k' + ring : '');
     if (CHASSIS_CACHE[key]) return CHASSIS_CACHE[key];
     // 차체색 = 팀색 (기종은 실루엣·포신 길이로 구분). 크기·좌표는 KIND, 색은 팀 팔레트
     const P = pal(team);
     const K = Object.assign({}, KIND[kind], { body: P.c, dark: P.dark, deep: P.deep, light: P.light, spec: P.spec });
-    const lx = -44, ly = -74, lw = 88, lh = 84;
+    const gx = ring ? Math.ceil(ring - OUT_RING) + 1 : 0; // 두꺼운 띠가 잘리지 않게 캔버스 여유
+    const lx = -44 - gx, ly = -74 - gx, lw = 88 + gx * 2, lh = 84 + gx * 2;
     const [cv, c] = makeCv(Math.ceil(lw * CACHE_SCALE), Math.ceil(lh * CACHE_SCALE));
     c.scale(CACHE_SCALE, CACHE_SCALE);
     c.translate(-lx, -ly);
@@ -341,7 +353,7 @@
         : [[-26.5, -11.5, 53, 11.5, 5.7], [-25, -33, 49, 23, 6], [-22, -45, 32, 16, 5]];
       c.save();
       c.lineJoin = 'round';
-      c.strokeStyle = INK; c.lineWidth = OUT_INK_W;
+      c.strokeStyle = INK; c.lineWidth = ring ? OUT_TEAM_W + ring * 2 : OUT_INK_W;
       for (const q of parts) { rr(c, q[0], q[1], q[2], q[3], q[4]); c.stroke(); }
       c.fillStyle = T.c; c.strokeStyle = T.c; c.lineWidth = OUT_TEAM_W;
       for (const q of parts) { rr(c, q[0], q[1], q[2], q[3], q[4]); c.fill(); c.stroke(); }
@@ -669,7 +681,7 @@
     c.restore();
   }
 
-  /* o: {kind, face(1/-1), bt(도), a(포신 도), f(표정 0/1/2), fPrev, fLerp, blink, phase, team, alpha, recoil, outline, shield} */
+  /* o: {kind, face(1/-1), bt(도), a(포신 도), f(표정 0/1/2), fPrev, fLerp, blink, phase, team, alpha, recoil, outline, shield, zs(화면 배율: 작으면 잉크 외곽 두껍게)} */
   function drawTank(c, x, y, o) {
     const kind = o.kind === 'mangru' ? 'mangru' : 'mongdol';
     const K = KIND[kind];
@@ -685,10 +697,11 @@
     const trIdx = Math.floor(ph * 8) & 7;
     const team = o.team;
     const hasOutline = !!(team && o.outline !== false);
+    const band = hasOutline ? inkBand(o.zs) : 0;
 
     // 1) 팀 색 포신 외곽선 (뒤쪽)
     if (hasOutline) {
-      const bo = getBarrelSprite(kind, team, true);
+      const bo = getBarrelSprite(kind, team, true, band);
       c.save();
       c.translate(K.pfx, -K.ph);
       c.rotate(-a * Math.PI / 180);
@@ -698,7 +711,7 @@
     }
 
     // 2) 캐시된 차체 스프라이트
-    const ch = getChassisSprite(kind, team, hasOutline);
+    const ch = getChassisSprite(kind, team, hasOutline, band);
     c.drawImage(ch.cv, ch.x, ch.y, ch.w, ch.h);
 
     // 3) 캐시된 회전 트랙 + 바퀴 프레임
@@ -1602,5 +1615,5 @@
     { n: '화남', svg: face(`<path d="M13 18 l8 4 M35 18 l-8 4" stroke="${INK}" stroke-width="2.8" stroke-linecap="round"/><circle cx="18" cy="25" r="2" fill="${INK}"/><circle cx="30" cy="25" r="2" fill="${INK}"/><path d="M17 35 q7 -5 14 0" stroke="${INK}" stroke-width="2.6" fill="none" stroke-linecap="round"/><path d="M36 6 q4 2 2 6 q-3 3 1 6 M41 3 q3 2 1 5" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round"/>`, '#ff8a5a') }
   ];
 
-  window.TankArt = { TEAM, FF, NEUTRAL, teamMark, KIND, STAT, drawTank, tomb, icon, Terrain, sky, drawWaterfalls, EMO, rr, onBgReady };
+  window.TankArt = { TEAM, FF, NEUTRAL, teamMark, inkBand, KIND, STAT, drawTank, tomb, icon, Terrain, sky, drawWaterfalls, EMO, rr, onBgReady };
 })();
