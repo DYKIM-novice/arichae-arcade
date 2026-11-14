@@ -966,11 +966,13 @@
   function tankScreenRect(t, m) {
     const K = Art.KIND[m.k], s = scale();
     const topOff = m.k === 'mangru' ? 50 : 38;
-    const hwPx = (K.bw / 2 + K.pl) * s;
+    // 포신은 바라보는 쪽(t.fa)으로만 뻗으므로 반대쪽은 차체 반폭만 (뒤쪽 빈 공간 때문에 화면 밖 탱크가 '일부 보임'으로 잡혀 이름표가 끝에 붙던 것 방지)
+    const body = K.bw / 2 * s, front = (K.bw / 2 + K.pl) * s;
+    const fa = t.fa < 0 ? -1 : 1;
     const [x, top] = toScreen(t.x, t.y - topOff - 4);
     const [, bot] = toScreen(t.x, t.y + 4);
     const [, cy] = toScreen(t.x, t.y - K.bh / 2);
-    const r = { l: x - hwPx, t: top, r: x + hwPx, b: bot, cx: x, cy };
+    const r = { l: x - (fa < 0 ? front : body), t: top, r: x + (fa > 0 ? front : body), b: bot, cx: x, cy };
     r.off = r.r <= 0 || r.l >= cw || r.b <= 0 || r.t >= ch;
     return r;
   }
