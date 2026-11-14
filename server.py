@@ -107,6 +107,7 @@ mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
 mimetypes.add_type("image/svg+xml", ".svg")
 mimetypes.add_type("image/webp", ".webp")
+mimetypes.add_type("application/manifest+json", ".webmanifest")   # === tank === 포트리스관 홈 화면 바로가기(static/tank.webmanifest) · 옛 파이썬 기본 표에 없을 수 있어 명시
 
 
 def now_ms() -> int:

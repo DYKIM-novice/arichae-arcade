@@ -77,7 +77,9 @@
     };
     const fxLog = [];
     fxLog.labels = [];
+    const dbgKeep = window.__tankDbg || {};   // share.js 의 install · lastInvite 는 판이 바뀌어도 유지
     window.__tankDbg = {
+      install: dbgKeep.install, lastInvite: dbgKeep.lastInvite,
       wind: m.wind, windNextAt: wn ? wn.at : null, windChanges: [], blinkStarts: [], tags: [],
       fx: fxLog, booms: [], me: null, tanks: [],
       cam: { x: 0, y: 0, scale: 1, cw, ch }, map: { W: WW, H: WH },

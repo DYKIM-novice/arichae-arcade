@@ -5,7 +5,7 @@
    - AI 설정 창(방장만): 넣기·빼기·쉬움/보통, 연습(AI) 2대2·8대8 채우기 */
 (function () {
   'use strict';
-  const Art = window.TankArt, Net = window.TankNet, SND = window.TankSFX, Game = window.TankGame;
+  const Art = window.TankArt, Net = window.TankNet, SND = window.TankSFX, Game = window.TankGame, Share = window.TankShare;
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -18,6 +18,10 @@
   let emoCool = 0;
   let joining = false;
   let kindTeam;            // 기종 버튼 그림을 마지막으로 그린 팀 (팀이 바뀌면 팀색 차체로 다시 그림)
+  // 초대 링크(?room=CODE)로 연 경우: { code, phase, hadSeat }
+  //   phase 'rejoin' 내가 원래 있던 방 → 기존 재접속(tkrejoin) 먼저 · 'join' 닉네임으로 참가 중 · 'wait' 닉네임 입력 대기
+  let invite = null;
+  let invitedIn = false;   // 초대로 막 들어옴 → 첫 대기실 정보에서 판 진행 중이면 관전 안내
 
   // ---------------------------------------------------------------- 공통
   let toastT = 0;
@@ -56,11 +60,16 @@
     if (!create && code.length !== 4) { $('#j-msg').textContent = '방 코드 숫자 4자리를 적어 주세요'; SND.SFX.deny(); return; }
     try { localStorage.setItem('tank_name', name); } catch (e) { /* 무시 */ }
     SND.unlock(); SND.SFX.click(); fullscreenTry();
+    // 초대받은 방 코드 그대로 들어가면 초대 참가로 처리(거절되면 친절한 문구), 다른 코드·새 방이면 보통 참가
+    invite = (!create && invite && invite.code === code) ? { code, phase: 'join', hadSeat: invite.hadSeat } : null;
+    sendJoin({ t: 'tkjoin', room: create ? '' : code, name }, '들어가는 중…');
+  }
+  function sendJoin(msg, label) {
     Net.forget();
     joining = true;
-    $('#j-msg').textContent = '들어가는 중…';
+    $('#j-msg').textContent = label;
     Net.connect();
-    Net.send({ t: 'tkjoin', room: create ? '' : code, name });
+    Net.send(msg);
   }
   function joinArt() {
     const cv = $('#join-art'); if (!cv || $('#s-join').hidden) return;
@@ -86,6 +95,47 @@
     const s = Math.max(1, h / 260);
     c.save(); c.translate(w * 0.11, top - 4); c.scale(s, s); Art.drawTank(c, 0, 0, { kind: 'mongdol', face: 1, bt: 0, a: 30, f: 1, team: 'A' }); c.restore();
     c.save(); c.translate(w * 0.89, top - 4); c.scale(s, s); Art.drawTank(c, 0, 0, { kind: 'mangru', face: -1, bt: 0, a: 45, f: 0, team: 'B' }); c.restore();
+  }
+
+  // ---------------------------------------------------------------- 초대 링크로 열었을 때
+  function dropRoomParam() {
+    try { history.replaceState(null, '', location.pathname); } catch (e) { /* 무시 */ }
+  }
+  function enterLabel(code) {
+    const b = $('#j-enter');
+    if (code) { b.textContent = `방 ${code} 입장`; b.classList.add('hl'); } else { b.textContent = '코드로 들어가기'; b.classList.remove('hl'); }
+  }
+  // 닉네임이 없을 때: 방 코드 채우고 닉네임 칸에 포커스 + 안내 + 입장 버튼 강조
+  function inviteAsk(code) {
+    invite = { code, phase: 'wait', hadSeat: !!(invite && invite.hadSeat) };
+    show('#s-join'); joinArt();
+    $('#j-code').value = code;
+    $('#j-msg').textContent = `초대받은 방 ${code} — 닉네임만 넣고 입장하세요`;
+    enterLabel(code);
+    try { $('#j-name').focus({ preventScroll: true }); } catch (e) { /* 무시 */ }
+  }
+  function inviteJoin(code, name) {
+    invite = { code, phase: 'join', hadSeat: !!(invite && invite.hadSeat) };
+    $('#j-name').value = name;
+    $('#j-code').value = code;
+    sendJoin({ t: 'tkjoin', room: code, name }, `초대받은 방 ${code}에 들어가는 중…`);
+  }
+  // 초대 참가가 서버에서 거절됐을 때 친절한 문구 (tank.py tkjoin 의 tkerr: no_room · full) + 주소의 room 정리
+  function inviteFail(m) {
+    const code = invite.code, had = invite.hadSeat;
+    invite = null; joining = false;
+    dropRoomParam();
+    enterLabel('');
+    show('#s-join'); joinArt();
+    if (m.code === 'full') {
+      const mx = String(m.msg || '').match(/최대 \d+명/);
+      $('#j-code').value = code;
+      $('#j-msg').textContent = `방 ${code} — 꽉 찼어요${mx ? ' (' + mx[0] + ')' : ''} · 자리가 나면 다시 눌러 주세요`;
+    } else {
+      $('#j-code').value = '';
+      $('#j-msg').textContent = had ? `방 ${code} — 판이 끝났거나 없어졌어요 · 새 방을 만들어 주세요` : `방 ${code} — 찾을 수 없어요 · 판이 끝났을 수 있어요`;
+    }
+    SND.SFX.deny();
   }
 
   // ---------------------------------------------------------------- 대기실
@@ -284,6 +334,8 @@
   Net.on('tkjoined', (m) => {
     me = m.pid; joining = false;
     $('#j-msg').textContent = '';
+    if (invite) { invitedIn = !m.re; invite = null; enterLabel(''); }
+    Share.kakaoPreload();   // 카카오 키가 있을 때만 SDK 를 미리 받음(버튼을 누른 순간 바로 열리게) · 키 없으면 아무것도 안 함
     if (!Game.active()) show('#s-lobby');
     if (m.re) toast('다시 연결됐어요');
     history.replaceState(null, '', location.pathname + '?room=' + m.code);
@@ -293,6 +345,10 @@
     if (m.notice) toast(m.notice);
     const mine = myRow();
     if (!mine) return;
+    if (invitedIn) {
+      invitedIn = false;
+      if (m.round && !m.round.over && mine.st === 'wait') setTimeout(() => toast('지금 판이 진행 중이에요 · 「판 보기」로 관전하고 다음 판에 같이 해요'), m.notice ? 2700 : 0);
+    }
     if (mine.st === 'lobby' || mine.st === 'wait') {
       if (Game.active() || $('#s-lobby').hidden) show('#s-lobby');
     }
@@ -306,6 +362,20 @@
   Net.on('tkemo', (m) => bubble(m.id, m.e));
   Net.on('tkleft', () => { clearBubbles(); Net.forget(); L = null; me = null; show('#s-join'); joinArt(); });
   Net.on('tkerr', (m) => {
+    // 초대 링크: 내가 원래 있던 방 재접속이 안 되면 → 저장된 닉네임으로 그 방에 새로 참가(닉네임이 없으면 입력 안내)
+    if (invite && invite.phase === 'rejoin' && m.code === 'no_room') {
+      clearBubbles();
+      Net.forget(); L = null; me = null;
+      const code = invite.code, name = savedName();
+      if (name) inviteJoin(code, name); else { joining = false; inviteAsk(code); }
+      return;
+    }
+    if (invite && invite.phase === 'join' && (m.code === 'no_room' || m.code === 'full')) {
+      clearBubbles();
+      Net.forget(); L = null; me = null;
+      inviteFail(m);
+      return;
+    }
     if (m.code === 'no_room') {
       const wasIn = !!L || !!Net.seat();
       clearBubbles();
@@ -323,9 +393,15 @@
   // ---------------------------------------------------------------- 버튼
   function setup() {
     $('#j-name').value = savedName() || ((Net.seat() && Net.seat().name) || '');
+    Share.init({ toast });
     const q = new URLSearchParams(location.search).get('room');
-    if (q && /^\d{4}$/.test(q)) $('#j-code').value = q;
-    $('#j-code').addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4); });
+    const inviteCode = q && /^\d{4}$/.test(q) ? q : '';
+    if (q && !inviteCode) dropRoomParam();
+    if (inviteCode) $('#j-code').value = inviteCode;
+    $('#j-code').addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
+      if (invite && invite.phase === 'wait' && e.target.value !== invite.code) { invite = null; enterLabel(''); $('#j-msg').textContent = ''; }
+    });
     $('#j-create').addEventListener('click', () => join(true));
     $('#j-enter').addEventListener('click', () => join(false));
     $('#j-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') join(false); });
@@ -333,12 +409,12 @@
     $$('.mute-btn').forEach((b) => b.addEventListener('click', () => { SND.unlock(); SND.setMuted(!SND.isMuted()); SND.SFX.click(); }));
     SND.onMute(paintMute); paintMute();
 
-    $('#lb-copy').addEventListener('click', () => {
-      const link = location.origin + location.pathname + '?room=' + (L ? L.code : '');
-      SND.SFX.click();
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(() => toast('초대 주소를 복사했어요'), () => toast('방 코드: ' + (L ? L.code : '')));
-      else toast('방 코드: ' + (L ? L.code : ''));
-    });
+    // 카카오로 초대: 카카오 피드(키가 있을 때) → 기기 공유 시트 → 클립보드 복사 (share.js)
+    $('#lb-invite').addEventListener('click', () => { SND.SFX.click(); Share.invite(L ? L.code : ''); });
+    // 홈 화면에 추가 (입장 화면 · 대기실 · 게임 메뉴) — 설치할 수 있을 때만 보임
+    $$('.inst-btn').forEach((b) => b.addEventListener('click', () => { SND.unlock(); SND.SFX.click(); Share.install(); }));
+    const paintInstall = () => { const on = Share.canInstall(); $$('.inst-btn').forEach((b) => { b.hidden = !on; }); };
+    Share.onChange(paintInstall); paintInstall();
     $('#lb-leave').addEventListener('click', leave);
     $('#lb-watch').addEventListener('click', () => { SND.SFX.click(); Net.send({ t: 'tkspec', d: 0 }); });
     $('#lb-kinds').addEventListener('click', (e) => { const b = e.target.closest('[data-kind]'); if (b) { SND.SFX.click(); Net.send({ t: 'tkpick', kind: b.dataset.kind }); } });
@@ -376,9 +452,21 @@
     setInterval(() => { if (L && L.round && !$('#s-lobby').hidden) renderLobbyTime(); }, 500);
     window.addEventListener('resize', () => { kindTeam = undefined; joinArt(); if (L && !$('#s-lobby').hidden) renderLobby(); });
 
-    if (Net.seat()) { $('#j-msg').textContent = '다시 들어가는 중…'; Net.connect(); }
     show('#s-join');
     joinArt();
+    if (Net.seat()) {
+      // 이 방에 원래 있던 자리(새로고침·초대 링크 다시 열기) → 기존 재접속(tkrejoin) 먼저
+      if (inviteCode) invite = { code: inviteCode, phase: 'rejoin', hadSeat: true };
+      $('#j-msg').textContent = '다시 들어가는 중…'; Net.connect();
+    } else if (inviteCode) {
+      const name = savedName();
+      if (Net.otherTabRoom() === inviteCode) {
+        // 이 방은 이 브라우저의 다른 탭에서 이미 하는 중 → 자동으로 자리를 하나 더 만들지 않고 물어봄
+        inviteAsk(inviteCode);
+        $('#j-msg').textContent = `방 ${inviteCode} — 다른 탭에서 이미 하고 있어요 · 여기서도 하려면 입장`;
+      } else if (name) inviteJoin(inviteCode, name);
+      else inviteAsk(inviteCode);
+    }
     if (Art.onBgReady) Art.onBgReady(joinArt);
   }
   function renderLobbyTime() {

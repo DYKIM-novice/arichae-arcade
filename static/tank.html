@@ -6,13 +6,38 @@
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <meta name="theme-color" content="#3a2350">
-<title>노을언덕 포격대 · 아리채 오락실</title>
-<!-- 아리채 오락실 · 노을언덕 포격대(가칭, 실시간 팀 포격전)
+<title>포트리스관 · 아리채 오락실</title>
+<meta name="description" content="각도와 파워로 쏘는 실시간 팀 포격전 · 1대1~8대8, AI 연습도 돼요">
+<!-- 홈 화면 바로가기(PWA): 이 페이지만 덮는 manifest (허브 manifest.webmanifest 와 따로) -->
+<link rel="manifest" href="tank.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="img/tank/apple_touch_180_v33.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="포트리스관">
+<meta name="application-name" content="포트리스관">
+<!-- 링크 미리보기(카카오톡 등): 서버가 보내는 정적 HTML 의 메타를 읽으니 여기 그대로 둠 · 이미지는 절대 주소 -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="아리채 오락실">
+<meta property="og:title" content="포트리스관 · 아리채 오락실">
+<meta property="og:description" content="각도와 파워로 쏘는 실시간 팀 포격전! 링크를 열고 닉네임만 넣으면 같이 해요">
+<meta property="og:image" content="https://arichae-arcade.onrender.com/static/img/tank/og_v33.png">
+<meta property="og:image:width" content="800">
+<meta property="og:image:height" content="400">
+<meta property="og:image:alt" content="노을 언덕 위 파랑·주황 탱크와 포트리스관 제목">
+<meta property="og:url" content="https://arichae-arcade.onrender.com/static/tank.html">
+<meta property="og:locale" content="ko_KR">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="포트리스관 · 아리채 오락실">
+<meta name="twitter:description" content="각도와 파워로 쏘는 실시간 팀 포격전">
+<meta name="twitter:image" content="https://arichae-arcade.onrender.com/static/img/tank/og_v33.png">
+<!-- 아리채 오락실 · 포트리스관(옛 가칭 노을언덕 포격대, 실시간 팀 포격전)
      설계: 1f-study/tank-artillery/DESIGN_tank_artillery_v1.md · 서버 권위: tank.py (메시지 접두사 tk)
      - js/tank/net.js   웹소켓·재접속(tkrejoin)
      - js/tank/sfx.js   Web Audio 합성 배경음(대기실)·효과음(게임) — 외부 음원 없음
      - js/tank/art.js   옆에서 본 탱크·지형·이모티콘 그림(캔버스/SVG로 직접 그림)
-     - js/tank/lobby.js 입장·대기실·AI 설정·이모티콘
+     - js/tank/share.js 홈 화면에 추가(설치 안내) · 카카오로 초대(카카오 피드 → 공유 시트 → 복사)
+     - js/tank/lobby.js 입장·대기실·AI 설정·이모티콘·초대 링크로 열기
      - js/tank/game.js  게임 화면(보간·카메라·조작·관전·결과) -->
 <link rel="stylesheet" href="css/tank.css">
 </head>
@@ -23,7 +48,7 @@
   <section class="screen" id="s-join">
     <div class="join-sky" aria-hidden="true"><canvas id="join-art"></canvas></div>
     <div class="join-card">
-      <h1 class="disp">노을언덕 포격대</h1>
+      <h1 class="disp">포트리스관</h1>
       <p class="join-sub">각도와 파워로 쏘는 실시간 팀 포격전 · 1대1~8대8 (AI 연습 가능)</p>
       <div class="join-row">
         <label class="fld"><span>닉네임</span><input id="j-name" maxlength="8" placeholder="8자까지" autocomplete="off"></label>
@@ -36,6 +61,7 @@
       <div class="join-msg" id="j-msg" role="status"></div>
     </div>
     <a class="corner-btn left" id="j-hub" href="/" aria-label="오락실로">‹ 오락실</a>
+    <button class="corner-btn right2 inst-btn" id="j-install" type="button" hidden><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.6" stroke="#fff" stroke-width="2" fill="none"/><path d="M12 7.5v7M8.8 11.5 12 14.7l3.2-3.2" stroke="#FFD23F" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>홈 화면에 추가</span></button>
     <button class="corner-btn right mute-btn" type="button" aria-label="소리 켜기/끄기"></button>
   </section>
 
@@ -43,7 +69,7 @@
   <section class="screen" id="s-lobby" hidden>
     <header class="lb-top">
       <div class="lb-code">방 코드 <b class="disp" id="lb-code">----</b></div>
-      <button class="sbtn" id="lb-copy" type="button">복사</button>
+      <button class="sbtn invite-btn" id="lb-invite" type="button" aria-label="카카오로 초대"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 4C7 4 3 7.1 3 11c0 2.5 1.7 4.7 4.2 6l-.9 3.3c-.1.3.3.6.6.4l3.9-2.6c.4 0 .8.1 1.2.1 5 0 9-3.1 9-7s-4-7-9-7z" fill="#3c1e1e"/></svg><span class="lg">카카오로 </span>초대</button>
       <span class="grow"></span>
       <button class="sbtn" id="lb-watch" type="button" hidden>판 보기</button>
       <button class="sbtn" id="lb-ai" type="button" hidden>AI ⚙</button>
@@ -73,6 +99,7 @@
         <button type="button" class="btn btn-green" id="lb-start">시작하기</button>
         <button type="button" class="btn btn-yellow" id="lb-practice" hidden>연습(AI) 채우기</button>
         <div class="lb-why" id="lb-why"></div>
+        <button type="button" class="sbtn inst-btn" id="lb-install" hidden><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.6" stroke="#fff" stroke-width="2" fill="none"/><path d="M12 7.5v7M8.8 11.5 12 14.7l3.2-3.2" stroke="#FFD23F" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>홈 화면에 추가</span></button>
       </aside>
     </div>
     <div class="lb-bubbles" id="lb-bubbles" aria-hidden="true"></div>
@@ -134,6 +161,7 @@
       <div class="menu-body">
         <button type="button" class="sbtn mute-btn" aria-label="소리 켜기/끄기"></button>
         <button type="button" class="sbtn" id="m-leave">판 나가기 (탱크는 판 끝까지 남아요)</button>
+        <button type="button" class="sbtn inst-btn" id="m-install" hidden><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.6" stroke="#fff" stroke-width="2" fill="none"/><path d="M12 7.5v7M8.8 11.5 12 14.7l3.2-3.2" stroke="#FFD23F" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>홈 화면에 추가 (앱처럼 바로 열기)</span></button>
         <p class="menu-help">◀ ▶ 이동 · ▲ ▼ 포신 · 파워 막대를 위아래로 끌기 · 발사<br>키보드: ← → 이동, ↑ ↓ 포신, W/S 파워, 스페이스 발사</p>
       </div>
     </div>
@@ -145,6 +173,7 @@
 <script src="js/tank/sfx.js"></script>
 <script src="js/tank/art.js"></script>
 <script src="js/tank/net.js"></script>
+<script src="js/tank/share.js"></script>
 <script src="js/tank/game.js"></script>
 <script src="js/tank/lobby.js"></script>
 </body>

@@ -255,3 +255,35 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 @media (max-width: 600px) {
   .hmini { width: 96px; height: 26px; }
 }
+
+/* ---------- v3.3 홈 화면에 추가 · 카카오로 초대 ---------- */
+.inst-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.inst-btn svg { flex: none; }
+.corner-btn.right2 { right: 72px; gap: 6px; }
+#lb-install { flex: none; min-height: 44px; }
+.menu-body .inst-btn { justify-content: flex-start; }
+/* 초대받은 방: 입장 버튼 강조 (은은한 빛 고리) */
+#j-enter.hl { box-shadow: 0 4px 0 rgba(0,0,0,.28), 0 0 0 3px #FFE27A; animation: tkhl 1.4s ease-in-out infinite; }
+@keyframes tkhl { 50% { box-shadow: 0 4px 0 rgba(0,0,0,.28), 0 0 0 6px rgba(255,226,122,.55); } }
+/* 카카오로 초대: 카카오 노랑 바탕 + 진한 글자 (대비 약 14:1) */
+.sbtn.invite-btn { display: inline-flex; align-items: center; gap: 5px; background: #FEE500; border-color: #FEE500; color: #191600; }
+.sbtn.invite-btn:active { background: #e6cf00; }
+@media (max-width: 700px) { .invite-btn .lg { display: none; } }
+/* 짧은 화면: 입장 카드가 위 모서리 버튼(오락실·설치·소리)과 겹치지 않게 아래로 */
+@media (max-height: 400px) { #s-join { padding: 56px 0 4px; } }
+/* 설치 안내 시트 (iOS · 카카오톡 안 브라우저) — 바깥을 톡하면 닫힘 */
+.inst-sheet { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 8px;
+  background: rgba(16,8,26,.62); }
+.inst-card { width: min(460px, 94vw); max-height: calc(100dvh - 16px); overflow-y: auto; padding: 14px 18px 14px; border-radius: 20px;
+  background: #2a1838; border: 2px solid rgba(255,255,255,.3); box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.inst-head { display: flex; align-items: center; gap: 12px; }
+.inst-head img { flex: none; width: 56px; height: 56px; border-radius: 13px; }
+.inst-head b { display: block; font-size: 20px; color: #FFE7A8; }
+.inst-head small { display: block; font-size: 16px; color: #ffd9c6; }
+.inst-steps { margin: 10px 0 8px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.inst-steps li { display: flex; align-items: center; gap: 10px; font-size: 16px; line-height: 1.3; }
+.inst-steps b { color: #FFE27A; font-weight: 400; }
+.inst-ic { flex: none; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: rgba(255,255,255,.12); }
+.inst-n { font-size: 20px; color: #7CE3A6; }
+.inst-btns { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.inst-btns .btn { min-height: 48px; }

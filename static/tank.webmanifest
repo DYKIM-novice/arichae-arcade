@@ -1,0 +1,22 @@
+{
+  "id": "/static/tank.html",
+  "name": "포트리스관",
+  "short_name": "포트리스관",
+  "description": "각도와 파워로 쏘는 실시간 팀 포격전 · 아리채 오락실",
+  "start_url": "/static/tank.html?source=pwa",
+  "scope": "/static/tank.html",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#3a2350",
+  "theme_color": "#3a2350",
+  "lang": "ko",
+  "dir": "ltr",
+  "categories": ["games"],
+  "icons": [
+    { "src": "/static/img/tank/icon_192_v33.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/img/tank/icon_512_v33.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/img/tank/icon_maskable_512_v33.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/static/img/tank/apple_touch_180_v33.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ]
+}

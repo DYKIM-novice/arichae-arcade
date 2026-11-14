@@ -128,5 +128,10 @@
     } catch (e) { try { localStorage.removeItem(REJOIN_KEY); } catch (e2) { /* 무시 */ } }
   }
 
-  window.TankNet = { connect, send, on, forget, seat: () => seat, isOpen: () => !!ws && ws.readyState === 1 };
+  // 같은 브라우저의 다른 탭이 지금 쓰고 있는 방 코드('' = 없음) — 초대 링크를 새 탭으로 열었을 때 자리를 하나 더 만들지 않게
+  function otherTabRoom() {
+    try { const r = JSON.parse(localStorage.getItem(REJOIN_KEY) || 'null'); return liveOther(r) ? String(r.code || '') : ''; } catch (e) { return ''; }
+  }
+
+  window.TankNet = { connect, send, on, forget, otherTabRoom, seat: () => seat, isOpen: () => !!ws && ws.readyState === 1 };
 })();

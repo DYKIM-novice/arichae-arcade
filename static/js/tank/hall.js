@@ -20,7 +20,7 @@
     if (!box) return;
     box.innerHTML = `<button type="button" class="tk-lb-card" data-tank="go" style="display:flex;flex-direction:column;gap:6px;width:100%;margin-top:10px;padding:14px;border:0;border-radius:18px;
         background:linear-gradient(135deg,#9a5aa0,#e0789a 55%,#f7a868);color:#fff;text-align:left;font-family:inherit;box-shadow:0 4px 0 rgba(0,0,0,.2)">
-        <b class="disp" style="font-size:22px">노을언덕 포격대</b>
+        <b class="disp" style="font-size:22px">포트리스관</b>
         <span style="font-size:16px">각도와 파워로 쏘는 실시간 팀 포격전 · <span style="white-space:nowrap">1대1~8대8</span> · 휴대폰을 가로로 들어요</span>
         <span style="align-self:flex-start;margin-top:4px;padding:8px 16px;border-radius:12px;background:#FFD23F;color:#3a2400;font-size:16px">포트리스관 입장 ›</span>
       </button>
