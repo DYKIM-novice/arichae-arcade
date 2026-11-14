@@ -50,7 +50,7 @@
     cw = window.innerWidth; ch = window.innerHeight;
     cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
     miniSz = null;
-    btnRects = Array.from(document.querySelectorAll('#s-game .pad, #s-game .fire, #s-game .power, #s-game .sp-back, #s-game .aimread, #s-game .fuel, #s-game .hud > *'))
+    btnRects = Array.from(document.querySelectorAll('#s-game .pad, #s-game .fire, #s-game .power, #s-game .sp-back, #s-game .sp-fast, #s-game .aimread, #s-game .fuel, #s-game .hud > *'))
       .filter((e) => e.offsetParent !== null).map((e) => { const r = e.getBoundingClientRect(); return { l: r.left - 8, t: r.top - 8, r: r.right + 8, b: r.bottom + 8 }; });
   }
 
@@ -68,6 +68,8 @@
       T, geo: m.geo || null, meta, me, side: m.side, snaps: [], events: [], est: null, renderK: m.k || 0, appliedK: m.k || 0,
       wind: m.wind, wn, lastWindAt: null, windBlink: false, rc: m.rc != null ? m.rc : -(m.cdn || 0),
       tl: m.endsIn, cdn: m.cdn, startCdn: m.cdn, startedAt: performance.now(),
+      // 관전 빠르게: ts = 서버 시뮬레이션 배속(1/4, 렌더 시간선), tsNow = 가장 최근 받은 값(버튼), tso = 켤 수 있는 판인가
+      ts: m.ts || 1, tsNow: m.ts || 1, tso: !!m.tso, fastLock: 0, fastShown: null,
       aim: { a: null, p: null, sentA: null, sentP: null, sentAt: 0, edge: 0, edgeSide: 0 },
       input: 0, cam: { x: 0, y: 0, ok: false }, zoom: false, spec: !me || !!m.spec, specId: null, specInfo: null, specAsked: false,
       camState: { mode: 'self', sid: null, own: null, fireAt: 0, impactAt: 0, holdUntil: 0, returnStartAt: 0, returnFromX: 0, returnFromY: 0, impactFromX: 0, impactFromY: 0, lastX: 0, lastY: 0, predX: 0, predY: 0, predT: 0, vx: 0, vy: 0, wind: 0, hasShell: false, reason: 'auto' },
@@ -162,7 +164,8 @@
     m.tanks.forEach((t) => { tanks[t[0]] = t; });
     const sh = {};
     m.sh.forEach((s) => { sh[s[0]] = s; });
-    G.snaps.push({ k: m.k, tanks, sh, tl: m.tl, cdn: m.cdn, rc: m.rc, w: m.w, wn: m.wn });
+    G.snaps.push({ k: m.k, tanks, sh, tl: m.tl, cdn: m.cdn, rc: m.rc, w: m.w, wn: m.wn, ts: m.ts || 1 });
+    G.tsNow = m.ts || 1; G.tso = !!m.tso;
     if (G.snaps.length > 40) G.snaps.shift();
     if (G.snaps.length === 1) { G.tl = m.tl; G.cdn = m.cdn; G.wind = m.w; if (m.wn) G.wn = m.wn; if (m.rc != null) G.rc = m.rc; }
     const mine = G.me && tanks[G.me];
@@ -449,6 +452,26 @@
     if (!ot && e.own && G.meta[e.own]) ot = G.meta[e.own].tm;
     return !!(ot && h.team && ot === h.team);
   }
+  // 관전 빠르게(4배속) 버튼: 이 판에 내 탱크가 있었고 쓰러져 관전 중, 살아 있는 사람이 없는 판(서버 tso)일 때만
+  function updateFastBtn(me) {
+    const show = !!(G.spec && G.me && me && me.st === 2 && G.tso && !G.over && !G.endSeen);
+    const on = show && G.tsNow > 1;
+    const key = show ? (on ? 2 : 1) : 0;
+    if (G.fastShown === key) return;
+    G.fastShown = key;
+    const b = $('#sp-fast');
+    b.hidden = !show;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.textContent = on ? '▶ 1배속으로' : '⏩ 4배속';
+    if (window.__tankDbg) window.__tankDbg.fastBtn = key;
+    resize();
+  }
+  function onFast(m) {
+    if (!G) return;
+    G.tsNow = m.ts || 1;
+    if (window.__tankDbg) pushDbg(window.__tankDbg.fastLog || (window.__tankDbg.fastLog = []), { t: Math.round(performance.now()), ts: G.tsNow }, 20);
+  }
   function onEnd(m) {
     if (!G) return;
     // 판 끝을 받은 즉시 표시(결과 화면은 렌더 시간선에 맞춰 조금 뒤) — 이 뒤로는 관전 전환(tkspec)을 보내지 않음
@@ -590,6 +613,14 @@
     $('#b-fire').addEventListener('pointerdown', (e) => { e.preventDefault(); SND.unlock(); fire(); });
     $('#sp-prev').addEventListener('pointerdown', (e) => { e.preventDefault(); SND.SFX.click(); sendSpec(-1); });
     $('#sp-next').addEventListener('pointerdown', (e) => { e.preventDefault(); SND.SFX.click(); sendSpec(1); });
+    $('#sp-fast').addEventListener('click', () => {
+      if (!G) return;
+      const t = performance.now();
+      if (t < G.fastLock) return;          // 더블탭에 한 번만
+      G.fastLock = t + 400;
+      SND.SFX.click();
+      Net.send({ t: 'tkspeed', x: G.tsNow > 1 ? 1 : 4 });
+    });
     $('#sp-back').addEventListener('click', () => { SND.SFX.click(); Net.send({ t: 'tkback' }); });
     $('#h-zoom').addEventListener('click', () => { if (!G) return; G.zoom = !G.zoom; $('#h-zoom').classList.toggle('on', G.zoom); SND.SFX.click(); });
     $('#h-menu').addEventListener('click', () => { $('#menu').hidden = !$('#menu').hidden; SND.SFX.click(); });
@@ -667,6 +698,8 @@
     const s = f >= 0.5 ? b : a;
     if (s.tl != null) G.tl = s.tl;
     if (s.cdn != null) G.cdn = s.cdn;
+    G.ts = s.ts || 1;
+    if (window.__tankDbg) window.__tankDbg.ts = G.ts;
     if (a.rc != null && b.rc != null) G.rc = a.rc + (b.rc - a.rc) * f;
     else if (s.rc != null) G.rc = s.rc;
     if (s.wn && (!G.wn || s.wn.at > G.wn.at)) {
@@ -748,7 +781,8 @@
             }
           }
           if (!cs.hasShell) {
-            const sdt = Math.min(0.05, Math.max(0, (now - (cs.predT || now)) / 1000));
+            // 4배속이면 포탄도 4배 빨리 날아가므로 예측도 같은 배율로
+            const sdt = Math.min(0.05, Math.max(0, (now - (cs.predT || now)) / 1000)) * (G.ts || 1);
             cs.predT = now;
             if (sdt > 0) {
               cs.vx += (cs.wind != null ? cs.wind : (G.wind || 0)) * sdt;
@@ -758,8 +792,8 @@
             }
             cs.lastX = cs.predX; cs.lastY = cs.predY;
           } else {
-            cs.vx += (G.wind || 0) * dt;
-            cs.vy += 600 * dt;
+            cs.vx += (G.wind || 0) * dt * (G.ts || 1);
+            cs.vy += 600 * dt * (G.ts || 1);
           }
           const halfW = cw / 2 / s, halfH = ch / 2 / s;
           const lookX = Math.max(-halfW * 0.42, Math.min(halfW * 0.42, cs.vx * 0.28));
@@ -847,6 +881,7 @@
     if (me && me.st === 2 && !G.spec && G.deadAt && performance.now() - G.deadAt > 1400 && !G.over && !G.endSeen) {
       G.spec = true; setSpecUI(true); Net.send({ t: 'tkspec', d: 0 }); sendInput(0, true); SND.engine(false);
     }
+    updateFastBtn(me);
     updateCam(dt, now, cur.shells);
     const s = scale();
     const c = ctx;
@@ -1908,6 +1943,7 @@
     ['tkshot', 'tkboom', 'tkdeath', 'tkgone', 'tkwind'].forEach((t) => Net.on(t, onEvent));
     Net.on('tkend', onEnd);
     Net.on('tkspecto', onSpecTo);
+    Net.on('tkfast', onFast);
     Net.on('tkerr', (m) => {
       if (!G) return;
       if (m.code === 'cooldown') SND.SFX.deny();

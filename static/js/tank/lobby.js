@@ -16,6 +16,8 @@
   let lobbyAt = 0;
   let me = (Net.seat() || {}).pid || null;
   let emoCool = 0;
+  const AI_DEL_GAP_MS = 350;   // AI 창 빼기·취소 연타 막기 (더블탭에 한 대만)
+  let aiDelLock = 0;
 
   // 서버의 긴 시작 이유를 대기실 오른쪽 칸용 한 줄로 (토스트는 원문 그대로)
   function shortWhy(w) {
@@ -486,9 +488,14 @@
       if ((b = e.target.closest('[data-practice]'))) Net.send({ t: 'tkpractice', to: b.dataset.practice });
       else if ((b = e.target.closest('.ai-add'))) Net.send({ t: 'tkaiadd', team: b.dataset.team, lv: 'easy' });
       else if ((b = e.target.closest('[data-ailv]'))) Net.send({ t: 'tkailv', id: b.dataset.id, lv: b.dataset.ailv });
-      else if ((b = e.target.closest('[data-aidel]'))) Net.send({ t: 'tkaidel', id: b.dataset.aidel });
-      else if ((b = e.target.closest('[data-aikeep]'))) Net.send({ t: 'tkaikeep', id: b.dataset.aikeep });
-      else return;
+      else if ((b = e.target.closest('[data-aidel], [data-aikeep]'))) {
+        // 빼기 뒤 줄이 올라오거나 「취소」로 바뀌어 같은 손가락의 두 번째 톡이 다음 줄을 빼지 않게 잠깐 막음
+        const now = performance.now();
+        if (now < aiDelLock) return;
+        aiDelLock = now + AI_DEL_GAP_MS;
+        if (b.dataset.aidel) Net.send({ t: 'tkaidel', id: b.dataset.aidel });
+        else Net.send({ t: 'tkaikeep', id: b.dataset.aikeep });
+      } else return;
       SND.SFX.click();
     });
     // 기종 버튼 그림

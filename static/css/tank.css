@@ -208,6 +208,12 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 .spec-bar u.tmA { border-bottom-color: var(--A); } .spec-bar u.tmB { border-bottom-color: var(--B); }
 #sp-prev { left: 12px; bottom: 12px; } #sp-next { left: 96px; bottom: 12px; }
 .sp-back { right: 16px; bottom: 16px; width: 160px; height: 56px; font-size: 20px; pointer-events: auto; }
+/* 관전 빠르게(4배속) 켜기/끄기 — 내 탱크가 쓰러지고 살아 있는 사람이 없는 판에서만 보임 (대기실로 버튼 바로 위) */
+.sp-fast { position: absolute; right: 16px; bottom: 82px; width: 160px; height: 48px; border-radius: 14px; pointer-events: auto;
+  border: 2px solid rgba(255,255,255,.6); background: rgba(20,10,30,.6); color: #fff; font-size: 18px; text-shadow: 0 1px 2px #000; touch-action: manipulation; }
+.sp-fast.on { background: linear-gradient(#FFE27A, #FFC531); color: #2a1a0a; border-color: #fff; text-shadow: none; }
+.sp-fast:active { transform: translateY(2px); }
+.sp-fast[hidden] { display: none; }
 
 .center-msg { position: absolute; left: 50%; top: 24%; transform: translate(-50%, -50%); text-align: center; pointer-events: none;
   text-shadow: 0 3px 0 rgba(0,0,0,.45); }
@@ -242,6 +248,7 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
   .fire { width: 76px; height: 76px; }
   .aimread { bottom: 148px; }
   .sp-back { width: 144px; height: 52px; }
+  .sp-fast { width: 144px; height: 44px; bottom: 76px; font-size: 17px; }
   .join-card h1 { font-size: 28px; }
   .join-card { padding: 10px 16px; }
   .lb-top { height: 48px; }
