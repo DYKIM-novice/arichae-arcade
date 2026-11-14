@@ -962,6 +962,18 @@
   const TAG_MARK_W = 8, TAG_PAD_L = 3, TAG_GAP = 1.5, TAG_PAD_R = 3.5;
   const TAG_HUD_B = 46; // 이름표 상자 위쪽 한계(HUD 아래)
   const TAG_EDGE = 4;   // 이름표 상자 좌우 화면 여백
+  // 탱크(차체+포신 그림 범위)의 화면 사각형(CSS px) · cx,cy 는 차체 중심. 화면과 1px 도 안 겹치면 off=true
+  function tankScreenRect(t, m) {
+    const K = Art.KIND[m.k], s = scale();
+    const topOff = m.k === 'mangru' ? 50 : 38;
+    const hwPx = (K.bw / 2 + K.pl) * s;
+    const [x, top] = toScreen(t.x, t.y - topOff - 4);
+    const [, bot] = toScreen(t.x, t.y + 4);
+    const [, cy] = toScreen(t.x, t.y - K.bh / 2);
+    const r = { l: x - hwPx, t: top, r: x + hwPx, b: bot, cx: x, cy };
+    r.off = r.r <= 0 || r.l >= cw || r.b <= 0 || r.t >= ch;
+    return r;
+  }
   function drawLabels(c, list, now, shells) {
     c.textAlign = 'center'; c.textBaseline = 'alphabetic';
     const placed = [];
@@ -1001,8 +1013,14 @@
       const [x, rawY] = toScreen(t.x, t.y - topOff);
       const y = rawY - 14;
       const mine = t.id === G.me || (G.spec && t.id === G.specId);
+      // 화면 밖(완전히 밖) 탱크: 이름표·체력바·점 모두 안 그림(화면 밖 화살표만) · 겹침 계산(placed)에도 안 넣음
+      const sr = tankScreenRect(t, m);
+      if (sr.off) {
+        tags.push({ name: m.n, mode: 'offscreen', x: 0, y: 0, w: 0, h: 0, tx: Math.round(sr.cx), ty: Math.round(sr.cy) });
+        continue;
+      }
       const dist = Math.hypot(t.x - refX, t.y - refY);
-      items.push({ t, m, K, x, y, mine, dist });
+      items.push({ t, m, K, x, y, mine, dist, tx: Math.round(sr.cx), ty: Math.round(sr.cy) });
     }
     // 우선순위: 나(또는 관전 대상) > 가까운 순
     items.sort((a, b) => (b.mine ? 1 : 0) - (a.mine ? 1 : 0) || a.dist - b.dist);
@@ -1061,19 +1079,19 @@
           const dotBox = { l: dx - 7, t: dy - 7, r: dx + 7, b: dy + 7 };
           const dotBlocked = (cdnBox && overlapArea(cdnBox, dotBox) > 0) || (specBox && overlapArea(specBox, dotBox) > 0) || placed.some((p) => overlapArea(p, dotBox) > 0) || btnRects.some((br) => overlapArea(br, dotBox) > 0);
           if (dotBlocked) {
-            tags.push({ name: m.n, mode: 'hidden', x: Math.round(dx), y: Math.round(dy), w: 0, h: 0 });
+            tags.push({ name: m.n, mode: 'hidden', x: Math.round(dx), y: Math.round(dy), w: 0, h: 0, tx: it.tx, ty: it.ty });
             continue;
           }
           Art.teamMark(c, dx, dy, m.tm, 4.6, 0.92);
           placed.push(dotBox);
-          tags.push({ name: m.n, mode: 'dot', x: Math.round(dotBox.l), y: Math.round(dotBox.t), w: 14, h: 14 });
+          tags.push({ name: m.n, mode: 'dot', x: Math.round(dotBox.l), y: Math.round(dotBox.t), w: 14, h: 14, tx: it.tx, ty: it.ty });
           continue;
         }
       } else {
         // 내(또는 관전 대상) 이름표는 불투명 + 외곽선 유지, 관전 막대·버튼과 겹치면 탱크 아래/옆으로 피해 겹침 0
         let b = makeBox();
         if (cdnBox && overlapArea(cdnBox, b) > 0) {
-          tags.push({ name: m.n, mode: 'hidden', x: Math.round(x), y: Math.round(y), w: 0, h: 0 });
+          tags.push({ name: m.n, mode: 'hidden', x: Math.round(x), y: Math.round(y), w: 0, h: 0, tx: it.tx, ty: it.ty });
           continue;
         }
         const boxW = boxHalf * 2;
@@ -1117,7 +1135,7 @@
       const finalBox = makeBox();
       placed.push(finalBox);
       byId[t.id] = finalBox;
-      tags.push({ name: m.n, mode: 'text', x: Math.round(finalBox.l), y: Math.round(finalBox.t), w: Math.round(finalBox.r - finalBox.l), h: Math.round(finalBox.b - finalBox.t) });
+      tags.push({ name: m.n, mode: 'text', x: Math.round(finalBox.l), y: Math.round(finalBox.t), w: Math.round(finalBox.r - finalBox.l), h: Math.round(finalBox.b - finalBox.t), tx: it.tx, ty: it.ty });
 
       c.save(); c.globalAlpha = alpha;
       // 체력바
@@ -1420,6 +1438,8 @@
       }
       const t = G.cur[n.id];
       const m = G.meta[n.id];
+      // 맞은 탱크가 화면 밖(완전히 밖)이면 피해 숫자를 가장자리로 끌어오지 않음(화면 밖 명중 화살표만)
+      if (m && tankScreenRect((t && t.st !== 2) ? t : { x: n.x, y: n.y }, m).off) continue;
       const topOff = m && m.k === 'mangru' ? 50 : 38;
       const wx = (t && t.st !== 2) ? t.x : n.x;
       const wy = (t && t.st !== 2) ? (t.y - topOff) : (n.y - 44);

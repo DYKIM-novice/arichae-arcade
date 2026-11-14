@@ -356,7 +356,9 @@
     Share.kakaoPreload();   // 카카오 키가 있을 때만 SDK 를 미리 받음(버튼을 누른 순간 바로 열리게) · 키 없으면 아무것도 안 함
     if (!Game.active()) show('#s-lobby');
     if (m.re) toast('다시 연결됐어요');
-    history.replaceState(null, '', location.pathname + '?room=' + m.code);
+    // 들어간 뒤에는 주소의 ?room= 을 지움(새로고침 때 옛 방 초대 안내가 다시 뜨지 않게).
+    // 재접속(tkrejoin)은 주소가 아니라 net.js 의 저장된 자리(sessionStorage 탭 자리 · localStorage 3시간)로 함
+    dropRoomParam();
   });
   Net.on('tklobby', (m) => {
     L = m; lobbyAt = performance.now();
