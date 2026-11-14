@@ -133,6 +133,17 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 .ai-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ai-row .sbtn { min-width: 64px; }
 .ai-add { align-self: flex-start; min-width: 160px; }
+/* v3.3.2 판 중 AI: 「다음 판에 빠짐」+취소 · 「다음 판부터」(대기) · 팀 열 인원 */
+.ai-cnt { font-weight: 400; font-size: 16px; color: #ffe4d0; margin-left: 4px; }
+.ai-out, .ai-wait { flex: none; font-size: 16px; line-height: 1.2; padding: 2px 6px; border-radius: 8px; white-space: nowrap; }
+.ai-out { background: rgba(255,120,120,.25); color: #ffd0d0; }
+.ai-wait { background: rgba(255,255,255,.14); color: #fff3c4; }
+.ai-row.out .nm { opacity: .7; }
+@media (max-width: 700px) {
+  .ai-row { gap: 4px; }
+  .ai-row .sbtn { min-width: 56px; padding: 0 8px; }
+  .ai-wait { display: none; }   /* 좁은 화면: 대기 AI 는 넣기 버튼의 「다음 판부터」와 대기실 「대기」 표로 알림 */
+}
 .menu-body { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px; }
 .menu-help { margin: 4px 0 0; font-size: 16px; line-height: 1.4; color: #ffe4d0; }
 

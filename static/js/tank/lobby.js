@@ -177,6 +177,8 @@
         const tags = [];
         if (p.id === L.host) tags.push('<span class="tag host">방장</span>');
         if (p.ai) tags.push(`<span class="tag ai ${p.lv === 'normal' ? 'norm' : 'easy'}">${p.lv === 'normal' ? '보통' : '쉬움'}</span>`);
+        if (p.ai && p.out) tags.push('<span class="tag st">빠짐</span>');
+        if (p.ai && L.round && p.st === 'wait') tags.push('<span class="tag st">대기</span>');
         if (p.id === me) tags.push('<span class="tag">나</span>');
         if (!p.ai && L.round && ST[p.st]) tags.push(`<span class="tag st">${ST[p.st]}</span>`);
         if (!p.on) tags.push('<span class="tag st">끊김</span>');
@@ -215,17 +217,30 @@
     renderAI();
   }
 
+  // AI 설정 창: 방장은 판 없음·판 중·판 끝 결과 대기 어느 때나 넣기·빼기·난이도 (tank.py tkaiadd/tkaidel/tkaikeep/tkailv)
+  // 판 중 살아 있는 AI 빼기 → 「다음 판에 빠짐」+「취소」, 판 중 넣은 AI → 「다음 판부터」. 꽉 차면 넣기만 숨기고 빼기는 늘 됨.
   function renderAI() {
     if (!L || $('#ai-sheet').hidden) return;
+    const live = !!(L.round && !L.round.over);
     for (const team of ['A', 'B']) {
       const col = $(`.ai-col[data-team="${team}"]`);
-      const ais = L.players.filter((p) => p.tm === team && p.ai);
-      col.querySelector('.ai-list').innerHTML = ais.length ? ais.map((p) => `<div class="ai-row"><span class="nm">${esc(p.n)} · ${KN[p.k]}</span>
-        <button type="button" class="sbtn${p.lv === 'easy' ? ' on' : ''}" data-ailv="easy" data-id="${esc(p.id)}">쉬움</button>
-        <button type="button" class="sbtn${p.lv === 'normal' ? ' on' : ''}" data-ailv="normal" data-id="${esc(p.id)}">보통</button>
-        <button type="button" class="sbtn" data-aidel="${esc(p.id)}">빼기</button></div>`).join('') : '<div class="ai-row">AI 없음</div>';
-      const full = L.players.filter((p) => p.tm === team).length >= L.teamMax || L.players.length >= L.max;
-      col.querySelector('.ai-add').hidden = full;
+      const rows = L.players.filter((p) => p.tm === team);
+      const ais = rows.filter((p) => p.ai);
+      col.querySelector('.ai-cnt').textContent = `${rows.length}/${L.teamMax} · AI ${ais.length}`;
+      col.querySelector('.ai-list').innerHTML = ais.length ? ais.map((p) => {
+        const id = esc(p.id);
+        const nm = `<span class="nm">${esc(p.n)} · ${KN[p.k]}</span>`;
+        if (p.out) return `<div class="ai-row out">${nm}<span class="ai-out">다음 판에 빠짐</span>
+        <button type="button" class="sbtn" data-aikeep="${id}">취소</button></div>`;
+        return `<div class="ai-row">${nm}${live && p.st === 'wait' ? '<span class="ai-wait">다음 판부터</span>' : ''}
+        <button type="button" class="sbtn${p.lv === 'easy' ? ' on' : ''}" data-ailv="easy" data-id="${id}">쉬움</button>
+        <button type="button" class="sbtn${p.lv === 'normal' ? ' on' : ''}" data-ailv="normal" data-id="${id}">보통</button>
+        <button type="button" class="sbtn" data-aidel="${id}">빼기</button></div>`;
+      }).join('') : '<div class="ai-row">AI 없음</div>';
+      const full = rows.length >= L.teamMax || L.players.length >= L.max;
+      const add = col.querySelector('.ai-add');
+      add.hidden = full;
+      add.textContent = live ? '+ AI 넣기 · 다음 판부터' : '+ AI 넣기';
     }
   }
 
@@ -472,6 +487,7 @@
       else if ((b = e.target.closest('.ai-add'))) Net.send({ t: 'tkaiadd', team: b.dataset.team, lv: 'easy' });
       else if ((b = e.target.closest('[data-ailv]'))) Net.send({ t: 'tkailv', id: b.dataset.id, lv: b.dataset.ailv });
       else if ((b = e.target.closest('[data-aidel]'))) Net.send({ t: 'tkaidel', id: b.dataset.aidel });
+      else if ((b = e.target.closest('[data-aikeep]'))) Net.send({ t: 'tkaikeep', id: b.dataset.aikeep });
       else return;
       SND.SFX.click();
     });

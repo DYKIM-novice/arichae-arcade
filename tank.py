@@ -639,12 +639,15 @@ class Seat:
         self.disc_at = 0.0
         self.spec = None           # 관전 대상 pid
         self.spec_switch_at = 0.0
+        self.out = False           # AI: 판 진행 중 「빼기」 → 이번 판은 끝까지, _finish_round 때 빠짐
 
     def row(self) -> dict:
         d = {"id": self.pid, "n": self.name, "k": self.kind, "tm": self.team, "on": 1 if self.on else 0, "st": self.st}
         if self.ai:
             d["ai"] = 1
             d["lv"] = self.lv
+            if self.out:
+                d["out"] = 1
         return d
 
 
@@ -1062,45 +1065,34 @@ async def handle(ws, msg: dict) -> None:
         seat.st = "wait" if (rd is not None and not rd.over) else "lobby"
         seat.spec = None
         room.push_lobby()
-    elif t == "tkaiadd":
+    elif t in ("tkaiadd", "tkaidel", "tkaikeep", "tkailv", "tkpractice"):
+        # 방장은 판 없음·판 중·판 끝 결과 대기(꽉 찬 16/16 포함) 어느 때나 AI 를 다룰 수 있음.
+        # 판 중에 넣은 AI 는 대기(wait) → 다음 판부터, 판 중 살아 있는 AI 빼기는 '다음 판에 빠짐' 예약.
         if not is_host:
-            return err(ws, "not_host", "방장만 AI를 넣을 수 있어요")
-        if room.round is not None:
-            return err(ws, "not_lobby", "판이 끝난 뒤에 넣을 수 있어요")
-        team = msg.get("team") if msg.get("team") in ("A", "B") else room.auto_team()
-        lv = "normal" if msg.get("lv") == "normal" else "easy"
-        if not _add_ai(room, team, lv, msg.get("kind")):
-            return err(ws, "ai_full", "빈자리가 없어요")
-        room.push_lobby()
-    elif t == "tkaidel":
-        s = room.seats.get(str(msg.get("id") or ""))
-        if not is_host:
-            return err(ws, "not_host")
-        if s is None or not s.ai or room.round is not None:
-            return err(ws, "no_ai")
-        room.seats.pop(s.pid, None)
-        room.push_lobby()
-    elif t == "tkailv":
-        s = room.seats.get(str(msg.get("id") or ""))
-        if not is_host:
-            return err(ws, "not_host")
-        if s is None or not s.ai:
-            return err(ws, "no_ai")
-        s.lv = "normal" if msg.get("lv") == "normal" else "easy"
-        room.push_lobby()
-    elif t == "tkpractice":
-        if not is_host:
-            return err(ws, "not_host")
-        if room.round is not None:
-            return err(ws, "not_lobby")
-        if msg.get("to") == "8v8":
+            return err(ws, "not_host", "방장만 AI를 바꿀 수 있어요")
+        if t == "tkaiadd":
+            team = msg.get("team") if msg.get("team") in ("A", "B") else room.auto_team()
+            lv = "normal" if msg.get("lv") == "normal" else "easy"
+            if _add_ai(room, team, lv, msg.get("kind")) is None:
+                return err(ws, "ai_full", f"팀 {team}에 빈자리가 없어요" if room.team_count(team) >= TEAM_MAX else f"방이 꽉 찼어요 (최대 {TANK_MAX}명)")
+        elif t == "tkpractice":
+            per = TEAM_MAX if msg.get("to") == "8v8" else 2
             for team in ("A", "B"):
-                while room.team_count(team) < TEAM_MAX and len(room.seats) < TANK_MAX:
-                    _add_ai(room, team, "easy", None)
+                while room.team_count(team) < per and len(room.seats) < TANK_MAX:
+                    if _add_ai(room, team, "easy", None) is None:
+                        break
         else:
-            for team in ("A", "B"):
-                while room.team_count(team) < 2 and len(room.seats) < TANK_MAX:
-                    _add_ai(room, team, "easy", None)
+            s = room.seats.get(str(msg.get("id") or ""))
+            if s is None or not s.ai:
+                return err(ws, "no_ai", "그 AI는 이미 빠졌어요")
+            if t == "tkailv":
+                s.lv = "normal" if msg.get("lv") == "normal" else "easy"   # 판 중이면 다음 판부터 (탱크는 시작 때 값을 복사)
+            elif t == "tkaikeep":
+                s.out = False
+            elif _ai_in_play(room, s):
+                s.out = True
+            else:
+                room.seats.pop(s.pid, None)
         room.push_lobby()
     elif t == "tkleave":
         _leave(room, seat)
@@ -1118,9 +1110,19 @@ def _ai_name(room: TRoom, team: str) -> str:
     return _clean_name(f"로봇{team}{i}")
 
 
-def _add_ai(room: TRoom, team: str, lv: str, kind) -> bool:
-    if len(room.seats) >= TANK_MAX or room.team_count(team) >= TEAM_MAX:
+def _ai_in_play(room: TRoom, s: Seat) -> bool:
+    """진행 중인 판(rd.over 아님)에서 살아 움직이는 AI 탱크인가. 죽었거나 대기 중인 AI 는 바로 빼도 판에 영향 없음
+    (판은 rd.tanks 로 돌고 _kill 은 seats.get 으로 없는 자리를 건너뜀)."""
+    rd = room.round
+    if rd is None or rd.over:
         return False
+    tk = rd.tanks.get(s.pid)
+    return tk is not None and tk.alive
+
+
+def _add_ai(room: TRoom, team: str, lv: str, kind) -> Optional[Seat]:
+    if len(room.seats) >= TANK_MAX or room.team_count(team) >= TEAM_MAX:
+        return None
     room.ai_counter += 1
     room.counter += 1
     pid = f"ai{room.ai_counter}"
@@ -1128,8 +1130,10 @@ def _add_ai(room: TRoom, team: str, lv: str, kind) -> bool:
     s.name = _ai_name(room, team)
     s.team = team
     s.kind = kind if (isinstance(kind, str) and kind in KINDS) else random.choice(list(KINDS))
+    if room.round is not None:
+        s.st = "wait"   # 이번 판 탱크가 아님 → 다음 판부터
     room.seats[pid] = s
-    return True
+    return s
 
 
 def _leave(room: TRoom, seat: Seat) -> None:
@@ -1640,10 +1644,12 @@ def _end_round(rd: Round, win: str, by: str) -> None:
 
 def _finish_round(room: TRoom) -> None:
     room.round = None
+    # 판 중 '다음 판에 빠짐' 예약한 AI 를 먼저 뺌 (아래 '기다리던 사람 자리 우선' 은 그 뒤에도 넘칠 때만)
+    for s in [s for s in room.seats.values() if s.ai and s.out]:
+        room.seats.pop(s.pid, None)
     for s in room.seats.values():
         s.spec = None
-        if not s.ai:
-            s.st = "lobby"
+        s.st = "lobby"
     # 판 도중 들어와 기다리던 사람 자리 우선: 꽉 찼으면 AI 1대 빼기
     while len(room.seats) > TANK_MAX:
         if room.drop_ai_for(None) is None:
