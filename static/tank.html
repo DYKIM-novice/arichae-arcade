@@ -8,8 +8,9 @@
 <meta name="theme-color" content="#3a2350">
 <title>포트리스관 · 아리채 오락실</title>
 <meta name="description" content="각도와 파워로 쏘는 실시간 팀 포격전 · 1대1~8대8, AI 연습도 돼요">
-<!-- 홈 화면 바로가기(PWA): v3.5.2c 허브와 같은 manifest(아리채 오락실 · 범위 /) — 허브 앱이 이미 있으면 tank.webmanifest 로는 설치 창이 안 와서(1F 실험) 같은 앱으로 설치·열기 -->
-<link rel="manifest" href="/manifest.webmanifest">
+<!-- 홈 화면 바로가기(PWA): v3.5.3 포트리스관 전용 앱(tank.webmanifest · id/범위 /static/tank.html · 아이콘이 이 페이지를 바로 엶)
+     허브 manifest 의 범위가 /index.html 로 좁아져(id "/" 유지) 허브 앱과 겹치지 않음 → 허브 앱이 이미 있어도 설치 창이 옴(1F 실험 qa_v353/lab_out) -->
+<link rel="manifest" href="/static/tank.webmanifest">
 <!-- v3.5.2(c 에서도 유지): 크롬 설치 창 이벤트(beforeinstallprompt)는 다른 스크립트보다 먼저 여기서 잡아 둠 → share.js 가 window.__bip 를 씀
      __bipWait: 콜백 목록(나중에 붙는 share.js 가 push) · 콜백은 ('bip', e) / ('installed') 로 불림 -->
 <script>

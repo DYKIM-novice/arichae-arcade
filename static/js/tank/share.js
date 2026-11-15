@@ -9,11 +9,12 @@
    - 서비스 워커: 허브와 같은 /sw.js(범위 /)를 이 페이지에서도 등록(초대 링크로 바로 온 사람도 설치 조건 충족) · 실패는 조용히
    - v3.5: 앱으로 연 게 아니면 버튼은 늘 보임. 크롬 설치 창이 아직 없으면(안드로이드·컴퓨터) 메뉴로 설치하는 안내 시트
    - v3.5 카카오톡 안: 안드로이드는 intent:// 로 크롬 열기 → 안 열리면 kakaotalk://web/openExternal, 아이폰은 바로 kakaotalk:// (?room= 유지)
-   - v3.5.2c: 허브(static/js/app.js setupInstall)와 같은 방식 · manifest 도 허브와 같은 /manifest.webmanifest(아리채 오락실 앱)
+   - v3.5.2c: 허브(static/js/app.js setupInstall)와 같은 방식 · (v3.5.2c 당시 manifest 는 허브 것 → v3.5.3 에서 포트리스관 전용으로)
      이벤트(beforeinstallprompt)는 tank.html <head> 인라인 스크립트가 맨 먼저 잡아 window.__bip 에 저장만 함(허브의 deferred 와 같음)
      이벤트가 오면 모든 .inst-btn 에 'ready'(노란 깜빡임) · 누르면 있으면 바로 prompt() → userChoice → 비움·'ready' 제거
      없으면 기다리지 않고 바로 안내 시트(카카오 / iOS / 그 밖은 메뉴 ⋮ → 앱 설치·홈 화면에 추가)
-     appinstalled: 이벤트 비움 · 허브 문구 토스트 (버튼은 숨기지 않음 — v3.5.1 결정)
+     appinstalled: 이벤트 비움 · 토스트 (버튼은 숨기지 않음 — v3.5.1 결정)
+   - v3.5.3: manifest 는 포트리스관 전용 /static/tank.webmanifest(설치하면 '포트리스관' 앱 · 아이콘이 tank.html 을 바로 엶) · 문구도 포트리스관 · 동작은 v3.5.2c 그대로
    초대
    - (a) KAKAO_JS_KEY 가 있고 SDK 로드·init 이 되면 Kakao.Share.sendDefault 피드 카드
    - (b) 아니면 navigator.share (폰 공유 시트에 카카오톡이 뜸) · 사용자가 취소(AbortError)하면 조용히
@@ -127,7 +128,7 @@
       // 설치는 끝났지만 지금 이 탭은 아직 브라우저 창 → standalone 은 그대로(버튼도 그대로)
       closeSheet();
       publish();
-      toastFn('설치됐어요! 이제 홈 화면의 아리채 오락실 아이콘으로 열어요');
+      toastFn('설치됐어요! 이제 홈 화면의 포트리스관 아이콘으로 열어요');
     }
   });
 
@@ -216,7 +217,7 @@
     if (window.__bip === ev) window.__bip = null;   // prompt() 는 한 번만 쓸 수 있음
     dbg().userChoice = ch ? ch.outcome : null;
     publish();                                      // canPrompt=false · 'ready' 제거
-    if (ch && ch.outcome === 'accepted') toastFn('홈 화면에 아리채 오락실을 추가했어요');
+    if (ch && ch.outcome === 'accepted') toastFn('홈 화면에 포트리스관을 추가했어요');
   }
 
   function install() {

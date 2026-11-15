@@ -6,7 +6,7 @@
    - WebSocket(/ws…)·API(/api/…)·GET 이 아닌 요청·다른 사이트 요청은 절대 가로채지 않아요.
    - 머지관 「소라섬 등불 이야기」(/static/merge.html)는 한 번 열면 그 폰에서 오프라인으로도 열리게
      화면·코드·그림을 '서버 먼저, 안 되면 저장본'으로 받아 둬요(MCACHE, 미리 받는 목록 없음 · 버전과 상관없이 유지). */
-const CACHE = 'arichae-v352';
+const CACHE = 'arichae-v353';
 const MCACHE = 'arichae-merge-v1';
 const MERGE_RE = /^\/static\/(merge\.html|css\/merge\.css|js\/merge\/|img\/merge\/)/;
 const SKIP_RE = /^\/(ws|api)(\/|$)/;
