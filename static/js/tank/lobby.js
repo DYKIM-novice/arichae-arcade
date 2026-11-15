@@ -2,7 +2,7 @@
    - 닉네임 + 방 코드(비우면 새 방). 들어오면 인원 적은 팀에 자동 배정, 기본 기종 몽돌
    - 기종·팀은 언제든 바꿈(판 중이면 다음 판에 적용). 시작은 방장만
    - 이모티콘 8종: 내 줄 탱크 위 말풍선 2.5초, 1초 제한(서버도 검사), 글자 채팅 없음
-   - AI 설정 창(방장만): 넣기·빼기·쉬움/보통, 연습(AI) 2대2·8대8 채우기 */
+   - AI 관리(v3.5, 방장만): 팀 목록 AI 줄의 실력(쉬움/보통)·빼기 + 목록 아래 「+ AI 추가하기」(AICtl) · 오른쪽 칸 연습(AI) 2대2 / 8대8까지 채우기 */
 (function () {
   'use strict';
   const Art = window.TankArt, Net = window.TankNet, SND = window.TankSFX, Game = window.TankGame, Share = window.TankShare;
@@ -16,8 +16,6 @@
   let lobbyAt = 0;
   let me = (Net.seat() || {}).pid || null;
   let emoCool = 0;
-  const AI_DEL_GAP_MS = 350;   // AI 창 빼기·취소 연타 막기 (더블탭에 한 대만)
-  let aiDelLock = 0;
 
   // 서버의 긴 시작 이유를 대기실 오른쪽 칸용 한 줄로 (토스트는 원문 그대로)
   function shortWhy(w) {
@@ -157,10 +155,113 @@
     SND.SFX.deny();
   }
 
+  // ---------------------------------------------------------------- AI 관리 (AICtl)
+  // 대기실 팀 목록 안에서 AI 를 다루는 작은 모듈. HTML 만들기와 클릭 처리만 맡아서, 나중에 방 만들기 화면 등
+  // 다른 곳에서도 같은 함수를 부르면 됨: html = AICtl.rowControls(p, ctx) · AICtl.addButton(team, ctx) · AICtl.bind(root)
+  //   ctx = AICtl.ctx(L, me) → { host, round, live, max, teamMax, total, count(team) }
+  // 서버: tank.py tkaiadd(lv 없으면 보통) · tkailv('easy'|'normal') · tkaidel(판 중 살아 있으면 다음 판에 빠짐 예약) · tkaikeep(예약 취소)
+  const AICtl = (function () {
+    const LV = { easy: '쉬움', normal: '보통' };
+    const DEL_GAP_MS = 350;   // 빼기·취소 연타 막기: 줄이 올라오거나 「취소」로 바뀌어 같은 손가락의 두 번째 톡이 다음 줄을 빼지 않게
+    const LV_GAP_MS = 350;    // 실력 버튼 더블탭이 두 번 바뀌어 제자리로 돌아오지 않게
+    let delLock = 0;
+    const lvLock = {};
+    const lvOf = (p) => (p.lv === 'easy' ? 'easy' : 'normal');
+    function ctx(Lx, meId) {
+      const ps = (Lx && Lx.players) || [];
+      return {
+        host: !!(Lx && Lx.host === meId),
+        round: !!(Lx && Lx.round),
+        live: !!(Lx && Lx.round && !Lx.round.over),
+        max: (Lx && Lx.max) || 16,
+        teamMax: (Lx && Lx.teamMax) || 8,
+        total: ps.length,
+        count: (team) => ps.filter((p) => p.tm === team).length,
+      };
+    }
+    // AI 줄 오른쪽: 방장은 버튼(실력 한 번 톡으로 바꿈 · 빼기 · 예약 취소), 아니면 읽기 전용 실력 글자
+    function rowControls(p, c) {
+      if (!p || !p.ai) return '';
+      const lv = lvOf(p);
+      const waitNext = c.round && p.st === 'wait';
+      if (!c.host) {
+        return `<span class="tag ai ${lv === 'normal' ? 'norm' : 'easy'}">${LV[lv]}</span>` +
+          (p.out ? '<span class="tag st">빠짐</span>' : '') + (waitNext ? '<span class="tag st">대기</span>' : '');
+      }
+      const id = esc(p.id), nm = esc(p.n);
+      if (p.out) {
+        return '<i class="ai-br"></i><span class="ai-note out">다음 판에 빠짐</span>' +
+          `<span class="ai-ctl"><button type="button" class="aibtn keep" data-aikeep="${id}" aria-label="${nm} 빼기 취소">취소</button></span>`;
+      }
+      const next = lv === 'normal' ? 'easy' : 'normal';
+      return (waitNext ? '<i class="ai-br"></i><span class="ai-note wait">다음 판부터</span>' : '') +
+        `<span class="ai-ctl"><button type="button" class="aibtn lv ${lv}" data-ailv="${next}" data-id="${id}" aria-label="${nm} 실력 ${LV[lv]} (누르면 ${LV[next]})">${LV[lv]}</button>` +
+        `<button type="button" class="aibtn del" data-aidel="${id}" aria-label="${nm} 빼기">빼기</button></span>`;
+    }
+    // 팀 목록 아래 「+ AI 추가하기」: 가득 차면 사라지지 않고 꺼진 모양 + 이유 (배치가 흔들리지 않게)
+    function addButton(team, c) {
+      if (!c.host) return '';
+      const n = c.count(team);
+      let why = '', full = '';
+      if (n >= c.teamMax) { why = '가득 참'; full = `팀 ${team} 가득 참 (${n}/${c.teamMax})`; }
+      else if (c.total >= c.max) { why = '방 꽉 참'; full = `방이 꽉 참 (${c.total}/${c.max})`; }
+      if (why) return `<button type="button" class="ai-add full" data-aiadd="${team}" disabled aria-disabled="true" title="${full}" aria-label="AI 추가 못 함 · ${full}"><span class="aa-t">+ AI 추가하기</span><small>${why}</small></button>`;
+      return `<button type="button" class="ai-add" data-aiadd="${team}" aria-label="팀 ${team}에 AI 추가하기${c.round ? ' · 다음 판부터' : ''}"><span class="aa-t">+ AI 추가하기</span>${c.round ? '<small>다음 판부터</small>' : ''}</button>`;
+    }
+    // 클릭 처리 (위임): 같은 root 에 한 번만 붙음
+    function bind(root, onAct) {
+      if (!root || root.__aictl) return;
+      root.__aictl = true;
+      root.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-aiadd], [data-ailv], [data-aidel], [data-aikeep]');
+        if (!b || !root.contains(b) || b.disabled) return;
+        const now = performance.now();
+        if (b.dataset.aiadd) {
+          Net.send({ t: 'tkaiadd', team: b.dataset.aiadd, lv: 'normal' });
+        } else if (b.dataset.ailv) {
+          const id = b.dataset.id;
+          if (now < (lvLock[id] || 0)) return;
+          lvLock[id] = now + LV_GAP_MS;
+          const to = b.dataset.ailv === 'easy' ? 'easy' : 'normal', back = to === 'easy' ? 'normal' : 'easy';
+          Net.send({ t: 'tkailv', id, lv: to });
+          // 서버 답을 기다리는 동안에도 바로 바뀐 것처럼 보이게 (다음 tklobby 가 진짜 값으로 다시 그림)
+          b.classList.remove(back); b.classList.add(to); b.textContent = LV[to]; b.dataset.ailv = back;
+        } else {
+          if (now < delLock) return;
+          delLock = now + DEL_GAP_MS;
+          if (b.dataset.aidel) Net.send({ t: 'tkaidel', id: b.dataset.aidel });
+          else Net.send({ t: 'tkaikeep', id: b.dataset.aikeep });
+        }
+        if (onAct) onAct(b);
+      });
+    }
+    return { ctx, rowControls, addButton, bind, LV };
+  })();
+
   // ---------------------------------------------------------------- 대기실
   function myRow() { return L && L.players.find((p) => p.id === me); }
   function isHost() { return L && L.host === me; }
   function fmt(ms) { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+
+  // 팀 목록이 넘칠 때: 아래(또는 위)에 가려진 줄 수를 팀 머리에 「▼ N명 더」로, 목록 끝에는 옅은 그라데이션
+  function moreHint(box) {
+    const team = box.closest('.lb-team');
+    const tag = team && team.querySelector('.lb-more');
+    if (!tag) return;
+    const lr = box.getBoundingClientRect();
+    let below = 0, above = 0;
+    box.querySelectorAll('.prow').forEach((r) => {
+      const rr = r.getBoundingClientRect();
+      if (rr.top + rr.height / 2 > lr.bottom) below++;
+      else if (rr.top + rr.height / 2 < lr.top) above++;
+    });
+    box.classList.toggle('more-dn', below > 0);
+    box.classList.toggle('more-up', box.scrollTop > 1);
+    tag.hidden = below === 0;
+    tag.textContent = below ? `▼ ${below}명 더` : '';
+    void above;
+  }
+  window.addEventListener('resize', () => $$('#s-lobby .lb-list').forEach(moreHint));
 
   function renderLobby() {
     if (!L) return;
@@ -170,23 +271,33 @@
     $('#lb-count').textContent = `참가 ${L.players.length}/${L.max}${ai ? ` (AI ${ai})` : ''}`;
     $('#lb-warn').textContent = L.diff >= 2 ? `⚠ 인원 차이 ${L.diff}명` : '';
     const host = isHost();
-    $('#lb-ai').hidden = !host;
+    const ac = AICtl.ctx(L, me);
+    $('#s-lobby').classList.toggle('aihost', host);
     for (const team of ['A', 'B']) {
       const rows = L.players.filter((p) => p.tm === team);
       $(team === 'A' ? '#lb-ca' : '#lb-cb').textContent = `(${rows.length}/${L.teamMax})`;
       const box = $(team === 'A' ? '#lb-la' : '#lb-lb');
       box.innerHTML = rows.map((p) => {
         const tags = [];
-        if (p.id === L.host) tags.push('<span class="tag host">방장</span>');
-        if (p.ai) tags.push(`<span class="tag ai ${p.lv === 'normal' ? 'norm' : 'easy'}">${p.lv === 'normal' ? '보통' : '쉬움'}</span>`);
-        if (p.ai && p.out) tags.push('<span class="tag st">빠짐</span>');
-        if (p.ai && L.round && p.st === 'wait') tags.push('<span class="tag st">대기</span>');
-        if (p.id === me) tags.push('<span class="tag">나</span>');
-        if (!p.ai && L.round && ST[p.st]) tags.push(`<span class="tag st">${ST[p.st]}</span>`);
-        if (!p.on) tags.push('<span class="tag st">끊김</span>');
-        return `<div class="prow${p.id === me ? ' me' : ''}${p.on ? '' : ' off'}" data-id="${esc(p.id)}"><canvas data-k="${p.k}" data-t="${p.tm}"></canvas><span class="nm">${esc(p.n)}</span>${tags.join('')}</div>`;
+        // 태그: 넓은 화면(.tw)은 그대로 · 좁은 화면(.tn, ≤700px)은 「방장·나」 한 알약 + 상태는 색 점 (이름이 4글자 이상 보이게)
+        const isH = p.id === L.host, isMe = p.id === me;
+        if (isH && isMe) tags.push('<span class="tag host tw">방장</span><span class="tag tw">나</span><span class="tag host tn">방장·나</span>');
+        else if (isH) tags.push('<span class="tag host">방장</span>');
+        if (p.ai) tags.push(AICtl.rowControls(p, ac));
+        if (isMe && !isH) tags.push('<span class="tag">나</span>');
+        const stDot = (key, label) => `<span class="tag st tw">${label}</span><span class="tag dot tn s-${key}" role="img" aria-label="${label}" title="${label}"></span>`;
+        if (!p.ai && L.round && ST[p.st]) tags.push(stDot(p.st, ST[p.st]));
+        if (!p.on && !p.ai) tags.push(stDot('off', '끊김'));   // AI 는 늘 연결됨
+        const cls = (p.id === me ? ' me' : '') + (p.on ? '' : ' off') + (p.ai ? ' ai' : '') + (p.ai && p.out ? ' out' : '') + (p.ai && L.round && p.st === 'wait' ? ' wait' : '');
+        return `<div class="prow${cls}" data-id="${esc(p.id)}"><canvas data-k="${p.k}" data-t="${p.tm}"></canvas><span class="nm">${esc(p.n)}</span>${tags.join('')}</div>`;
       }).join('');
       box.querySelectorAll('canvas').forEach((cv) => Art.icon(cv, cv.dataset.k, cv.dataset.t));
+      if (!box.__more) { box.__more = true; box.addEventListener('scroll', () => moreHint(box), { passive: true }); }
+      const slot = $(team === 'A' ? '#lb-adda' : '#lb-addb');
+      const addHtml = AICtl.addButton(team, ac);
+      slot.hidden = !addHtml;
+      if (slot.innerHTML !== addHtml) slot.innerHTML = addHtml;
+      moreHint(box);   // 추가 버튼까지 그린 뒤(목록 높이가 정해진 뒤) 가려진 줄 수 계산
     }
     if (mine) {
       $$('#lb-kinds .kind').forEach((b) => b.classList.toggle('on', b.dataset.kind === mine.k));
@@ -211,39 +322,18 @@
     st.hidden = !host || !!rd || practice;
     st.classList.toggle('off', !L.canStart);
     $('#lb-practice').hidden = !practice;
+    // 8대8까지 채우기 (옛 AI 설정 창에 있던 것): 방장만 · 방이 가득 차면 꺼진 모양으로 그 자리에 둠
+    const f8 = $('#lb-fill8');
+    f8.hidden = !host;
+    const roomFull = L.players.length >= L.max;
+    f8.disabled = roomFull;
+    f8.textContent = roomFull ? `방 가득 참 ${L.players.length}/${L.max}` : (rd ? '8대8까지 AI 채우기 · 다음 판' : '8대8까지 AI 채우기');
     let why = '';
     if (rd) why = '판이 끝나면 다음 판이 시작돼요' + (mine ? ' · 기종·팀은 다음 판에 적용' : '');
     else if (!host) why = '방장이 시작하면 바로 출발해요';
     else if (!L.canStart) why = shortWhy(L.why);
     $('#lb-why').textContent = why;
-    renderAI();
-  }
-
-  // AI 설정 창: 방장은 판 없음·판 중·판 끝 결과 대기 어느 때나 넣기·빼기·난이도 (tank.py tkaiadd/tkaidel/tkaikeep/tkailv)
-  // 판 중 살아 있는 AI 빼기 → 「다음 판에 빠짐」+「취소」, 판 중 넣은 AI → 「다음 판부터」. 꽉 차면 넣기만 숨기고 빼기는 늘 됨.
-  function renderAI() {
-    if (!L || $('#ai-sheet').hidden) return;
-    const live = !!(L.round && !L.round.over);
-    for (const team of ['A', 'B']) {
-      const col = $(`.ai-col[data-team="${team}"]`);
-      const rows = L.players.filter((p) => p.tm === team);
-      const ais = rows.filter((p) => p.ai);
-      col.querySelector('.ai-cnt').textContent = `${rows.length}/${L.teamMax} · AI ${ais.length}`;
-      col.querySelector('.ai-list').innerHTML = ais.length ? ais.map((p) => {
-        const id = esc(p.id);
-        const nm = `<span class="nm">${esc(p.n)} · ${KN[p.k]}</span>`;
-        if (p.out) return `<div class="ai-row out">${nm}<span class="ai-out">다음 판에 빠짐</span>
-        <button type="button" class="sbtn" data-aikeep="${id}">취소</button></div>`;
-        return `<div class="ai-row">${nm}${live && p.st === 'wait' ? '<span class="ai-wait">다음 판부터</span>' : ''}
-        <button type="button" class="sbtn${p.lv === 'easy' ? ' on' : ''}" data-ailv="easy" data-id="${id}">쉬움</button>
-        <button type="button" class="sbtn${p.lv === 'normal' ? ' on' : ''}" data-ailv="normal" data-id="${id}">보통</button>
-        <button type="button" class="sbtn" data-aidel="${id}">빼기</button></div>`;
-      }).join('') : '<div class="ai-row">AI 없음</div>';
-      const full = rows.length >= L.teamMax || L.players.length >= L.max;
-      const add = col.querySelector('.ai-add');
-      add.hidden = full;
-      add.textContent = live ? '+ AI 넣기 · 다음 판부터' : '+ AI 넣기';
-    }
+    Share.setRoom(L.code);   // 카카오톡 안 「크롬/Safari로 열기」 주소에 ?room= 을 다시 붙이려고
   }
 
   function textRect(el) {
@@ -284,7 +374,7 @@
       const r = textRect(el);
       return { l: r.left - lr.left, t: r.top - lr.top, r: r.right - lr.left, b: r.bottom - lr.top };
     });
-    const tagBoxes = $$('#s-lobby .prow .tag').map((el) => {
+    const tagBoxes = $$('#s-lobby .prow .tag, #s-lobby .prow .aibtn, #s-lobby .prow .ai-note, #s-lobby .ai-add').filter((el) => el.offsetParent !== null).map((el) => {
       const r = el.getBoundingClientRect();
       return { l: r.left - lr.left, t: r.top - lr.top, r: r.right - lr.left, b: r.bottom - lr.top };
     });
@@ -393,11 +483,12 @@
   });
   Net.on('tkround', (m) => {
     clearBubbles();
-    $('#s-join').hidden = true; $('#s-lobby').hidden = true; $('#ai-sheet').hidden = true;
+    $('#s-join').hidden = true; $('#s-lobby').hidden = true;
+    if (Share.closeSheet) Share.closeSheet();   // 대기실에서 열어 둔 설치 안내 시트가 판을 덮지 않게
     Game.start(m);
   });
   Net.on('tkemo', (m) => bubble(m.id, m.e));
-  Net.on('tkleft', () => { clearBubbles(); Net.forget(); L = null; me = null; show('#s-join'); joinArt(); });
+  Net.on('tkleft', () => { clearBubbles(); Share.setRoom(''); Net.forget(); L = null; me = null; show('#s-join'); joinArt(); });
   Net.on('tkerr', (m) => {
     // 초대 링크: 내가 원래 있던 방 재접속이 안 되면 → 저장된 닉네임으로 그 방에 새로 참가(닉네임이 없으면 입력 안내)
     if (invite && invite.phase === 'rejoin' && m.code === 'no_room') {
@@ -481,23 +572,9 @@
       SND.SFX.go(); Net.send({ t: 'tkstart' });
     });
     $('#lb-practice').addEventListener('click', () => { SND.SFX.click(); Net.send({ t: 'tkpractice', to: '2v2' }); });
-    $('#lb-ai').addEventListener('click', () => { $('#ai-sheet').hidden = false; SND.SFX.click(); renderAI(); });
-    $('#ai-close').addEventListener('click', () => { $('#ai-sheet').hidden = true; });
-    $('#ai-sheet').addEventListener('click', (e) => {
-      let b;
-      if ((b = e.target.closest('[data-practice]'))) Net.send({ t: 'tkpractice', to: b.dataset.practice });
-      else if ((b = e.target.closest('.ai-add'))) Net.send({ t: 'tkaiadd', team: b.dataset.team, lv: 'easy' });
-      else if ((b = e.target.closest('[data-ailv]'))) Net.send({ t: 'tkailv', id: b.dataset.id, lv: b.dataset.ailv });
-      else if ((b = e.target.closest('[data-aidel], [data-aikeep]'))) {
-        // 빼기 뒤 줄이 올라오거나 「취소」로 바뀌어 같은 손가락의 두 번째 톡이 다음 줄을 빼지 않게 잠깐 막음
-        const now = performance.now();
-        if (now < aiDelLock) return;
-        aiDelLock = now + AI_DEL_GAP_MS;
-        if (b.dataset.aidel) Net.send({ t: 'tkaidel', id: b.dataset.aidel });
-        else Net.send({ t: 'tkaikeep', id: b.dataset.aikeep });
-      } else return;
-      SND.SFX.click();
-    });
+    $('#lb-fill8').addEventListener('click', () => { if ($('#lb-fill8').disabled) return; SND.SFX.click(); Net.send({ t: 'tkpractice', to: '8v8' }); });
+    // 팀 목록 안 AI 조작 (방장에게만 버튼이 그려짐 · 서버도 방장 검사)
+    AICtl.bind($('#s-lobby .lb-body'), () => SND.SFX.click());
     // 기종 버튼 그림
     $$('#lb-kinds .kind canvas').forEach((cv) => Art.icon(cv, cv.closest('.kind').dataset.kind, null, 0));
     // 판 진행 중 남은 시간 갱신
@@ -529,11 +606,12 @@
     SND.SFX.click();
     clearBubbles();
     Net.send({ t: 'tkleave' });
+    Share.setRoom('');
     Net.forget(); L = null; me = null;
     show('#s-join'); joinArt();
   }
 
   setup();
-  window.TankLobby = { toast, leave };
+  window.TankLobby = { toast, leave, AICtl };
   void joining;
 })();

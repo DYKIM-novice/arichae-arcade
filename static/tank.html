@@ -37,7 +37,7 @@
      - js/tank/sfx.js   Web Audio 합성 배경음(대기실)·효과음(게임) — 외부 음원 없음
      - js/tank/art.js   옆에서 본 탱크·지형·이모티콘 그림(캔버스/SVG로 직접 그림)
      - js/tank/share.js 홈 화면에 추가(설치 안내) · 카카오로 초대(카카오 피드 → 공유 시트 → 복사)
-     - js/tank/lobby.js 입장·대기실·AI 설정·이모티콘·초대 링크로 열기
+     - js/tank/lobby.js 입장·대기실·AI 관리(팀 목록 안 · AICtl)·이모티콘·초대 링크로 열기
      - js/tank/game.js  게임 화면(보간·카메라·조작·관전·결과) -->
 <link rel="stylesheet" href="css/tank.css">
 </head>
@@ -72,7 +72,6 @@
       <button class="sbtn invite-btn" id="lb-invite" type="button" aria-label="카카오로 초대"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 4C7 4 3 7.1 3 11c0 2.5 1.7 4.7 4.2 6l-.9 3.3c-.1.3.3.6.6.4l3.9-2.6c.4 0 .8.1 1.2.1 5 0 9-3.1 9-7s-4-7-9-7z" fill="#3c1e1e"/></svg><span class="lg">카카오로 </span>초대</button>
       <span class="grow"></span>
       <button class="sbtn" id="lb-watch" type="button" hidden>판 보기</button>
-      <button class="sbtn" id="lb-ai" type="button" hidden>AI ⚙</button>
       <button type="button" class="sbtn inst-btn" id="lb-install" aria-label="홈 화면에 추가" hidden><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.6" stroke="#fff" stroke-width="2" fill="none"/><path d="M12 7.5v7M8.8 11.5 12 14.7l3.2-3.2" stroke="#FFD23F" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lg">홈 화면에 추가</span></button>
       <button class="sbtn mute-btn" type="button" aria-label="소리 켜기/끄기"></button>
       <button class="sbtn" id="lb-leave" type="button">나가기</button>
@@ -84,8 +83,9 @@
       <span class="lb-round" id="lb-round"></span>
     </div>
     <div class="lb-body">
-      <div class="lb-team" data-team="A"><div class="lb-th"><span class="tmark A">●</span> 팀 A <small id="lb-ca"></small></div><div class="lb-list" id="lb-la"></div></div>
-      <div class="lb-team" data-team="B"><div class="lb-th"><span class="tmark B">▲</span> 팀 B <small id="lb-cb"></small></div><div class="lb-list" id="lb-lb"></div></div>
+      <!-- 팀 목록: AI 줄에 방장만 실력(쉬움/보통)·빼기, 목록 아래 「+ AI 추가하기」(방장만) — lobby.js AICtl 이 그림·처리 -->
+      <div class="lb-team" data-team="A"><div class="lb-th"><span class="tmark A">●</span> 팀 A <small id="lb-ca"></small><span class="lb-more" aria-live="polite" hidden></span></div><div class="lb-list" id="lb-la"></div><div class="ai-addslot" id="lb-adda" data-team="A"></div></div>
+      <div class="lb-team" data-team="B"><div class="lb-th"><span class="tmark B">▲</span> 팀 B <small id="lb-cb"></small><span class="lb-more" aria-live="polite" hidden></span></div><div class="lb-list" id="lb-lb"></div><div class="ai-addslot" id="lb-addb" data-team="B"></div></div>
       <aside class="lb-side">
         <div class="kinds" id="lb-kinds">
           <button type="button" class="kind" data-kind="mongdol"><canvas width="96" height="56"></canvas><span>몽돌</span></button>
@@ -99,28 +99,13 @@
         </div>
         <button type="button" class="btn btn-green" id="lb-start">시작하기</button>
         <button type="button" class="btn btn-yellow" id="lb-practice" hidden>연습(AI) 채우기</button>
+        <button type="button" class="sbtn fill8" id="lb-fill8" hidden>8대8까지 AI 채우기</button>
         <div class="lb-why" id="lb-why"></div>
       </aside>
     </div>
     <!-- 이모티콘 8개: 오른쪽 칸을 짧게 두려고 버튼 하나(😊)로 접고, 누르면 그 아래 뜨는 작은 판 (바깥 톡·Esc·보내면 닫힘) -->
     <div class="emos emo-pop" id="lb-emos" role="group" aria-label="이모티콘" hidden></div>
     <div class="lb-bubbles" id="lb-bubbles" aria-hidden="true"></div>
-    <!-- AI 설정 창 (방장만) -->
-    <div class="sheet" id="ai-sheet" hidden>
-      <div class="sheet-top">
-        <b>AI 설정</b>
-        <button type="button" class="sbtn" data-practice="2v2">연습(AI): 2대2 채우기</button>
-        <button type="button" class="sbtn" data-practice="8v8">8대8까지 채우기</button>
-        <span class="grow"></span>
-        <button type="button" class="sbtn" id="ai-close">닫기</button>
-      </div>
-      <div class="sheet-body">
-        <div class="ai-col" data-team="A"><div class="lb-th"><span class="tmark A">●</span> 팀 A <span class="ai-cnt"></span></div><div class="ai-list"></div>
-          <button type="button" class="sbtn ai-add" data-team="A">+ AI 넣기</button></div>
-        <div class="ai-col" data-team="B"><div class="lb-th"><span class="tmark B">▲</span> 팀 B <span class="ai-cnt"></span></div><div class="ai-list"></div>
-          <button type="button" class="sbtn ai-add" data-team="B">+ AI 넣기</button></div>
-      </div>
-    </div>
   </section>
 
   <!-- 게임 -->
@@ -171,7 +156,8 @@
   </section>
 
   <div class="toast" id="toast" role="status"></div>
-  <div class="rotate" id="rotate"><div><svg viewBox="0 0 64 64" width="72" height="72"><rect x="20" y="6" width="24" height="40" rx="4" fill="none" stroke="#fff" stroke-width="3"/><path d="M10 50 Q32 64 54 50" stroke="#FFD23F" stroke-width="3" fill="none"/><path d="M48 44 L54 50 L46 54" stroke="#FFD23F" stroke-width="3" fill="none"/></svg><p>가로로 돌려 주세요</p></div></div>
+  <div class="rotate" id="rotate"><div><svg viewBox="0 0 64 64" width="72" height="72"><rect x="20" y="6" width="24" height="40" rx="4" fill="none" stroke="#fff" stroke-width="3"/><path d="M10 50 Q32 64 54 50" stroke="#FFD23F" stroke-width="3" fill="none"/><path d="M48 44 L54 50 L46 54" stroke="#FFD23F" stroke-width="3" fill="none"/></svg><p>가로로 돌려 주세요</p>
+    <button class="sbtn inst-btn r-install" id="r-install" type="button" hidden><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.6" stroke="#fff" stroke-width="2" fill="none"/><path d="M12 7.5v7M8.8 11.5 12 14.7l3.2-3.2" stroke="#FFD23F" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>홈 화면에 추가</span></button></div></div>
 </div>
 <script src="js/tank/sfx.js"></script>
 <script src="js/tank/art.js"></script>

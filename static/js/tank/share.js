@@ -4,12 +4,14 @@
    - iOS(Safari 등): 설치 창을 띄울 수 없어 「공유 → 홈 화면에 추가」 안내 시트
    - 카카오톡 안 브라우저: 설치가 안 되니 「다른 브라우저로 열기」 안내
    - 이미 앱으로 열었으면(display-mode standalone/fullscreen · navigator.standalone) 버튼 숨김, 창을 띄울 수 없는 브라우저도 숨김
-   - 서비스 워커는 따로 만들지 않음: 최근 크롬은 설치 조건에 fetch 핸들러를 요구하지 않고, 허브가 등록한 /sw.js(범위 /)가 이미 이 페이지도 맡음
+   - 서비스 워커: 허브와 같은 /sw.js(범위 /)를 이 페이지에서도 등록(초대 링크로 바로 온 사람도 설치 조건 충족) · 실패는 조용히
+   - v3.5: 앱으로 연 게 아니면 버튼은 늘 보임. 크롬 설치 창이 아직 없으면(안드로이드·컴퓨터) 메뉴로 설치하는 안내 시트
+   - v3.5 카카오톡 안: 안드로이드는 intent:// 로 크롬 열기 → 안 열리면 kakaotalk://web/openExternal, 아이폰은 바로 kakaotalk:// (?room= 유지)
    초대
    - (a) KAKAO_JS_KEY 가 있고 SDK 로드·init 이 되면 Kakao.Share.sendDefault 피드 카드
    - (b) 아니면 navigator.share (폰 공유 시트에 카카오톡이 뜸) · 사용자가 취소(AbortError)하면 조용히
    - (c) 둘 다 안 되면 「문구 + 링크」를 클립보드에 복사(안 되면 임시 textarea 방식) + 안내 토스트
-   QA: window.__tankDbg.install = {standalone, canPrompt, ios} · window.__tankDbg.lastInvite = {url, text, via} (읽기 전용 스냅숏) */
+   QA: window.__tankDbg.install = {standalone, canPrompt, ios, kakao, android} · __tankDbg.extNav = [{via, url}] (다른 브라우저로 열기 주소 · __tankDbg.blockNav=true 면 이동 안 함) · window.__tankDbg.lastInvite = {url, text, via} (읽기 전용 스냅숏) */
 (function () {
   'use strict';
   // Kakao Developers 앱의 JavaScript 키를 넣으면 카카오 피드 카드로 공유해요.
@@ -24,6 +26,7 @@
   const ua = navigator.userAgent || '';
   const IOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const KAKAO_INAPP = /KAKAOTALK/i.test(ua);
+  const ANDROID = /Android/i.test(ua);
   const mq = (q) => { try { return !!(window.matchMedia && window.matchMedia(q).matches); } catch (e) { return false; } };
   // 페이지를 연 순간에 판단 (입장 버튼이 requestFullscreen 을 부르면 display-mode: fullscreen 이 맞아질 수 있어 나중엔 다시 재지 않음)
   let standalone = mq('(display-mode: standalone)') || mq('(display-mode: minimal-ui)') || navigator.standalone === true ||
@@ -37,11 +40,64 @@
     return window.__tankDbg;
   }
   function publish() {
-    dbg().install = Object.freeze({ standalone, canPrompt: !!deferred, ios: IOS });
+    dbg().install = Object.freeze({ standalone, canPrompt: !!deferred, ios: IOS, kakao: KAKAO_INAPP, android: ANDROID });
     listeners.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
   }
-  // 버튼을 보일지: 앱으로 연 게 아니고, 설치 창을 띄울 수 있거나(iOS·카카오톡 안은 안내 시트)
-  function canInstall() { return !standalone && (!!deferred || IOS || KAKAO_INAPP); }
+  // 버튼을 보일지: 앱으로 연 게 아니면 늘 (크롬 설치 창 → 없으면 브라우저별 안내 시트)
+  function canInstall() { return !standalone; }
+
+  // 서비스 워커(허브와 같은 /sw.js · 범위 /): 초대 링크로 바로 온 사람도 설치 조건(서비스 워커가 이 페이지를 맡음)을 채움
+  try {
+    if ('serviceWorker' in navigator && window.isSecureContext !== false) {
+      navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => { /* 조용히 */ });
+    }
+  } catch (e) { /* 조용히 */ }
+
+  // ---------------------------------------------------------------- 다른 브라우저로 열기 (카카오톡 안)
+  let roomCode = '';   // 대기실에 있으면 그 방 코드 (주소의 ?room= 은 들어가면 지워지므로 여기서 다시 붙임)
+  function setRoom(code) { roomCode = /^\d{4}$/.test(String(code || '')) ? String(code) : ''; }
+  function externalUrl() {
+    const sp = new URLSearchParams(location.search);
+    sp.delete('source');
+    if (!sp.get('room') && roomCode) sp.set('room', roomCode);
+    const q = sp.toString();
+    return { host: location.host, path: location.pathname + (q ? '?' + q : ''), full: location.origin + location.pathname + (q ? '?' + q : '') };
+  }
+  function go(via, url) {
+    const d = dbg();
+    if (!Array.isArray(d.extNav)) d.extNav = [];
+    d.extNav.push(Object.freeze({ via, url }));
+    if (d.blockNav) return;
+    try { location.href = url; } catch (e) { /* 무시 */ }
+  }
+  let extT = 0;
+  function openExternal() {
+    const u = externalUrl();
+    const kakaoUrl = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(u.full);
+    clearTimeout(extT);
+    if (ANDROID) {
+      // 크롬으로 바로 열기 · 1.5초 뒤에도 이 화면이 그대로 보이면(크롬 없음·막힘) 카카오톡 기능으로 다시 시도
+      const scheme = location.protocol === 'http:' ? 'http' : 'https';   // 배포 주소는 https · 로컬 시험(http)도 같은 주소로
+      go('intent', 'intent://' + u.host + u.path + '#Intent;scheme=' + scheme + ';package=com.android.chrome;end');
+      const t0 = Date.now();
+      extT = setTimeout(() => {
+        if (document.visibilityState === 'visible' && Date.now() - t0 < 4000) go('kakao', kakaoUrl);
+      }, 1500);
+      return;
+    }
+    go('kakao', kakaoUrl);
+  }
+
+  // 늦게 앱 창으로 바뀌는 경우(설치 직후 앱으로 열림 등): display-mode standalone/minimal-ui 가 맞아지면 버튼 숨김
+  // (fullscreen 은 입장 버튼의 requestFullscreen 때문에도 맞아지므로 여기서는 보지 않음)
+  ['(display-mode: standalone)', '(display-mode: minimal-ui)'].forEach((q) => {
+    try {
+      const m = window.matchMedia && window.matchMedia(q);
+      if (!m) return;
+      const on = (ev) => { if (ev.matches && !standalone) { standalone = true; deferred = null; closeSheet(); publish(); } };
+      if (m.addEventListener) m.addEventListener('change', on); else if (m.addListener) m.addListener(on);
+    } catch (e) { /* 무시 */ }
+  });
 
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();   // 크롬 자체 작은 띠 대신 우리 버튼으로
@@ -68,14 +124,37 @@
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-modal', 'true');
     el.setAttribute('aria-label', '홈 화면에 추가하는 방법');
-    let steps, extra = '';
+    let steps, extra = '', note = '';
     if (kind === 'kakao') {
-      steps = [
-        [ICON_DOTS, '카카오톡 안에서는 바로 설치가 안 돼요'],
-        [ICON_SHARE, IOS ? '아래 「다른 브라우저로 열기」 → Safari 에서 공유 버튼' : '아래 「다른 브라우저로 열기」 → 크롬에서 다시 「홈 화면에 추가」'],
-        [ICON_ADD, IOS ? '「홈 화면에 추가」 → 「추가」' : '설치를 누르면 끝!'],
+      if (IOS) {
+        steps = [
+          [ICON_DOTS, '카카오톡 안에서는 바로 추가가 안 돼요 · 아래 <b>Safari로 열기</b>'],
+          [ICON_SHARE, 'Safari 화면 아래 <b>공유</b> 버튼을 눌러요'],
+          [ICON_ADD, '<b>홈 화면에 추가</b> → 오른쪽 위 <b>추가</b>'],
+        ];
+        note = '안 열리면 카카오톡 화면 오른쪽 아래 <b>⋯</b> → <b>다른 브라우저로 열기</b>';
+        extra = '<button type="button" class="btn btn-green" data-act="ext">Safari로 열기</button>';
+      } else {
+        steps = [
+          [ICON_DOTS, '카카오톡 안에서는 바로 설치가 안 돼요 · 아래 <b>크롬으로 열기</b>'],
+          [ICON_ADD, '크롬에서 <b>홈 화면에 추가</b>를 다시 눌러요'],
+          ['<span class="inst-n">✓</span>', '<b>설치</b>를 누르면 끝!'],
+        ];
+        note = '안 열리면 카카오톡 오른쪽 위 <b>⋮</b> → <b>다른 브라우저로 열기</b>';
+        extra = '<button type="button" class="btn btn-green" data-act="ext">크롬으로 열기</button>';
+      }
+      note += ' · 방 코드는 그대로 따라가요';
+    } else if (kind === 'menu') {
+      // 크롬 설치 창이 아직 없을 때(안드로이드 크롬·삼성 인터넷·컴퓨터 브라우저)
+      steps = ANDROID ? [
+        [ICON_DOTS, '브라우저 오른쪽 위(또는 아래) <b>⋮</b> / <b>≡</b> 메뉴를 눌러요'],
+        [ICON_ADD, '<b>홈 화면에 추가</b> 또는 <b>앱 설치</b>를 골라요'],
+        ['<span class="inst-n">✓</span>', '<b>설치</b>(추가)를 누르면 끝!'],
+      ] : [
+        [ICON_ADD, '주소창 오른쪽의 <b>설치</b> 아이콘을 눌러요'],
+        [ICON_DOTS, '없으면 브라우저 메뉴 <b>⋮</b> → <b>앱 설치</b> / <b>홈 화면에 추가</b>'],
+        ['<span class="inst-n">✓</span>', '<b>설치</b>를 누르면 끝!'],
       ];
-      extra = '<button type="button" class="btn btn-green" data-act="ext">다른 브라우저로 열기</button>';
     } else {
       steps = [
         [ICON_SHARE, (/iPad/.test(ua) || (navigator.platform === 'MacIntel')) ? '주소창 옆 <b>공유</b> 버튼을 눌러요' : '화면 아래(또는 주소창 옆) <b>공유</b> 버튼을 눌러요'],
@@ -83,16 +162,17 @@
         ['<span class="inst-n">✓</span>', '오른쪽 위 <b>추가</b>를 누르면 끝!'],
       ];
     }
+    el.dataset.kind = kind;
     el.innerHTML = `<div class="inst-card">
       <div class="inst-head"><img src="img/tank/apple_touch_180_v33.png" width="56" height="56" alt=""><div><b>홈 화면에 추가</b><small>포트리스관을 앱처럼 바로 열어요</small></div></div>
-      <ol class="inst-steps">${steps.map(([ic, t]) => `<li><span class="inst-ic">${ic}</span><span>${t}</span></li>`).join('')}</ol>
+      <ol class="inst-steps">${steps.map(([ic, t]) => `<li><span class="inst-ic">${ic}</span><span>${t}</span></li>`).join('')}</ol>${note ? `<p class="inst-note">${note}</p>` : ''}
       <div class="inst-btns">${extra}<button type="button" class="btn btn-yellow" data-act="close">알겠어요</button></div>
     </div>`;
     el.addEventListener('click', (e) => {
       const b = e.target.closest('[data-act]');
       if (b && b.dataset.act === 'ext') {
-        // 카카오톡 인앱 브라우저 → 기본 브라우저로 열기 (카카오톡이 지원하는 주소 형식)
-        location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
+        // 카카오톡 인앱 브라우저 → 안드로이드는 크롬(intent://), 아이폰·실패 시 카카오톡 기능(kakaotalk://web/openExternal)
+        openExternal();
         return;
       }
       if ((b && b.dataset.act === 'close') || e.target === el) closeSheet();
@@ -116,14 +196,14 @@
         if (ch && ch.outcome === 'accepted') toastFn('홈 화면에 포트리스관을 추가하는 중이에요');
         else toastFn('나중에 메뉴의 「홈 화면에 추가」로 다시 할 수 있어요');
       } catch (e) {
-        // prompt 실패: 크롬 메뉴로 안내
-        toastFn('브라우저 메뉴(⋮)의 「홈 화면에 추가」로 설치해 주세요');
+        // prompt 실패: 브라우저 메뉴로 설치하는 안내 시트
+        openSheet('menu');
       }
       return;
     }
     if (KAKAO_INAPP) { openSheet('kakao'); return; }
     if (IOS) { openSheet('ios'); return; }
-    toastFn('브라우저 메뉴(⋮)의 「홈 화면에 추가」로 설치해 주세요');
+    openSheet('menu');
   }
 
   // ---------------------------------------------------------------- 초대
@@ -220,7 +300,7 @@
 
   publish();
   window.TankShare = {
-    init, install, invite, kakaoPreload, canInstall,
+    init, install, invite, kakaoPreload, canInstall, setRoom, closeSheet,
     onChange: (f) => listeners.push(f),
     isStandalone: () => standalone,
   };

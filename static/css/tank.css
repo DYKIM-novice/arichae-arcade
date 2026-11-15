@@ -73,15 +73,15 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 .lb-round { flex: 1 1 auto; min-width: 0; color: #bff5d6; overflow: hidden; text-overflow: ellipsis; }
 .lb-body { flex: 1; min-height: 0; display: flex; gap: 8px; padding: 6px 10px 8px; }
 .lb-team { flex: 1; min-width: 0; display: flex; flex-direction: column; background: rgba(30,16,44,.4); border-radius: 14px; padding: 4px 6px; }
-.lb-th { height: 28px; display: flex; align-items: center; gap: 6px; font-size: 17px; }
+.lb-th { flex: none; height: 28px; display: flex; align-items: center; gap: 6px; font-size: 17px; }
 .lb-th small { font-size: 16px; opacity: .8; }
 /* 팀 열: 위 굵은 팀색 띠 + 옅은 팀색 바탕 (게임 속 탱크 차체색과 같은 팔레트) */
-.lb-team[data-team="A"], .ai-col[data-team="A"] { box-shadow: inset 0 4px 0 var(--A); background: linear-gradient(var(--A-soft), rgba(30,16,44,.4) 70%); }
-.lb-team[data-team="B"], .ai-col[data-team="B"] { box-shadow: inset 0 4px 0 var(--B); background: linear-gradient(var(--B-soft), rgba(30,16,44,.4) 70%); }
+.lb-team[data-team="A"] { box-shadow: inset 0 4px 0 var(--A); background: linear-gradient(var(--A-soft), rgba(30,16,44,.4) 70%); }
+.lb-team[data-team="B"] { box-shadow: inset 0 4px 0 var(--B); background: linear-gradient(var(--B-soft), rgba(30,16,44,.4) 70%); }
 .lb-list { flex: 1; min-height: 0; overflow-y: auto; }
 .prow { position: relative; display: flex; align-items: center; gap: 6px; height: calc((100dvh - 52px - 24px - 56px) / 8); max-height: 38px; min-height: 30px;
   padding: 0 4px; border-radius: 10px; font-size: 16px; }
-.prow.me { background: rgba(255,255,255,.16); outline: 2px solid rgba(255,255,255,.7); }
+.prow.me { background: rgba(255,255,255,.16); box-shadow: inset 0 0 0 2px rgba(255,255,255,.7); }   /* outline 은 목록(overflow)에 잘려 오른쪽 태그가 잘려 보였음 → 안쪽 테두리 */
 .prow.off { opacity: .5; }
 .prow canvas { flex: none; width: 48px; height: 28px; }
 .prow .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -126,24 +126,6 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 .sheet.small { top: 50%; left: 50%; right: auto; bottom: auto; transform: translate(-50%, -50%); width: min(520px, 90vw); border-radius: 18px; border: 2px solid rgba(255,255,255,.3); z-index: 40; }
 .sheet-top { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 10px; flex-wrap: wrap; }
 .sheet-top b { font-size: 18px; margin-right: 6px; }
-.sheet-body { flex: 1; min-height: 0; display: flex; gap: 10px; padding: 0 10px 10px; }
-.ai-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; border-radius: 14px; padding: 4px 6px; }
-.ai-list { display: flex; flex-direction: column; gap: 4px; }
-.ai-row { display: flex; align-items: center; gap: 6px; min-height: 48px; font-size: 16px; }
-.ai-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ai-row .sbtn { min-width: 64px; }
-.ai-add { align-self: flex-start; min-width: 160px; }
-/* v3.3.2 판 중 AI: 「다음 판에 빠짐」+취소 · 「다음 판부터」(대기) · 팀 열 인원 */
-.ai-cnt { font-weight: 400; font-size: 16px; color: #ffe4d0; margin-left: 4px; }
-.ai-out, .ai-wait { flex: none; font-size: 16px; line-height: 1.2; padding: 2px 6px; border-radius: 8px; white-space: nowrap; }
-.ai-out { background: rgba(255,120,120,.25); color: #ffd0d0; }
-.ai-wait { background: rgba(255,255,255,.14); color: #fff3c4; }
-.ai-row.out .nm { opacity: .7; }
-@media (max-width: 700px) {
-  .ai-row { gap: 4px; }
-  .ai-row .sbtn { min-width: 56px; padding: 0 8px; }
-  .ai-wait { display: none; }   /* 좁은 화면: 대기 AI 는 넣기 버튼의 「다음 판부터」와 대기실 「대기」 표로 알림 */
-}
 .menu-body { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px; }
 .menu-help { margin: 4px 0 0; font-size: 16px; line-height: 1.4; color: #ffe4d0; }
 
@@ -311,7 +293,7 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 /* 짧은 화면: 입장 카드가 위 모서리 버튼(오락실·설치·소리)과 겹치지 않게 아래로 */
 @media (max-height: 400px) { #s-join { padding: 56px 0 4px; } }
 /* 설치 안내 시트 (iOS · 카카오톡 안 브라우저) — 바깥을 톡하면 닫힘 */
-.inst-sheet { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 8px;
+.inst-sheet { position: fixed; inset: 0; z-index: 110; display: flex; align-items: center; justify-content: center; padding: 8px;
   background: rgba(16,8,26,.62); }
 .inst-card { width: min(460px, 94vw); max-height: calc(100dvh - 16px); overflow-y: auto; padding: 14px 18px 14px; border-radius: 20px;
   background: #2a1838; border: 2px solid rgba(255,255,255,.3); box-shadow: 0 10px 30px rgba(0,0,0,.45); }
@@ -337,3 +319,75 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 .emo-pop[hidden] { display: none; }
 /* 시작 이유는 짧게(한 줄 요약) — 그래도 넘치면 2줄까지 */
 .lb-why { flex: none; overflow-wrap: anywhere; }
+
+/* ---------- v3.5 AI 관리: 팀 목록 안 (lobby.js AICtl) ----------
+   방장: AI 줄 오른쪽에 실력(쉬움/보통, 한 번 톡으로 바꿈)·빼기 버튼(32px), 목록 아래 「+ AI 추가하기」(가득 차면 꺼진 모양으로 그 자리)
+   손님: AI 줄에 실력 글자만(.tag) · 목록이 넘치면 목록 안에서만 스크롤 (시작 버튼·화면은 그대로) */
+.lb-list { overscroll-behavior: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+.lb-list .prow, .lb-list button { touch-action: pan-y; }
+.aihost .prow { height: 36px; min-height: 36px; max-height: none; }
+.prow .ai-ctl { flex: none; display: flex; gap: 4px; }
+.aibtn { flex: none; height: 32px; min-width: 42px; padding: 0 6px; border-radius: 9px; border: 2px solid rgba(255,255,255,.45);
+  background: rgba(40,20,60,.6); color: #fff; font-size: 16px; line-height: 28px; white-space: nowrap; }
+.aibtn:active { filter: brightness(1.2); transform: translateY(1px); }
+.aibtn.lv.easy { background: #6ad0ff; color: #08263a; border-color: #d4f1ff; }
+.aibtn.lv.normal { background: #ffb86c; color: #3a1a00; border-color: #ffe3c4; }
+.aibtn.keep { background: #FFE27A; color: #3a2400; border-color: #fff3c4; }
+.ai-note { flex: none; font-size: 16px; line-height: 22px; padding: 0 5px; border-radius: 6px; white-space: nowrap; }
+.ai-note.out { background: rgba(255,110,110,.32); color: #ffe6e6; }
+.ai-note.wait { background: rgba(0,0,0,.28); color: #fff3c4; }
+.prow.ai.out .nm { opacity: .7; }
+.ai-br { display: none; }
+.aihost .lb-list { flex: 0 1 auto; }   /* 추가 버튼이 마지막 줄 바로 아래에 붙고, 넘치면 목록만 줄어 안에서 스크롤 */
+.ai-addslot { flex: none; padding-top: 4px; }
+.ai-add { width: 100%; min-height: 36px; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 6px;
+  border-radius: 10px; border: 2px dashed rgba(255,255,255,.6); background: rgba(255,255,255,.12); color: #fff;
+  font-size: 16px; line-height: 20px; white-space: nowrap; overflow: hidden; }
+.ai-add:active { background: rgba(255,255,255,.28); }
+.ai-add small { font-size: 16px; color: #fff3c4; }
+.ai-add small::before { content: '· '; }
+.ai-add.full, .ai-add:disabled { border-style: solid; border-color: rgba(255,255,255,.25); background: rgba(0,0,0,.18); color: rgba(255,255,255,.6); cursor: default; }
+.ai-add.full small { color: rgba(255,243,196,.75); }
+.lb-side .fill8 { flex: none; min-height: 36px; font-size: 16px; padding: 0 8px; }
+.lb-side .fill8:disabled { opacity: .55; cursor: default; }
+/* 폭이 좁으면(가로 폰): 「다음 판부터」·「다음 판에 빠짐」은 줄 아래 둘째 줄로, 판 중 추가 버튼도 두 줄 */
+@media (max-width: 999px) {
+  .aihost .prow.ai.out, .aihost .prow.ai.wait { flex-wrap: wrap; height: auto; padding-top: 2px; padding-bottom: 3px; row-gap: 1px; }
+  .aihost .prow.ai.out .ai-note, .aihost .prow.ai.wait .ai-note { order: 9; margin-left: 42px; }
+  .aihost .prow.ai .ai-br { display: block; order: 8; flex: 0 0 100%; height: 0; }   /* 둘째 줄로 꼭 내림(이름이 줄어들지 않게) */
+  .ai-add:not(.full) small { display: block; }
+  .ai-add:not(.full) small::before { content: none; }
+  .ai-add:not(.full):has(small) { flex-direction: column; gap: 0; min-height: 44px; padding: 2px 6px; }
+}
+@media (max-width: 700px) {
+  .lb-side { width: 226px; }
+  .aihost .prow { gap: 3px; }
+  .aihost .prow.ai canvas { width: 32px; height: 19px; }
+  .aihost .prow.ai.out .ai-note, .aihost .prow.ai.wait .ai-note { margin-left: 35px; }
+  .aibtn { min-width: 40px; padding: 0 5px; }
+}
+/* 세로 안내 화면의 「홈 화면에 추가」 */
+.rotate .r-install { margin-top: 18px; display: inline-flex; padding: 0 16px; font-size: 18px; }
+.inst-note { margin: 0 0 8px; font-size: 16px; line-height: 1.3; color: #ffe4d0; }
+.inst-note b { color: #FFE27A; font-weight: 400; }
+
+/* ---------- v3.5.1 목록 아래 더 있음 표시 · 좁은 화면 태그 합치기 ---------- */
+.lb-more { margin-left: auto; flex: none; font-size: 16px; line-height: 22px; padding: 0 7px; border-radius: 11px; background: rgba(0,0,0,.32); color: #fff3c4; white-space: nowrap; pointer-events: none; }
+.lb-list.more-dn { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), rgba(0,0,0,.25)); mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), rgba(0,0,0,.25)); }
+.lb-list.more-dn.more-up { -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.25), #000 18px, #000 calc(100% - 26px), rgba(0,0,0,.25)); mask-image: linear-gradient(to bottom, rgba(0,0,0,.25), #000 18px, #000 calc(100% - 26px), rgba(0,0,0,.25)); }
+.lb-list.more-up:not(.more-dn) { -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.25), #000 18px); mask-image: linear-gradient(to bottom, rgba(0,0,0,.25), #000 18px); }
+.prow .tag.tn { display: none; }
+.prow .tag.dot { width: 12px; height: 12px; padding: 0; border-radius: 50%; line-height: 12px; box-shadow: 0 0 0 2px rgba(255,255,255,.75); }
+.prow .tag.dot.s-play { background: #5be08f; }
+.prow .tag.dot.s-spec { background: #6ad0ff; }
+.prow .tag.dot.s-wait { background: #FFD23F; }
+.prow .tag.dot.s-off { background: #9a8aa8; }
+@media (max-width: 700px) {
+  .prow .tag.tw { display: none; }
+  .prow .tag.tn { display: inline-block; }
+  .prow { padding: 0 5px 0 3px; }
+  .prow canvas { width: 32px; height: 19px; }
+  .prow:not(.ai) .nm { min-width: 52px; }   /* 사람 이름 4글자 이상 (AI 이름 로봇A1 은 늘 다 보임) */
+  .aibtn { min-width: 40px; padding: 0 4px; }
+  .lb-more { padding: 0 5px; }
+}

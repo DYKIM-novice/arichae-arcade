@@ -1093,21 +1093,23 @@ async def handle(ws, msg: dict) -> None:
             return err(ws, "not_host", "방장만 AI를 바꿀 수 있어요")
         if t == "tkaiadd":
             team = msg.get("team") if msg.get("team") in ("A", "B") else room.auto_team()
-            lv = "normal" if msg.get("lv") == "normal" else "easy"
+            lv = "easy" if msg.get("lv") == "easy" else "normal"   # v3.5: 기본 보통 · 명시적 'easy' 만 쉬움
             if _add_ai(room, team, lv, msg.get("kind")) is None:
                 return err(ws, "ai_full", f"팀 {team}에 빈자리가 없어요" if room.team_count(team) >= TEAM_MAX else f"방이 꽉 찼어요 (최대 {TANK_MAX}명)")
         elif t == "tkpractice":
             per = TEAM_MAX if msg.get("to") == "8v8" else 2
             for team in ("A", "B"):
                 while room.team_count(team) < per and len(room.seats) < TANK_MAX:
-                    if _add_ai(room, team, "easy", None) is None:
+                    if _add_ai(room, team, "normal", None) is None:   # v3.5: 연습 채우기 AI 도 보통
                         break
         else:
             s = room.seats.get(str(msg.get("id") or ""))
             if s is None or not s.ai:
                 return err(ws, "no_ai", "그 AI는 이미 빠졌어요")
             if t == "tkailv":
-                s.lv = "normal" if msg.get("lv") == "normal" else "easy"   # 판 중이면 다음 판부터 (탱크는 시작 때 값을 복사)
+                if msg.get("lv") not in ("easy", "normal"):
+                    return err(ws, "bad_lv", "AI 실력은 쉬움·보통만 고를 수 있어요")
+                s.lv = msg["lv"]   # 판 중이면 다음 판부터 (탱크는 시작 때 값을 복사)
             elif t == "tkaikeep":
                 s.out = False
             elif _ai_in_play(room, s):
