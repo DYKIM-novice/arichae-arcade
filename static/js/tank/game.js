@@ -11,30 +11,65 @@
   const I = { id: 0, x: 1, y: 2, fa: 3, bt: 4, a: 5, p: 6, hp: 7, fu: 8, cd: 9, inv: 10, f: 11, st: 12, mv: 13, kl: 14, ht: 15, dl: 16, ffk: 17 };
 
   const IS_MOBILE = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  // 효과 모드: 휴대폰은 'lite'(가벼운 효과), 데스크톱은 'full' · QA 는 ?fx=lite|full 로 강제
+  const FX_MODE = (() => {
+    let q = null;
+    try { q = new URLSearchParams(location.search).get('fx'); } catch (e) { /* 무시 */ }
+    if (q === 'lite' || q === 'full') return q;
+    return IS_MOBILE ? 'lite' : 'full';
+  })();
+  const LITE = FX_MODE === 'lite';
+  // 폭발 1회 입자 수 · 종류별 동시 활성 상한(8v8 폭발 겹침 대비, full 도 상한 있음) · 포탄 연기 점 간격(틱) · 미니맵 주기(ms) · 메인 캔버스 dpr 상한
+  const FX = LITE ? {
+    boom: { fire: 2, smoke: 3, spark: 5, soil: 6 }, shot: { spark: 2, smoke: 1 },
+    cap: { big: 28, spark: 40, soil: 30, trail: 24, ring: 6 },
+    trailStep: 0.75, miniFly: 120, miniIdle: 300, dprMax: 1.5
+  } : {
+    boom: { fire: 4, smoke: 6, spark: 10, soil: 14 }, shot: { spark: 4, smoke: 2 },
+    cap: { big: 72, spark: 110, soil: 90, trail: 70, ring: 14 },
+    trailStep: 0.25, miniFly: 60, miniIdle: 200, dprMax: 2
+  };
+  // 상한 묶음: 큰 원 입자(섬광·불꽃·연기)는 합계로
+  const PART_GROUP = { flash: 'big', fire: 'big', smoke: 'big', spark: 'spark', soil: 'soil', trail: 'trail', ring: 'ring' };
   const MAX_PARTS = IS_MOBILE ? 160 : 300;
   const PART_POOL = [];
   for (let i = 0; i < MAX_PARTS; i++) {
-    PART_POOL.push({ active: false, seq: 0, kind: '', x: 0, y: 0, vx: 0, vy: 0, t: 0, life: 0, s: 0, s2: 0, rot: 0, vrot: 0, c: '', c2: '', grav: 0, bounced: false, layer: 0 });
+    PART_POOL.push({ active: false, seq: 0, kind: '', grp: '', x: 0, y: 0, vx: 0, vy: 0, t: 0, life: 0, s: 0, s2: 0, rot: 0, vrot: 0, c: '', c2: '', grav: 0, bounced: false, layer: 0 });
   }
+  const partCount = { big: 0, spark: 0, soil: 0, trail: 0, ring: 0 };
   let partSeq = 0;
   function resetPool() {
     for (let i = 0; i < MAX_PARTS; i++) PART_POOL[i].active = false;
+    for (const g in partCount) partCount[g] = 0;
     partSeq = 0;
   }
   function spawnPart(kind, x, y, vx, vy, t, life, s, s2, c, c2, rot, vrot, grav, layer) {
+    const grp = PART_GROUP[kind] || 'big';
     let slot = null;
     let oldest = null;
-    for (let i = 0; i < MAX_PARTS; i++) {
-      const p = PART_POOL[i];
-      if (!p.active) { slot = p; break; }
-      if (!oldest || p.seq < oldest.seq) oldest = p;
+    if (partCount[grp] >= FX.cap[grp]) {
+      // 묶음 상한: 같은 묶음에서 가장 오래된 것을 새 것으로 (새 폭발이 늘 보이게)
+      for (let i = 0; i < MAX_PARTS; i++) {
+        const p = PART_POOL[i];
+        if (p.active && p.grp === grp && (!slot || p.seq < slot.seq)) slot = p;
+      }
+    }
+    if (!slot) {
+      for (let i = 0; i < MAX_PARTS; i++) {
+        const p = PART_POOL[i];
+        if (!p.active) { slot = p; break; }
+        if (!oldest || p.seq < oldest.seq) oldest = p;
+      }
     }
     const p = slot || oldest;
-    p.active = true; p.seq = ++partSeq; p.kind = kind;
+    if (p.active) partCount[p.grp]--;
+    partCount[grp]++;
+    p.active = true; p.seq = ++partSeq; p.kind = kind; p.grp = grp;
     p.x = x; p.y = y; p.vx = vx; p.vy = vy; p.t = t; p.life = life;
     p.s = s; p.s2 = s2; p.c = c; p.c2 = c2; p.rot = rot; p.vrot = vrot;
     p.grav = grav; p.bounced = false; p.layer = layer;
   }
+  const Shells = window.TankShells.create({ tickMs: 1000 / 15, grav: 600 });
 
   let G = null;               // 현재 판 상태
   let cv, ctx, cw = 0, ch = 0, dpr = 1, raf = 0, lastT = 0;
@@ -44,9 +79,23 @@
 
   function toast(msg) { if (window.TankLobby) window.TankLobby.toast(msg); }
 
+  // 명중 진동: 'hit'(내가 적을 맞힘) 짧게 1번 · 'hurt'(내가 맞음 / 아군 오사·자폭) 짧게 2번 · 150ms 안에 겹치면 한 번만
+  const VIB = { hit: 25, hurt: [45, 40, 45] };
+  function vibrate(kind) {
+    if (!G) return;
+    const t = performance.now();
+    if (t - G.vibLast < 150) return;
+    G.vibLast = t;
+    const pattern = VIB[kind];
+    try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* 진동이 없으면 조용히 무시 */ }
+    if (window.__tankDbg) pushDbg(window.__tankDbg.vib, { t: Math.round(t), kind, pattern }, 30);
+  }
+
   function resize() {
     if (!cv) return;
-    dpr = Math.min(2, window.devicePixelRatio || 1);
+    // lite(휴대폰)는 1.5 상한: 지형은 원래 화면에서 확대돼 보이므로 잃는 게 없고, 글자·외곽선만 약간 부드러워짐 · 채울 픽셀 약 44% 감소
+    dpr = Math.min(FX.dprMax, window.devicePixelRatio || 1);
+    if (window.__tankDbg) window.__tankDbg.dpr = dpr;
     cw = window.innerWidth; ch = window.innerHeight;
     cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
     miniSz = null;
@@ -59,6 +108,8 @@
     stop(true);
     const T = new Art.Terrain(m.gw, m.gh, 4);
     T.load(m.rle, m.geo);
+    T.lite = LITE;
+    Shells.reset();
     const meta = {};
     m.tanks.forEach((t) => { meta[t.id] = t; });
     const me = meta[m.me] ? m.me : null;
@@ -74,8 +125,12 @@
       input: 0, cam: { x: 0, y: 0, ok: false }, zoom: false, spec: !me || !!m.spec, specId: null, specInfo: null, specAsked: false,
       camState: { mode: 'self', sid: null, own: null, fireAt: 0, impactAt: 0, holdUntil: 0, returnStartAt: 0, returnFromX: 0, returnFromY: 0, impactFromX: 0, impactFromY: 0, lastX: 0, lastY: 0, predX: 0, predY: 0, predT: 0, vx: 0, vy: 0, wind: 0, hasShell: false, reason: 'auto' },
       shellOwn: {}, lastShells: [], miniMarks: [], offHits: [], banners: [],
-      dead: {}, deadAt: 0, endSeen: false, trails: {}, faceAnim: {}, nums: [], phase: {}, recoil: {}, lastShotP: null, lastLocalFireAt: 0,
-      over: null, resultTimer: 0, shake: 0, hitShakeUntil: 0, hitShakeAmp: 0, minimapT: 0, goT: 0, moving: false
+      dead: {}, deadAt: 0, endSeen: false, faceAnim: {}, nums: [], phase: {}, recoil: {}, lastShotP: null, lastLocalFireAt: 0,
+      over: null, resultTimer: 0, shake: 0, hitShakeUntil: 0, hitShakeAmp: 0, minimapT: 0, goT: 0, moving: false,
+      // v3.4: 화면 카메라 덮개(판 시작 전체 보기 'intro' · 손가락 둘러보기 'drag') — G.cam 은 기존 카메라 규칙 그대로, 화면은 vcam
+      camOv: null, introPending: (m.cdn || 0) > 0 || (m.rc != null && m.rc < 1500),   // 판 시작(카운트다운·직후)일 때만 · 중간 재접속은 안 보여 줌
+      vcam: { x: 0, y: 0, s: 0 }, drag: null,
+      shellK: m.k || 0, pendingCarve: [], miniDue: 0, mini: null, vibLast: 0
     };
     const fxLog = [];
     fxLog.labels = [];
@@ -88,6 +143,9 @@
       score: { kills: 0, hits: 0, dealt: 0, ffk: 0 },
       cam_log: [], camMode: 'self', aim: { a: null, p: null },
       minimap: { w: 0, h: 0, dpr: 1 },
+      fxMode: FX_MODE, dpr, vib: [], shells: [],
+      perf: { carves: 0, carveBatches: 0, miniDraws: 0, miniPatches: 0, miniFull: 0, parts: partCount },
+      tiles: { tw: T.tw, th: T.th, cols: T.cols, rows: T.rows, dirtyLast: [], redrawCount: T.redrawCount },
       teamStyle: { A: { c: Art.TEAM.A.c, mark: Art.TEAM.A.mark }, B: { c: Art.TEAM.B.c, mark: Art.TEAM.B.mark } }
     };
     $('#s-game').hidden = false;
@@ -154,6 +212,30 @@
     cs.returnFromY = G.cam.y;
   }
 
+  // ---------------------------------------------------------------- 화면 카메라 덮개 (v3.4)
+  // G.camOv = { kind: 'intro'|'drag', x, y, s, holdUntil, backAt, backDur } · 기존 카메라(G.cam·camState)는 그 아래에서 계속 돎
+  // holdUntil 까지는 덮개 화면 그대로, 그 뒤 backDur 동안 기존 카메라 화면으로 부드럽게 넘어감(위치·배율)
+  const INTRO_HOLD = 1700, INTRO_BACK = 700, DRAG_HOLD = 2500, DRAG_BACK = 600, CUT_BACK = 320;
+  function zoomScale() { return Math.min(cw / (WW + 80), (ch - 50) / 1000); }
+  // 조작·발사·포탄 추적이 시작되면 덮개를 지금 화면에서 바로 복귀 시작(짧게)
+  function endCamOv(now, why) {
+    if (!G) return;
+    G.introPending = false;
+    const ov = G.camOv;
+    if (!ov) return;
+    if (why === 'zoom') { G.camOv = null; if (G.drag) G.drag.dead = true; return; }
+    if (ov.backAt && now >= ov.backAt) {
+      // 이미 돌아가는 중이면 남은 시간만 짧게
+      const left = ov.backAt + ov.backDur - now;
+      if (left <= CUT_BACK) return;
+    }
+    const v = G.vcam;
+    ov.x = v.x; ov.y = v.y; ov.s = v.s;
+    ov.holdUntil = now; ov.backAt = now; ov.backDur = CUT_BACK;
+    ov.why = why || '';
+    if (G.drag) G.drag.dead = true;
+  }
+
   // ---------------------------------------------------------------- 서버 메시지
   function onSnap(m) {
     if (!G) return;
@@ -165,6 +247,7 @@
     const sh = {};
     m.sh.forEach((s) => { sh[s[0]] = s; });
     G.snaps.push({ k: m.k, tanks, sh, tl: m.tl, cdn: m.cdn, rc: m.rc, w: m.w, wn: m.wn, ts: m.ts || 1 });
+    Shells.onSnap(m.k, m.sh, m.ts || 1, m.w);
     G.tsNow = m.ts || 1; G.tso = !!m.tso;
     if (G.snaps.length > 40) G.snaps.shift();
     if (G.snaps.length === 1) { G.tl = m.tl; G.cdn = m.cdn; G.wind = m.w; if (m.wn) G.wn = m.wn; if (m.rc != null) G.rc = m.rc; }
@@ -188,8 +271,10 @@
     if (!G) return;
     if (m.t === 'tkshot') {
       G.shellOwn[m.sid] = m.id;
+      Shells.onShot(m.sid, m.k, m.x, m.y, m.vx, m.vy, m.w != null ? m.w : G.wind, m.id, G.tsNow || 1);
       if (m.id === camOwnerId()) {
         const t = performance.now();
+        endCamOv(t, 'shot');   // 내(관전 대상) 포탄 추적 시작 → 전체 보기·둘러보기 끝
         const cs = G.camState;
         if (cs.mode !== 'self') finishCamLog(t, 'early');
         const fireAt = (m.id === G.me && G.lastLocalFireAt && t - G.lastLocalFireAt < 400) ? G.lastLocalFireAt : t;
@@ -227,11 +312,11 @@
       G.recoil[e.id] = t;
       G.shellOwn[e.sid] = e.id;
       spawnPart('flash', e.x, e.y, 0, 0, t, 0.12, 14, 24, '#ffe68c', '#ff9d2e', 0, 0, 0, 1);
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < FX.shot.spark; i++) {
         const a = Math.random() * Math.PI * 2, v = 60 + Math.random() * 140;
         spawnPart('spark', e.x, e.y, Math.cos(a) * v, Math.sin(a) * v - 20, t, 0.18 + Math.random() * 0.14, 2.2, 0.5, '#fff3a8', '#ff8820', 0, 0, 220, 1);
       }
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < FX.shot.smoke; i++) {
         spawnPart('smoke', e.x + (Math.random() - 0.5) * 8, e.y + (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 18, -18 - Math.random() * 16, t, 0.45 + Math.random() * 0.25, 6, 14, 'rgba(210,195,185,.45)', '', 0, 0, -25, 1);
       }
       if (e.id !== G.me) SND.SFX.fire();
@@ -240,6 +325,7 @@
       // · 받자마자(onEvent) 시작한 포탄은 그 사이 빈 화면 터치로 복귀했어도 다시 따라가지 않음
       if (e.id === camOwnerId() && G.camState.startedSid !== e.sid) {
         const cs = G.camState;
+        endCamOv(t, 'shot');
         cs.startedSid = e.sid;
         if (cs.mode !== 'self') finishCamLog(t, 'early');
         const fireAt = (e.id === G.me && G.lastLocalFireAt && t - G.lastLocalFireAt < 400) ? G.lastLocalFireAt : t;
@@ -252,30 +338,33 @@
       }
     } else if (e.t === 'tkboom') {
       const nearTop = !T.solid(e.x, e.y - 10);
-      T.carve(e.x, e.y, e.cr || e.r);
-      G.minimapT = 0;
+      // 지형 깎기는 이번 프레임 이벤트를 다 본 뒤 한 번에(flushCarve) · 미니맵은 다음 프레임 이후에 다시 그림
+      G.pendingCarve.push([e.x, e.y, e.cr || e.r]);
       const t = performance.now();
       const er = e.r || 36;
       // 폭발: 섬광 코어 + 섬광 링 + 불꽃 구 + 연기 덩어리 + 불티
       spawnPart('flash', e.x, e.y, 0, 0, t, 0.16, er * 0.55, er * 1.15, '#fffce0', '#ffaa38', 0, 0, 0, 1);
       spawnPart('ring', e.x, e.y, 0, 0, t, 0.30, er * 0.45, er * 1.95, '#fff7cc', '#ff8e30', 0, 0, 0, 1);
-      for (let i = 0; i < 4; i++) {
+      const NB = FX.boom;
+      for (let i = 0; i < NB.fire; i++) {
         const ang = Math.random() * Math.PI * 2, dist = Math.random() * er * 0.35;
         spawnPart('fire', e.x + Math.cos(ang) * dist, e.y + Math.sin(ang) * dist, (Math.random() - 0.5) * 45, -25 - Math.random() * 45, t + i * 20, 0.28 + Math.random() * 0.16, er * 0.35, er * 0.85, '#fff09c', '#ff6418', 0, 0, -40, 1);
       }
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < NB.smoke; i++) {
         const ang = Math.random() * Math.PI * 2, dist = Math.random() * er * 0.55;
-        spawnPart('smoke', e.x + Math.cos(ang) * dist, e.y + Math.sin(ang) * dist * 0.65, (Math.random() - 0.5) * 28, -28 - Math.random() * 28, t + i * 35, 0.8 + Math.random() * 0.45, 10 + Math.random() * 8, 22 + Math.random() * 14, i < 2 ? '#785046' : '#52424a', '', 0, 0, -30, 1);
+        // lite 는 연기 수가 반이라 한 덩이를 조금 크게(보이는 양 유지)
+        const sk = LITE ? 1.25 : 1;
+        spawnPart('smoke', e.x + Math.cos(ang) * dist, e.y + Math.sin(ang) * dist * 0.65, (Math.random() - 0.5) * 28, -28 - Math.random() * 28, t + i * 35, 0.8 + Math.random() * 0.45, (10 + Math.random() * 8) * sk, (22 + Math.random() * 14) * sk, i < Math.ceil(NB.smoke / 3) ? '#785046' : '#52424a', '', 0, 0, -30, 1);
       }
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < NB.spark; i++) {
         const ang = Math.random() * Math.PI * 2, spd = 150 + Math.random() * 260;
         spawnPart('spark', e.x, e.y, Math.cos(ang) * spd, Math.sin(ang) * spd - 90, t, 0.32 + Math.random() * 0.32, 2.8, 0.6, '#fff296', '#ff6b1a', 0, 0, 420, 1);
       }
       // 흙 파편 (지형 색 · 중력 · 회전 · 지면 튕김 1회)
       const soilCols = ['#5c3320', '#7a452a', '#3f2115', '#68473f'];
-      for (let i = 0; i < 14; i++) {
+      for (let i = 0; i < NB.soil; i++) {
         const ang = -Math.PI * (0.1 + Math.random() * 0.8), spd = 110 + Math.random() * 250;
-        const col = (nearTop && i < 3) ? '#6aa628' : soilCols[(Math.random() * soilCols.length) | 0];
+        const col = (nearTop && i < (LITE ? 2 : 3)) ? '#6aa628' : soilCols[(Math.random() * soilCols.length) | 0];
         spawnPart('soil', e.x + (Math.random() - 0.5) * 12, e.y - 2, Math.cos(ang) * spd, Math.sin(ang) * spd - 60, t, 0.85 + Math.random() * 0.65, 3.5 + Math.random() * 4.5, 0, col, '#28130b', Math.random() * 6.28, (Math.random() - 0.5) * 14, 880, 0);
       }
       const near = nearFactor(e.x, e.y);
@@ -349,6 +438,9 @@
               }
             }
           });
+          // 진동: 적 명중은 짧게 1번 · 아군 오사·자폭(내 탄이 우리 편/나를 맞힘)은 '맞았을 때' 패턴만
+          if (hitAlly || hits.some((h) => h.id === G.me)) vibrate('hurt');
+          else if (hitEnemy) vibrate('hit');
           if (hitEnemy) {
             SND.SFX.hit();
             G.hitShakeUntil = t + 250;
@@ -377,7 +469,7 @@
             if (ff) pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'ally_hit', id: h.id, dmg: h.dmg, x: e.x, y: e.y, own: shooter, tm: h.team, myTm: !!(myTeam && h.team === myTeam) }, 50);
             if (mate) pushDbg(window.__tankDbg.fx, { t: Math.round(t), kind: 'mate_hit', id: h.id, dmg: h.dmg, x: e.x, y: e.y, own: shooter }, 50);
           }
-          if (h.id === G.me) { SND.SFX.hurt(); try { navigator.vibrate && navigator.vibrate(40); } catch (er2) { /* 무시 */ } }
+          if (h.id === G.me) { SND.SFX.hurt(); vibrate('hurt'); }
         });
       }
       // 화면 밖 명중 가장자리 배지 (착탄 지점이 화면 안이거나 착탄 카메라가 비추는 중이면 띄우지 않음)
@@ -393,7 +485,7 @@
           }
         }
       }
-      delete G.trails[e.sid];
+      Shells.remove(e.sid);
       delete G.shellOwn[e.sid];
     } else if (e.t === 'tkgone') {
       const t = performance.now();
@@ -418,7 +510,7 @@
         G.camState.lastY = gy;
         startReturn(t, 'auto');
       }
-      delete G.trails[e.sid];
+      Shells.remove(e.sid);
       delete G.shellOwn[e.sid];
     } else if (e.t === 'tkdeath') {
       G.dead[e.id] = { t: performance.now(), cause: e.cause, by: e.by || '', ff: !!e.ff, self: !!e.self };
@@ -593,6 +685,7 @@
       e.preventDefault(); SND.unlock();
       try { el.setPointerCapture(e.pointerId); } catch (er) { /* 무시 */ }
       held[name] = e.pointerId; el.classList.add('held');
+      endCamOv(performance.now(), 'input');   // 이동·조준 버튼 → 전체 보기·둘러보기 끝, 내 탱크로
       onHoldChange();
     });
     const up = (e) => { if (held[name] === e.pointerId) { delete held[name]; el.classList.remove('held'); onHoldChange(); } };
@@ -632,6 +725,7 @@
       e.preventDefault(); SND.unlock();
       try { pw.setPointerCapture(e.pointerId); } catch (er) { /* 무시 */ }
       held.power = e.pointerId;
+      endCamOv(performance.now(), 'input');
       const kr = $('#p-knob').getBoundingClientRect();
       const kc = kr.top + kr.height / 2;
       pwOffset = Math.abs(e.clientY - kc) <= kr.height * 0.65 ? (e.clientY - kc) : 0;
@@ -652,16 +746,51 @@
       }
     };
     pw.addEventListener('pointerup', pup); pw.addEventListener('pointercancel', pup);
-    // 버튼이 아닌 화면 빈 곳 터치 시 즉시 내 탱크로 복귀 시작
-    cv.addEventListener('pointerdown', () => {
+    // 버튼이 아닌 화면 빈 곳 터치 시 즉시 내 탱크로 복귀 시작 (짧은 탭은 예전 그대로)
+    // + v3.4 한 손가락으로 10px 이상 끌면 맵 둘러보기(drag) · 손을 떼면 2.5초 머문 뒤 기존 카메라로 부드럽게 복귀
+    const DRAG_MIN = 10;
+    cv.addEventListener('pointerdown', (e) => {
       if (!G || G.zoom) return;
       if (G.camState && (G.camState.mode === 'follow' || G.camState.mode === 'impact')) {
         startReturn(performance.now(), 'touch');
       }
+      if (G.drag && !G.drag.dead) return;   // 둘째 손가락은 무시
+      G.drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, ox: 0, oy: 0, on: false, dead: false };
     });
-    $('#b-fire').addEventListener('pointerdown', (e) => { e.preventDefault(); SND.unlock(); fire(); });
-    $('#sp-prev').addEventListener('pointerdown', (e) => { e.preventDefault(); SND.SFX.click(); sendSpec(-1); });
-    $('#sp-next').addEventListener('pointerdown', (e) => { e.preventDefault(); SND.SFX.click(); sendSpec(1); });
+    cv.addEventListener('pointermove', (e) => {
+      const d = G && G.drag;
+      if (!d || d.dead || d.id !== e.pointerId) return;
+      if (G.zoom) { d.dead = true; return; }
+      const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
+      if (!d.on) {
+        if (Math.hypot(dx, dy) < DRAG_MIN) return;
+        d.on = true;
+        try { cv.setPointerCapture(e.pointerId); } catch (er) { /* 무시 */ }
+        const v = G.vcam && G.vcam.s > 0 ? G.vcam : { x: G.cam.x, y: G.cam.y, s: baseScale() };
+        d.ox = v.x; d.oy = v.y;
+        G.camOv = { kind: 'drag', x: v.x, y: v.y, s: v.s, holdUntil: Infinity, backAt: Infinity, backDur: DRAG_BACK, why: '' };
+        G.introPending = false;
+      }
+      const ov = G.camOv;
+      if (!ov || ov.kind !== 'drag') { d.dead = true; return; }
+      const [x, y] = clampCam(d.ox - dx / ov.s, d.oy - dy / ov.s, ov.s);
+      ov.x = x; ov.y = y;
+    });
+    const dragUp = (e) => {
+      const d = G && G.drag;
+      if (!d || d.id !== e.pointerId) return;
+      G.drag = null;
+      const ov = G.camOv;
+      if (d.on && !d.dead && ov && ov.kind === 'drag') {
+        const t = performance.now();
+        ov.holdUntil = t + DRAG_HOLD; ov.backAt = ov.holdUntil; ov.backDur = DRAG_BACK;
+      }
+    };
+    cv.addEventListener('pointerup', dragUp);
+    cv.addEventListener('pointercancel', dragUp);
+    $('#b-fire').addEventListener('pointerdown', (e) => { e.preventDefault(); SND.unlock(); endCamOv(performance.now(), 'input'); fire(); });
+    $('#sp-prev').addEventListener('pointerdown', (e) => { e.preventDefault(); SND.SFX.click(); endCamOv(performance.now(), 'input'); sendSpec(-1); });
+    $('#sp-next').addEventListener('pointerdown', (e) => { e.preventDefault(); SND.SFX.click(); endCamOv(performance.now(), 'input'); sendSpec(1); });
     $('#sp-fast').addEventListener('click', () => {
       if (!G) return;
       const t = performance.now();
@@ -671,7 +800,7 @@
       Net.send({ t: 'tkspeed', x: G.tsNow > 1 ? 1 : 4 });
     });
     $('#sp-back').addEventListener('click', () => { SND.SFX.click(); Net.send({ t: 'tkback' }); });
-    $('#h-zoom').addEventListener('click', () => { if (!G) return; G.zoom = !G.zoom; $('#h-zoom').classList.toggle('on', G.zoom); SND.SFX.click(); });
+    $('#h-zoom').addEventListener('click', () => { if (!G) return; endCamOv(performance.now(), 'zoom'); G.zoom = !G.zoom; $('#h-zoom').classList.toggle('on', G.zoom); SND.SFX.click(); });
     $('#h-menu').addEventListener('click', () => { $('#menu').hidden = !$('#menu').hidden; SND.SFX.click(); });
     $('#m-close').addEventListener('click', () => { $('#menu').hidden = true; });
     $('#m-leave').addEventListener('click', () => { $('#menu').hidden = true; if (window.TankLobby) window.TankLobby.leave(); });
@@ -679,6 +808,7 @@
       if (!G || e.target.tagName === 'INPUT') return;
       if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'w', 's', 'W', 'S'].includes(e.key)) e.preventDefault();
       if (e.repeat && e.key === ' ') return;
+      if (!e.repeat && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'w', 's', 'W', 'S'].includes(e.key)) endCamOv(performance.now(), 'input');
       keys[e.key] = true;
       if (e.key === ' ') fire();
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') onHoldChange();
@@ -722,7 +852,8 @@
     const S = G.snaps;
     if (!S.length) return null;
     const now = performance.now();
-    let rk = G.est == null ? S[S.length - 1].k : (now - G.est) / TICK - DELAY;
+    const rkRaw = G.est == null ? S[S.length - 1].k : (now - G.est) / TICK - DELAY;
+    let rk = rkRaw;
     rk = Math.min(rk, S[S.length - 1].k);
     rk = Math.max(rk, S[0].k);
     G.renderK = rk;
@@ -737,12 +868,6 @@
         bt: lerpAng(A[I.bt], B[I.bt], f) / 10, a: lerpAng(A[I.a], B[I.a], f), p: B[I.p], hp: B[I.hp], fu: B[I.fu], cd: B[I.cd],
         inv: B[I.inv], f: (f < 0.5 ? A : B)[I.f], st: B[I.st], mv: B[I.mv]
       };
-    }
-    const shells = [];
-    for (const sid in a.sh) {
-      const A = a.sh[sid], B = b.sh[sid];
-      if (B) shells.push({ sid, x: A[1] + (B[1] - A[1]) * f, y: A[2] + (B[2] - A[2]) * f });
-      else if (rk - a.k < 1) shells.push({ sid, x: A[1], y: A[2] });
     }
     const s = f >= 0.5 ? b : a;
     if (s.tl != null) G.tl = s.tl;
@@ -759,7 +884,7 @@
         if (window.__tankDbg) window.__tankDbg.windChanges.push({ t: Math.round(performance.now()), w: s.w });
       }
     }
-    // 이벤트 적용 (렌더 시간선에 맞춰)
+    // 이벤트 적용 (렌더 시간선에 맞춰) — 포탄 목록보다 먼저: 착탄이 적용된 포탄은 이번 프레임부터 안 그림
     G.events.sort((x, y) => x.k - y.k);
     while (G.events.length && G.events[0].k <= rk + 0.5) {
       const e = G.events.shift();
@@ -777,15 +902,40 @@
         G.resultTimer = setTimeout(() => { if (G && G.over === e) showResult(e); }, 2000);
       } else applyEvent(e);
     }
+    flushCarve(now);
+    // 포탄: 시간 기준(shells.js) — 스냅샷 사이 보간, b 에만 있는 새 포탄도, 스냅샷이 늦으면 최대 300ms 외삽
+    // (탱크는 마지막 스냅샷에서 멈추지만 포탄 시간은 rkRaw 를 따라 조금 더 감)
+    const lastK = S[S.length - 1].k;
+    const shellK = Math.max(rk, Math.min(rkRaw, lastK + Shells.EXT_K));
+    G.shellK = shellK;
+    const shells = Shells.list(shellK);
+    if (window.__tankDbg) window.__tankDbg.shells = shells.map((q) => ({ sid: q.sid, x: Math.round(q.x), y: Math.round(q.y), src: q.src, own: G.shellOwn[q.sid] || null }));
     return { tanks: out, shells };
+  }
+  // 같은 프레임에 적용된 폭발들의 지형 깎기를 한 번에 + 미니맵 지형 캐시는 바뀐 곳만 표시(다음 미니맵 그릴 때 갱신)
+  function flushCarve(now) {
+    const L = G.pendingCarve;
+    if (!L.length) return;
+    const dirty = G.T.carveMany(L);
+    if (window.__tankDbg) { window.__tankDbg.perf.carves += L.length; window.__tankDbg.perf.carveBatches++; }
+    L.length = 0;
+    const tl = dirty.tiles || [];
+    if (G.mini) for (let i = 0; i < tl.length; i++) G.mini.dirty.add(tl[i]);
+    if (window.__tankDbg && window.__tankDbg.tiles) { window.__tankDbg.tiles.dirtyLast = tl.slice(); window.__tankDbg.tiles.redrawCount = G.T.redrawCount; }
+    // 폭발 프레임에 몰리지 않게 다음 프레임 이후(약 2프레임 뒤)에 미니맵 다시 그림
+    const due = now + 34;
+    if (!G.miniDue || G.miniDue > due) G.miniDue = due;
   }
 
   // ---------------------------------------------------------------- 카메라·좌표
-  function scale() {
-    if (G.zoom) return Math.min(cw / (WW + 80), (ch - 50) / 1000);
+  // 기존 카메라 규칙의 배율(전체 보기 버튼 포함)
+  function baseScale() {
+    if (G.zoom) return zoomScale();
     // 휴대폰 가로(높이 360~430)에서 탱크가 화면 높이의 약 20%(80~95px)로 보이도록 기본 배율 상향
     return Math.max(0.95, Math.min(1.9, ch / 236));
   }
+  // 화면에 그리는 배율(판 시작 전체 보기·둘러보기 덮개 반영) — 그리기·좌표 변환은 모두 이것
+  function scale() { return G.vcam && G.vcam.s > 0 ? G.vcam.s : baseScale(); }
   function focusTank() {
     if (!G.cur) return null;
     if (!G.spec && G.me && G.cur[G.me]) {
@@ -811,7 +961,7 @@
     ];
   }
   function updateCam(dt, now, shells) {
-    const s = scale();
+    const s = baseScale();
     const cs = G.camState;
     let tx, ty, handled = false;
     if (G.zoom) {
@@ -887,16 +1037,42 @@
       const k = 1 - Math.exp(-rate * dt);
       G.cam.x += (tx - G.cam.x) * k; G.cam.y += (ty - G.cam.y) * k;
     }
+    // ---- 화면 카메라 덮개: 판 시작 전체 보기(intro) · 손가락 둘러보기(drag)
+    if (G.zoom && G.camOv) G.camOv = null;
+    if (G.introPending && !G.zoom) {
+      G.introPending = false;
+      G.camOv = { kind: 'intro', x: WW / 2, y: 520, s: zoomScale(), holdUntil: now + INTRO_HOLD, backAt: now + INTRO_HOLD, backDur: INTRO_BACK, why: '' };
+    }
+    let vx = G.cam.x, vy = G.cam.y, vs = s, phase = '';
+    const ov = G.camOv;
+    if (ov) {
+      if (now < ov.holdUntil) {
+        vx = ov.x; vy = ov.y; vs = ov.s; phase = 'hold';
+      } else {
+        const u = Math.min(1, Math.max(0, (now - ov.backAt) / ov.backDur));
+        if (u >= 1) { G.camOv = null; phase = ''; }
+        else {
+          const e = u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;   // 부드럽게 출발·도착
+          vx = ov.x + (G.cam.x - ov.x) * e;
+          vy = ov.y + (G.cam.y - ov.y) * e;
+          vs = Math.exp(Math.log(ov.s) + (Math.log(s) - Math.log(ov.s)) * e);
+          phase = 'back';
+        }
+      }
+    }
+    G.vcam.x = vx; G.vcam.y = vy; G.vcam.s = vs;
     if (window.__tankDbg) {
-      window.__tankDbg.camMode = cs.mode;
+      window.__tankDbg.camMode = G.camOv ? G.camOv.kind : cs.mode;
+      window.__tankDbg.camOv = G.camOv ? { kind: G.camOv.kind, phase, why: G.camOv.why || '' } : null;
       // 월드→화면 변환 식: screenX = (worldX - cam.x) * cam.scale + cw / 2, screenY = (worldY - cam.y) * cam.scale + ch / 2 (cw = innerWidth, ch = innerHeight)
-      window.__tankDbg.cam = { x: G.cam.x, y: G.cam.y, scale: s, cw, ch };
+      window.__tankDbg.cam = { x: vx, y: vy, scale: vs, cw, ch };
     }
   }
   // 월드→화면 변환 식: screenX = (worldX - cam.x) * cam.scale + cw / 2, screenY = (worldY - cam.y) * cam.scale + ch / 2
   function toScreen(wx, wy) {
     const s = scale();
-    return [(wx - G.cam.x) * s + cw / 2, (wy - G.cam.y) * s + ch / 2];
+    const v = G.vcam && G.vcam.s > 0 ? G.vcam : G.cam;
+    return [(wx - v.x) * s + cw / 2, (wy - v.y) * s + ch / 2];
   }
   function nearFactor(x, y) {
     if (!G.cam.ok) return 0.5;
@@ -933,9 +1109,10 @@
     updateFastBtn(me);
     updateCam(dt, now, cur.shells);
     const s = scale();
+    const V = G.vcam;
     const c = ctx;
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    Art.sky(c, cw, ch, G.cam.x, G.cam.y, s, now);
+    Art.sky(c, cw, ch, V.x, V.y, s, now);
     // 흔들림 (일반 폭발 + 내 적 명중 0.25초 약한 흔들림)
     let sx = 0, sy = 0;
     let shakeAmp = 0;
@@ -944,15 +1121,16 @@
       shakeAmp = Math.max(shakeAmp, G.hitShakeAmp * ((G.hitShakeUntil - now) / 250));
     }
     if (shakeAmp > 0.2) { sx = (Math.random() - 0.5) * shakeAmp; sy = (Math.random() - 0.5) * shakeAmp; }
-    const ox = cw / 2 - G.cam.x * s + sx, oy = ch / 2 - G.cam.y * s + sy;
+    const ox = cw / 2 - V.x * s + sx, oy = ch / 2 - V.y * s + sy;
     c.setTransform(dpr * s, 0, 0, dpr * s, dpr * ox, dpr * oy);
     // 지형 (보이는 부분만) + 폭포
-    const vl = Math.max(0, Math.floor(G.cam.x - cw / 2 / s - 4)), vt = Math.max(0, Math.floor(G.cam.y - ch / 2 / s - 4));
-    const vr = Math.min(WW, Math.ceil(G.cam.x + cw / 2 / s + 4)), vb = Math.min(WH, Math.ceil(G.cam.y + ch / 2 / s + 4));
-    if (vr > vl && vb > vt) c.drawImage(G.T.cv, vl, vt, vr - vl, vb - vt, vl, vt, vr - vl, vb - vt);
+    const vl = Math.max(0, Math.floor(V.x - cw / 2 / s - 4)), vt = Math.max(0, Math.floor(V.y - ch / 2 / s - 4));
+    const vr = Math.min(WW, Math.ceil(V.x + cw / 2 / s + 4)), vb = Math.min(WH, Math.ceil(V.y + ch / 2 / s + 4));
+    // v3.4 (c): 보이는 칸만, 칸 경계를 기기 정수 px 에 맞춰 (틈·실선 없음) — drawView 가 변환을 되돌려 놓음
+    if (vr > vl && vb > vt) G.T.drawView(c, dpr * s, dpr * ox, dpr * oy, vl, vt, vr, vb);
     // 맵 좌우 끝: 세로로 잘린 단면 대신 둥근 절벽 끝 + 안개 (캐시 그림)
-    G.T.drawCaps(c, G.cam.x - cw / 2 / s - 4, G.cam.x + cw / 2 / s + 4);
-    Art.drawWaterfalls(c, G.geo, G.T, now);
+    G.T.drawCaps(c, V.x - cw / 2 / s - 4, V.x + cw / 2 / s + 4);
+    Art.drawWaterfalls(c, G.geo, G.T, now, { l: vl, t: vt, r: vr, b: vb });
     // 탱크
     const list = Object.values(G.cur).sort((a, b) => (a.id === G.me) - (b.id === G.me));
     let anyMoving = false;
@@ -1256,35 +1434,43 @@
     return { boxes: placed, byId };
   }
 
+  // 포탄 + 꼬리: 꼬리 점은 포탄 시간선(shells.js)에서 일정 시간 간격(1/4틱 ≈ 17ms)으로 뽑음 → 프레임 간격이 커도 곡선 그대로 이어짐
+  const TRAIL_N = 16, TRAIL_STEP = 0.25;
   function drawShells(c, shells, s, now) {
+    const K = G.shellK;
     for (let k = 0; k < shells.length; k++) {
       const sh = shells[k];
-      let tr = G.trails[sh.sid];
-      if (!tr) { tr = G.trails[sh.sid] = []; }
-      const last = tr[tr.length - 1];
-      if (!last || Math.hypot(last[0] - sh.x, last[1] - sh.y) > 6) {
-        if (tr.length >= 16) {
-          const reused = tr.shift();
-          reused[0] = sh.x; reused[1] = sh.y;
-          tr.push(reused);
-        } else {
-          tr.push([sh.x, sh.y]);
+      const tr = Shells.trail(sh.sid, K, TRAIL_N, TRAIL_STEP);   // 새 것 먼저
+      // 꼬리 연기 점: 시간 간격(FX.trailStep 틱)마다 그 시각의 자리에 · 한 프레임 최대 3개
+      const trk = Shells.track(sh.sid);
+      if (trk) {
+        const born = Shells.birthK(sh.sid);
+        if (trk.puffK == null || trk.puffK > K) trk.puffK = Math.max(born, K - FX.trailStep);
+        let made = 0;
+        while (trk.puffK + FX.trailStep <= K && made < 3) {
+          trk.puffK += FX.trailStep;
+          const q = Shells.pos(sh.sid, trk.puffK);
+          if (!q) break;
+          spawnPart('trail', q[0] + (Math.random() - 0.5) * 3, q[1] + (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 14, -10 - Math.random() * 14, now, 0.42, 3.6, 7.5, 'rgba(255,220,160,.65)', 'rgba(130,115,120,.35)', 0, 0, -18, 0);
+          made++;
         }
-        // 모든 클라에서 보이는 포탄 꼬리 연기 점
-        spawnPart('trail', sh.x + (Math.random() - 0.5) * 3, sh.y + (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 14, -10 - Math.random() * 14, now, 0.42, 3.6, 7.5, 'rgba(255,220,160,.65)', 'rgba(130,115,120,.35)', 0, 0, -18, 0);
+        if (trk.puffK + FX.trailStep <= K) trk.puffK = K;   // 많이 밀렸으면 건너뜀
       }
       const invS = 1 / Math.max(0.5, s);
       c.lineCap = 'round';
-      for (let i = 1; i < tr.length; i++) {
-        const ratio = i / tr.length;
+      const n = tr.length;
+      for (let i = n - 1; i >= 1; i--) {
+        // i: 오래된 점 → 0: 지금 · ratio 는 새 쪽으로 갈수록 1 (예전 배열 순서와 같은 모양)
+        const ratio = (n - i) / n;
+        const p0 = tr[i], p1 = tr[i - 1];
         // 빛나는 바깥 꼬리
         c.strokeStyle = `rgba(255,176,72,${ratio * 0.45})`;
         c.lineWidth = (3.5 + 6.5 * ratio) * invS * 0.65;
-        c.beginPath(); c.moveTo(tr[i - 1][0], tr[i - 1][1]); c.lineTo(tr[i][0], tr[i][1]); c.stroke();
+        c.beginPath(); c.moveTo(p0[0], p0[1]); c.lineTo(p1[0], p1[1]); c.stroke();
         // 밝은 중심 꼬리
         c.strokeStyle = `rgba(255,250,225,${ratio * 0.85})`;
         c.lineWidth = (1.5 + 3.0 * ratio) * invS * 0.6;
-        c.beginPath(); c.moveTo(tr[i - 1][0], tr[i - 1][1]); c.lineTo(tr[i][0], tr[i][1]); c.stroke();
+        c.beginPath(); c.moveTo(p0[0], p0[1]); c.lineTo(p1[0], p1[1]); c.stroke();
       }
       // 포탄 본체 + 빛무리
       c.fillStyle = 'rgba(255,215,120,.35)';
@@ -1302,7 +1488,7 @@
       if (!p.active) continue;
       const age = (now - p.t) / 1000;
       if (age < 0) continue;
-      if (age > p.life) { p.active = false; continue; }
+      if (age > p.life) { p.active = false; partCount[p.grp]--; continue; }
       if (p.grav) p.vy += p.grav * dt;
       const nx = p.x + p.vx * dt;
       const ny = p.y + p.vy * dt;
@@ -1332,7 +1518,16 @@
       const age = (now - p.t) / 1000;
       if (age < 0 || age > p.life) continue;
       const k = age / p.life;
-      if (p.kind === 'soil') {
+      if (p.kind === 'soil' && LITE) {
+        // 가벼운 흙 파편: save/rotate/restore 없이 테두리 사각 + 안쪽 사각(회전 각도에 따라 가로·세로 비율만 바꿔 뒹구는 느낌)
+        c.globalAlpha = 1 - Math.max(0, k - 0.55) / 0.45;
+        const sw = Math.abs(Math.cos(p.rot)) > 0.7 ? 1 : 0.8;
+        const w = p.s * sw, h = p.s * (1.8 - sw);
+        c.fillStyle = p.c2;
+        c.fillRect(p.x - w / 2 - 0.8, p.y - h / 2 - 0.8, w + 1.6, h + 1.6);
+        c.fillStyle = p.c;
+        c.fillRect(p.x - w / 2, p.y - h / 2, w, h);
+      } else if (p.kind === 'soil') {
         c.save();
         c.globalAlpha = 1 - Math.max(0, k - 0.55) / 0.45;
         c.translate(p.x, p.y);
@@ -1892,10 +2087,11 @@
     } else if (window.__tankDbg && G.aim.a != null) {
       window.__tankDbg.aim = { a: Math.round(G.aim.a), p: Math.round(G.aim.p) };
     }
-    // 미니맵 (포탄 비행 중엔 60ms 주기로 갱신)
+    // 미니맵 (포탄 비행 중엔 짧은 주기 · lite 는 비행 120ms/평소 300ms) · 폭발 직후는 다음 프레임 이후(miniDue)에
     const ownerId = camOwnerId();
     const hasOwnerShell = !!(ownerId && G.lastShells && G.lastShells.some((sh) => G.shellOwn[sh.sid] === ownerId));
-    if (now - G.minimapT > (hasOwnerShell ? 60 : 200)) { G.minimapT = now; minimap(now); }
+    const due = G.miniDue && now >= G.miniDue;
+    if (due || now - G.minimapT > (hasOwnerShell ? FX.miniFly : FX.miniIdle)) { G.minimapT = now; G.miniDue = 0; minimap(now); }
   }
   // 미니맵 백버퍼를 CSS 크기 × devicePixelRatio(최대 3)로 맞춤 — 그리기 좌표는 CSS px 기준
   function miniSize(mc) {
@@ -1908,6 +2104,36 @@
     miniSz = mc.clientWidth ? { el: mc, w, h, d } : null;
     if (window.__tankDbg) window.__tankDbg.minimap = { w, h, dpr: d };
     return { el: mc, w, h, d };
+  }
+  // 미니맵 지형 캐시(미니맵 백버퍼 크기): 처음·크기 바뀔 때만 모든 칸을 축소해 굽고, 그 뒤엔 폭발로 다시 그린 칸만 다시 굽기
+  // 칸마다 미니맵 위 정수 px 사각형(이웃 칸과 경계 공유)에 통째로 축소 → 칸 사이 틈·겹침 없음
+  function miniTile(mt, T, tl) {
+    const x0 = Math.round(tl.x / T.W * mt.bw), x1 = Math.round((tl.x + tl.w) / T.W * mt.bw);
+    const y0 = Math.round(tl.y / T.H * mt.bh), y1 = Math.round((tl.y + tl.h) / T.H * mt.bh);
+    if (x1 <= x0 || y1 <= y0) return;
+    mt.c.clearRect(x0, y0, x1 - x0, y1 - y0);
+    mt.c.drawImage(tl.cv, 0, 0, tl.w, tl.h, x0, y0, x1 - x0, y1 - y0);
+  }
+  function miniTerrain(M) {
+    const T = G.T;
+    const bw = Math.round(M.w * M.d), bh = Math.round(M.h * M.d);
+    let mt = G.mini;
+    if (!mt || mt.bw !== bw || mt.bh !== bh || mt.T !== T) {
+      const cvs = document.createElement('canvas');
+      cvs.width = bw; cvs.height = bh;
+      const c = cvs.getContext('2d');
+      c.imageSmoothingEnabled = true;
+      mt = G.mini = { cv: cvs, c, bw, bh, T, dirty: new Set() };
+      for (let i = 0; i < T.tiles.length; i++) miniTile(mt, T, T.tiles[i]);
+      if (window.__tankDbg) window.__tankDbg.perf.miniFull++;
+      return mt;
+    }
+    if (mt.dirty.size) {
+      mt.dirty.forEach((i) => { if (T.tiles[i]) miniTile(mt, T, T.tiles[i]); });
+      if (window.__tankDbg) window.__tankDbg.perf.miniPatches += mt.dirty.size;
+      mt.dirty.clear();
+    }
+    return mt;
   }
   function miniStar(c, x, y, r) {
     c.beginPath();
@@ -1923,10 +2149,13 @@
     const M = miniSize(mc);
     const w = M.w, h = M.h, T = G.T;
     const k = h / 32; // 예전 크기(120x32) 대비 배율 — 포탄 점·착탄 표지 비율 유지
+    const mt = miniTerrain(M);
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, mc.width, mc.height);
+    c.drawImage(mt.cv, 0, 0);
     c.setTransform(M.d, 0, 0, M.d, 0, 0);
-    c.clearRect(0, 0, w, h);
-    c.imageSmoothingEnabled = true;
-    c.drawImage(T.cv, 0, 0, WW, WH, 0, 0, w, h);
+    if (window.__tankDbg) window.__tankDbg.perf.miniDraws++;
+    void T;
     // 탱크 점: A 원 · B 삼각 (팀색 + 흰 테두리 + 잉크선, 지름 약 5~6px) · 내 탱크/관전 대상은 흰 링
     const dotR = Math.max(2.5, 2.2 * k);
     let meDot = null;
@@ -1982,7 +2211,8 @@
     }
     const s = scale();
     c.strokeStyle = 'rgba(255,255,255,.6)'; c.lineWidth = 1;
-    c.strokeRect((G.cam.x - cw / 2 / s) / WW * w, Math.max(0, (G.cam.y - ch / 2 / s) / WH * h), cw / s / WW * w, Math.min(h, ch / s / WH * h));
+    const V = G.vcam && G.vcam.s > 0 ? G.vcam : G.cam;
+    c.strokeRect((V.x - cw / 2 / s) / WW * w, Math.max(0, (V.y - ch / 2 / s) / WH * h), cw / s / WW * w, Math.min(h, ch / s / WH * h));
   }
 
   function init() {

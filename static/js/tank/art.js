@@ -922,14 +922,80 @@
     return { soil: SOIL_TILE, grass: GRASS_TILE };
   }
 
-  function Terrain(gw, gh, cell) {
+  // v3.4 (c): 지형 그림은 칸(타일) 캔버스로 나눠 가짐 — 폭발 때 바뀐 칸만 GPU 텍스처를 다시 올리게
+  // 처음 굽기(paint)만 큰 캔버스(this.cv/this.c)에 하고, 끝나면 칸으로 잘라 담은 뒤 큰 캔버스는 버림(null).
+  // opt.tw/opt.th 로 칸 크기 지정 — 맵 크기와 같게 주면 칸 1개(비교 시험용 '단일 캔버스 기준'). 칸 원점이 256 배수라 그라데이션 디더 무늬도 맞음
+  const TILE = 256;
+  function Terrain(gw, gh, cell, opt) {
     this.gw = gw; this.gh = gh; this.cell = cell; this.W = gw * cell; this.H = gh * cell;
     this.mask = new Uint8Array(gw * gh);
     this.bedMask = new Uint8Array(gw * gh);
     this.geo = null;
-    this.cv = document.createElement('canvas'); this.cv.width = this.W; this.cv.height = this.H;
-    this.c = this.cv.getContext('2d');
+    this.tw = Math.max(1, Math.min(this.W, (opt && opt.tw) || TILE));
+    this.th = Math.max(1, Math.min(this.H, (opt && opt.th) || TILE));
+    this.cols = Math.ceil(this.W / this.tw); this.rows = Math.ceil(this.H / this.th);
+    this.tiles = null;          // [{i, col, row, x, y, w, h, cv, c}] — 칸 번호 i = row * cols + col
+    this.cv = null; this.c = null; // 굽는 동안만 쓰는 큰 캔버스
+    this.redrawCount = 0;       // 폭발로 다시 그린 칸 수 (누적)
+    this.dirtyLast = [];        // 마지막 carveMany 가 다시 그린 칸 번호
   }
+  // 굽기가 끝난 큰 캔버스를 칸 캔버스로 잘라 담음 (1:1 정수 복사 — 픽셀 그대로)
+  Terrain.prototype.sliceTiles = function () {
+    const big = this.cv;
+    if (this.cols * this.rows === 1) {
+      this.tiles = [{ i: 0, col: 0, row: 0, x: 0, y: 0, w: this.W, h: this.H, cv: big, c: this.c }];
+    } else {
+      const old = this.tiles, out = [];
+      for (let row = 0; row < this.rows; row++) {
+        for (let col = 0; col < this.cols; col++) {
+          const i = row * this.cols + col, x = col * this.tw, y = row * this.th;
+          const w = Math.min(this.tw, this.W - x), h = Math.min(this.th, this.H - y);
+          let t = old && old[i];
+          if (!t || t.w !== w || t.h !== h) {
+            const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+            t = { i, col, row, x, y, w, h, cv, c: cv.getContext('2d') };
+          }
+          t.c.setTransform(1, 0, 0, 1, 0, 0);
+          t.c.globalCompositeOperation = 'source-over'; t.c.globalAlpha = 1;
+          t.c.clearRect(0, 0, w, h);
+          t.c.drawImage(big, x, y, w, h, 0, 0, w, h);
+          out.push(t);
+        }
+      }
+      this.tiles = out;
+    }
+    // 이후 그리기는 칸만 사용 — 큰 캔버스는 버림 (메모리 · 실수로 쓰면 바로 오류가 나게)
+    this.cv = null; this.c = null;
+  };
+  // 화면 그리기: 보이는 칸만. 세계 좌표 변환(a=배율, e/f=이동, 기기 px)에서 칸 경계를 기기 정수 px 로 맞춰
+  // 이웃 칸이 같은 정수 경계를 나눠 갖게 함 → 확대·소수 배율에서도 칸 사이 틈(반투명 줄)·겹침 없음. 끝나면 변환을 되돌림
+  // l,t,r,b = 보이는 세계 영역. 돌려주는 값 = 그린 칸 수
+  Terrain.prototype.drawView = function (c, a, e, f, l, t, r, b) {
+    if (!this.tiles) return 0;
+    const c0 = Math.max(0, Math.floor(l / this.tw)), c1 = Math.min(this.cols - 1, Math.floor((r - 0.001) / this.tw));
+    const r0 = Math.max(0, Math.floor(t / this.th)), r1 = Math.min(this.rows - 1, Math.floor((b - 0.001) / this.th));
+    let n = 0;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    for (let row = r0; row <= r1; row++) {
+      for (let col = c0; col <= c1; col++) {
+        const tl = this.tiles[row * this.cols + col];
+        const x0 = Math.round(a * tl.x + e), x1 = Math.round(a * (tl.x + tl.w) + e);
+        const y0 = Math.round(a * tl.y + f), y1 = Math.round(a * (tl.y + tl.h) + f);
+        if (x1 > x0 && y1 > y0) { c.drawImage(tl.cv, x0, y0, x1 - x0, y1 - y0); n++; }
+      }
+    }
+    c.setTransform(a, 0, 0, a, e, f);
+    return n;
+  };
+  // 세계 사각형과 겹치는 칸 번호 목록
+  Terrain.prototype.tilesIn = function (l, t, r, b) {
+    const out = [];
+    if (r <= 0 || b <= 0 || l >= this.W || t >= this.H) return out;
+    const c0 = Math.max(0, Math.floor(l / this.tw)), c1 = Math.min(this.cols - 1, Math.floor(r / this.tw));
+    const r0 = Math.max(0, Math.floor(t / this.th)), r1 = Math.min(this.rows - 1, Math.floor(b / this.th));
+    for (let row = r0; row <= r1; row++) for (let col = c0; col <= c1; col++) out.push(row * this.cols + col);
+    return out;
+  };
   Terrain.prototype.load = function (rle, geo) {
     const m = this.mask; let i = 0, v = 0;
     for (const n of rle) { m.fill(v, i, i + n); i += n; v ^= 1; }
@@ -956,6 +1022,9 @@
     return out;
   };
   Terrain.prototype.paint = function () {
+    // 굽기용 큰 캔버스 (칸 1개 모드면 그 칸 캔버스를 그대로 다시 씀)
+    if (this.cols * this.rows === 1 && this.tiles) { this.cv = this.tiles[0].cv; this.c = this.tiles[0].c; this.c.setTransform(1, 0, 0, 1, 0, 0); }
+    else { this.cv = document.createElement('canvas'); this.cv.width = this.W; this.cv.height = this.H; this.c = this.cv.getContext('2d'); }
     const c = this.c, { gw, gh, mask, cell } = this;
     const pat = ensureTerrainPatterns();
     c.globalCompositeOperation = 'source-over';
@@ -1051,6 +1120,9 @@
     // 7) 맵 좌우 끝 바깥 '둥근 절벽 끝' (따로 캐시 — 파일 때만 그 쪽만 다시 그림)
     this.buildCap(-1);
     this.buildCap(1);
+
+    // 8) 칸으로 잘라 담고 큰 캔버스는 버림
+    this.sliceTiles();
   };
 
   // ---------------------------------------------------------------- 맵 좌우 끝: 둥글게 깎여 내려가는 절벽 끝 + 안개
@@ -1335,58 +1407,109 @@
   };
 
   // 바뀐 영역만 부분 굽기 (파인 구멍 + 그을린 가장자리)
-  Terrain.prototype.carve = function (x, y, r) {
+  Terrain.prototype.carve = function (x, y, r) { return this.carveMany([[x, y, r]]); };
+  // 같은 프레임의 여러 폭발을 한 번에: 마스크는 폭발마다(판정·서버와 같은 계산), 그리기는 save/clip/구멍 채우기 1번 + 그을음
+  // this.lite(휴대폰 가벼운 효과)면 그을음 방사 그라데이션 대신 반투명 링 2개 — 구멍 모양(마스크·다각형)은 같음
+  // 돌려주는 값: 바뀐 사각형 [{l,t,r,b}] + .tiles = 다시 그린 칸 번호 (미니맵 캐시 부분 갱신은 칸에서 읽음)
+  Terrain.prototype.carveMany = function (list) {
     const { gw, gh, mask, cell } = this;
-    const r2 = r * r;
-    const gx0 = Math.max(0, Math.floor((x - r) / cell)), gx1 = Math.min(gw - 1, Math.floor((x + r) / cell));
-    const gy0 = Math.max(0, Math.floor((y - r) / cell)), gy1 = Math.min(gh - 1, Math.floor((y + r) / cell));
-    for (let gy = gy0; gy <= gy1; gy++) {
-      const cy = gy * cell + 2 - y;
-      for (let gx = gx0; gx <= gx1; gx++) {
-        const cx = gx * cell + 2 - x, idx = gy * gw + gx;
-        if (cx * cx + cy * cy <= r2) mask[idx] = 0;
+    const dirty = [];
+    if (!list || !list.length) return dirty;
+    for (let n = 0; n < list.length; n++) {
+      const [x, y, r] = list[n];
+      const r2 = r * r;
+      const gx0 = Math.max(0, Math.floor((x - r) / cell)), gx1 = Math.min(gw - 1, Math.floor((x + r) / cell));
+      const gy0 = Math.max(0, Math.floor((y - r) / cell)), gy1 = Math.min(gh - 1, Math.floor((y + r) / cell));
+      for (let gy = gy0; gy <= gy1; gy++) {
+        const cy = gy * cell + 2 - y;
+        for (let gx = gx0; gx <= gx1; gx++) {
+          const cx = gx * cell + 2 - x, idx = gy * gw + gx;
+          if (cx * cx + cy * cy <= r2) mask[idx] = 0;
+        }
       }
+      const pad = r + 18;
+      dirty.push({ l: Math.max(0, x - pad), t: Math.max(0, y - pad), r: Math.min(this.W, x + pad), b: Math.min(this.H, y + pad) });
     }
-    const c = this.c;
-    const pad = r + 18;
+    // 폭발마다 실제로 그리는 범위 = 클립 사각형(구멍 r+2.3 · 그을음 r+15 · lite 링 r+14.5 모두 pad=r+18 안) + 안전 여유 2px
+    // → 걸친 칸을 모두 찾아 칸마다 같은 코드로 그림 (칸 원점만큼 평행 이동 · 클립이 같아 칸 경계에서 이음매·빠진 조각 없음)
+    const per = new Map();
+    for (let n = 0; n < dirty.length; n++) {
+      const d = dirty[n];
+      const ids = this.tilesIn(d.l - CARVE_SAFE, d.t - CARVE_SAFE, d.r + CARVE_SAFE, d.b + CARVE_SAFE);
+      for (let k = 0; k < ids.length; k++) { let a = per.get(ids[k]); if (!a) per.set(ids[k], a = []); a.push(n); }
+    }
+    const touched = Array.from(per.keys()).sort((a, b) => a - b);
+    for (let k = 0; k < touched.length; k++) {
+      const tl = this.tiles[touched[k]];
+      drawCarve(tl.c, -tl.x, -tl.y, list, dirty, per.get(touched[k]), this.lite);
+    }
+    this.redrawCount += touched.length;
+    this.dirtyLast = touched;
+    // 맵 끝 근처를 팠으면 그 쪽 끝 모양만 다시 그림 (작은 캐시라 가벼움) — 여러 폭발이어도 쪽마다 1번
+    let capL = false, capR = false;
+    for (let n = 0; n < list.length; n++) {
+      const [x, , r] = list[n];
+      if (x - r < CAP_IN + 4) capL = true;
+      if (x + r > this.W - CAP_IN - 4) capR = true;
+    }
+    if (capL) this.buildCap(-1);
+    if (capR) this.buildCap(1);
+    dirty.tiles = touched;
+    return dirty;
+  };
+  const CARVE_SAFE = 2;
+  // 구멍 + 그을음 그리기 (칸 하나에): ox/oy = 칸 원점의 음수(세계 → 칸 좌표), sel = 이 칸에 걸친 폭발 번호(순서 유지)
+  function drawCarve(c, ox, oy, list, dirty, sel, lite) {
     c.save();
+    c.setTransform(1, 0, 0, 1, ox, oy);
     // 바뀐 영역 사각형 클립 (기반암 보호 없음)
     c.beginPath();
-    c.rect(Math.max(0, x - pad), Math.max(0, y - pad), pad * 2, pad * 2);
+    for (let k = 0; k < sel.length; k++) { const d = dirty[sel[k]]; c.rect(d.l, d.t, d.r - d.l, d.b - d.t); }
     c.clip();
 
-    // 파인 구멍 (거친 가장자리로 판정 반경과 일치)
+    // 파인 구멍 (거친 가장자리로 판정 반경과 일치) — 모든 구멍을 한 경로로
     c.globalCompositeOperation = 'destination-out';
     c.beginPath();
     const steps = 28;
-    for (let i = 0; i <= steps; i++) {
-      const ang = (i / steps) * Math.PI * 2;
-      const jit = Math.sin(ang * 7 + x * 0.13) * 1.4 + Math.cos(ang * 11 + y * 0.17) * 0.9;
-      const rr2 = Math.max(2, r + jit);
-      const px = x + Math.cos(ang) * rr2, py = y + Math.sin(ang) * rr2;
-      if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+    for (let k = 0; k < sel.length; k++) {
+      const [x, y, r] = list[sel[k]];
+      for (let i = 0; i <= steps; i++) {
+        const ang = (i / steps) * Math.PI * 2;
+        const jit = Math.sin(ang * 7 + x * 0.13) * 1.4 + Math.cos(ang * 11 + y * 0.17) * 0.9;
+        const rr2 = Math.max(2, r + jit);
+        const px = x + Math.cos(ang) * rr2, py = y + Math.sin(ang) * rr2;
+        if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+      }
+      c.closePath();
     }
-    c.closePath();
-    c.fill();
+    c.fill('nonzero');
 
     // 그을린 구멍 가장자리 (검은 그을음 링 + 따뜻한 탄 갈색 링)
     c.globalCompositeOperation = 'source-atop';
-    const g = c.createRadialGradient(x, y, Math.max(1, r - 2), x, y, r + 14);
-    g.addColorStop(0, 'rgba(18,8,6,.92)');
-    g.addColorStop(0.32, 'rgba(34,14,10,.78)');
-    g.addColorStop(0.65, 'rgba(68,26,14,.38)');
-    g.addColorStop(1, 'rgba(68,26,14,0)');
-    c.fillStyle = g;
-    c.beginPath(); c.arc(x, y, r + 15, 0, Math.PI * 2); c.fill();
-
-    c.strokeStyle = 'rgba(18,8,6,.85)';
-    c.lineWidth = 2.6;
-    c.beginPath(); c.arc(x, y, r + 1, 0, Math.PI * 2); c.stroke();
+    for (let k = 0; k < sel.length; k++) {
+      const [x, y, r] = list[sel[k]];
+      if (lite) {
+        c.lineWidth = 7;
+        c.strokeStyle = 'rgba(28,11,8,.62)';
+        c.beginPath(); c.arc(x, y, r + 3.5, 0, Math.PI * 2); c.stroke();
+        c.lineWidth = 8;
+        c.strokeStyle = 'rgba(68,26,14,.26)';
+        c.beginPath(); c.arc(x, y, r + 10.5, 0, Math.PI * 2); c.stroke();
+      } else {
+        const g = c.createRadialGradient(x, y, Math.max(1, r - 2), x, y, r + 14);
+        g.addColorStop(0, 'rgba(18,8,6,.92)');
+        g.addColorStop(0.32, 'rgba(34,14,10,.78)');
+        g.addColorStop(0.65, 'rgba(68,26,14,.38)');
+        g.addColorStop(1, 'rgba(68,26,14,0)');
+        c.fillStyle = g;
+        c.beginPath(); c.arc(x, y, r + 15, 0, Math.PI * 2); c.fill();
+      }
+      c.strokeStyle = 'rgba(18,8,6,.85)';
+      c.lineWidth = 2.6;
+      c.beginPath(); c.arc(x, y, r + 1, 0, Math.PI * 2); c.stroke();
+    }
     c.restore();
-    // 맵 끝 근처를 팠으면 그 쪽 끝 모양만 다시 그림 (작은 캐시라 가벼움)
-    if (x - r < CAP_IN + 4) this.buildCap(-1);
-    if (x + r > this.W - CAP_IN - 4) this.buildCap(1);
-  };
+  }
 
   // ---------------------------------------------------------------- 하늘 · 원경 이미지(bg_far_v3) + 패럴랙스
   let BG = null;
@@ -1529,15 +1652,22 @@
   }
 
   // 작은 폭포 애니메이션 + 물안개
-  function drawWaterfalls(c, geo, T, now) {
+  // view({l,t,r,b}, 월드 좌표)를 주면 화면 밖 폭포는 건너뜀 · 물줄기 그라데이션은 폭포마다 한 번 만들어 둠(같은 캔버스)
+  function drawWaterfalls(c, geo, T, now, view) {
     if (!geo || !geo.falls) return;
     const sec = now / 1000;
+    if (!geo._wg || geo._wg.ctx !== c) geo._wg = { ctx: c, g: {} };
     for (const [id, fx, fy] of geo.falls) {
-      if (!T.solid(fx, fy) && !T.solid(fx, fy + 4) && !T.solid(fx, fy - 4)) continue;
       const len = (id === 3 || id === 5) ? 195 : 155;
+      if (view && (fx + 30 < view.l || fx - 30 > view.r || fy + len + 30 < view.t || fy - 30 > view.b)) continue;
+      if (!T.solid(fx, fy) && !T.solid(fx, fy + 4) && !T.solid(fx, fy - 4)) continue;
       const w = 13;
-      const wg = c.createLinearGradient(fx, fy - 4, fx, fy + len);
-      wg.addColorStop(0, 'rgba(215,246,255,.85)'); wg.addColorStop(0.55, 'rgba(145,216,255,.68)'); wg.addColorStop(1, 'rgba(180,235,255,0)');
+      let wg = geo._wg.g[id + ':' + fx + ':' + fy];
+      if (!wg) {
+        wg = c.createLinearGradient(fx, fy - 4, fx, fy + len);
+        wg.addColorStop(0, 'rgba(215,246,255,.85)'); wg.addColorStop(0.55, 'rgba(145,216,255,.68)'); wg.addColorStop(1, 'rgba(180,235,255,0)');
+        geo._wg.g[id + ':' + fx + ':' + fy] = wg;
+      }
       c.save();
       c.fillStyle = wg;
       c.beginPath();
