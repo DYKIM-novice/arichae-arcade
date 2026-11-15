@@ -539,10 +539,8 @@
 
     // 카카오로 초대: 카카오 피드(키가 있을 때) → 기기 공유 시트 → 클립보드 복사 (share.js)
     $('#lb-invite').addEventListener('click', () => { SND.SFX.click(); Share.invite(L ? L.code : ''); });
-    // 홈 화면에 추가 (입장 화면 · 대기실 · 게임 메뉴) — 설치할 수 있을 때만 보임
-    $$('.inst-btn').forEach((b) => b.addEventListener('click', () => { SND.unlock(); SND.SFX.click(); Share.install(); }));
-    const paintInstall = () => { const on = Share.canInstall(); $$('.inst-btn').forEach((b) => { b.hidden = !on; }); };
-    Share.onChange(paintInstall); paintInstall();
+    // 홈 화면에 추가 (입장 화면 · 대기실 · 세로 안내 · 게임 메뉴) — v3.5.1 늘 보임(앱 창이면 누를 때 「이미 앱으로 열려 있어요」)
+    $$('.inst-btn').forEach((b) => { b.hidden = false; b.addEventListener('click', () => { SND.unlock(); SND.SFX.click(); Share.install(); }); });
     $('#lb-leave').addEventListener('click', leave);
     $('#lb-watch').addEventListener('click', () => { SND.SFX.click(); Net.send({ t: 'tkspec', d: 0 }); });
     $('#lb-kinds').addEventListener('click', (e) => { const b = e.target.closest('[data-kind]'); if (b) { SND.SFX.click(); Net.send({ t: 'tkpick', kind: b.dataset.kind }); } });

@@ -1,9 +1,11 @@
 /* 포트리스관 · 홈 화면 바로가기(PWA 설치) + 카카오로 초대
    설치
-   - Android/Chrome: beforeinstallprompt 를 저장해 두었다가 「홈 화면에 추가」를 누르면 prompt() → 결과 처리, appinstalled 면 버튼 숨김
+   - Android/Chrome: beforeinstallprompt 를 저장해 두었다가 「홈 화면에 추가」를 누르면 prompt() → 결과 처리 (appinstalled 뒤에도 버튼은 그대로)
    - iOS(Safari 등): 설치 창을 띄울 수 없어 「공유 → 홈 화면에 추가」 안내 시트
    - 카카오톡 안 브라우저: 설치가 안 되니 「다른 브라우저로 열기」 안내
-   - 이미 앱으로 열었으면(display-mode standalone/fullscreen · navigator.standalone) 버튼 숨김, 창을 띄울 수 없는 브라우저도 숨김
+   - v3.5.1: 버튼은 언제나 보임(숨기지 않음). 앱 판단은 display-mode: standalone · navigator.standalone === true 만
+     (전체 화면 탭이 앱으로 오판돼 버튼이 사라졌던 문제 · fullscreen/minimal-ui/fullscreenElement 는 보지 않음, ?source=pwa 는 standalone 일 때만 보조)
+     이미 앱 창이면 누를 때 「이미 앱으로 열려 있어요」 안내
    - 서비스 워커: 허브와 같은 /sw.js(범위 /)를 이 페이지에서도 등록(초대 링크로 바로 온 사람도 설치 조건 충족) · 실패는 조용히
    - v3.5: 앱으로 연 게 아니면 버튼은 늘 보임. 크롬 설치 창이 아직 없으면(안드로이드·컴퓨터) 메뉴로 설치하는 안내 시트
    - v3.5 카카오톡 안: 안드로이드는 intent:// 로 크롬 열기 → 안 열리면 kakaotalk://web/openExternal, 아이폰은 바로 kakaotalk:// (?room= 유지)
@@ -28,9 +30,11 @@
   const KAKAO_INAPP = /KAKAOTALK/i.test(ua);
   const ANDROID = /Android/i.test(ua);
   const mq = (q) => { try { return !!(window.matchMedia && window.matchMedia(q).matches); } catch (e) { return false; } };
-  // 페이지를 연 순간에 판단 (입장 버튼이 requestFullscreen 을 부르면 display-mode: fullscreen 이 맞아질 수 있어 나중엔 다시 재지 않음)
-  let standalone = mq('(display-mode: standalone)') || mq('(display-mode: minimal-ui)') || navigator.standalone === true ||
-    (mq('(display-mode: fullscreen)') && !document.fullscreenElement) || /[?&]source=pwa\b/.test(location.search);
+  // 앱 창 판단: display-mode: standalone 또는 iOS navigator.standalone 만 (전체 화면·minimal-ui 는 앱이 아님)
+  // ?source=pwa 는 앱 시작 주소 표시일 뿐 · 단독으로는 앱으로 보지 않음(standalone 이 맞을 때만 보조 정보로 기록)
+  const fromPwa = /[?&]source=pwa\b/.test(location.search);
+  const isApp = () => mq('(display-mode: standalone)') || navigator.standalone === true;
+  let standalone = isApp();
   let deferred = null;   // beforeinstallprompt 이벤트
   let toastFn = (m) => { try { console.log(m); } catch (e) { /* 무시 */ } };
   const listeners = [];
@@ -40,11 +44,11 @@
     return window.__tankDbg;
   }
   function publish() {
-    dbg().install = Object.freeze({ standalone, canPrompt: !!deferred, ios: IOS, kakao: KAKAO_INAPP, android: ANDROID });
+    dbg().install = Object.freeze({ standalone, canPrompt: !!deferred, ios: IOS, kakao: KAKAO_INAPP, android: ANDROID, fromPwa: standalone && fromPwa });
     listeners.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
   }
-  // 버튼을 보일지: 앱으로 연 게 아니면 늘 (크롬 설치 창 → 없으면 브라우저별 안내 시트)
-  function canInstall() { return !standalone; }
+  // 버튼을 보일지: 늘 보임 (v3.5.1 · 앱 창이면 누를 때 안내만) — 옛 호출 호환용
+  function canInstall() { return true; }
 
   // 서비스 워커(허브와 같은 /sw.js · 범위 /): 초대 링크로 바로 온 사람도 설치 조건(서비스 워커가 이 페이지를 맡음)을 채움
   try {
@@ -88,16 +92,14 @@
     go('kakao', kakaoUrl);
   }
 
-  // 늦게 앱 창으로 바뀌는 경우(설치 직후 앱으로 열림 등): display-mode standalone/minimal-ui 가 맞아지면 버튼 숨김
-  // (fullscreen 은 입장 버튼의 requestFullscreen 때문에도 맞아지므로 여기서는 보지 않음)
-  ['(display-mode: standalone)', '(display-mode: minimal-ui)'].forEach((q) => {
-    try {
-      const m = window.matchMedia && window.matchMedia(q);
-      if (!m) return;
-      const on = (ev) => { if (ev.matches && !standalone) { standalone = true; deferred = null; closeSheet(); publish(); } };
+  // 늦게 앱 창으로 바뀌는 경우(설치 직후 앱으로 열림 등): display-mode standalone 이 바뀌면 다시 잼 (버튼은 숨기지 않음)
+  try {
+    const m = window.matchMedia && window.matchMedia('(display-mode: standalone)');
+    if (m) {
+      const on = () => { const v = isApp(); if (v !== standalone) { standalone = v; if (v) closeSheet(); publish(); } };
       if (m.addEventListener) m.addEventListener('change', on); else if (m.addListener) m.addListener(on);
-    } catch (e) { /* 무시 */ }
-  });
+    }
+  } catch (e) { /* 무시 */ }
 
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();   // 크롬 자체 작은 띠 대신 우리 버튼으로
@@ -105,7 +107,8 @@
     publish();
   });
   window.addEventListener('appinstalled', () => {
-    deferred = null; standalone = true;
+    // 설치는 끝났지만 지금 이 탭은 아직 브라우저 창 → standalone 은 그대로(버튼도 그대로)
+    deferred = null;
     closeSheet();
     publish();
     toastFn('홈 화면에 포트리스관을 추가했어요');
@@ -185,15 +188,17 @@
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && sheetEl) closeSheet(); });
 
   async function install() {
-    if (standalone) return;
+    standalone = isApp();
+    if (standalone) { closeSheet(); publish(); toastFn('이미 앱으로 열려 있어요'); dbg().lastInstall = 'standalone'; return; }
     if (deferred) {
+      dbg().lastInstall = 'prompt';
       const ev = deferred;
       deferred = null;   // prompt() 는 한 번만 쓸 수 있음
       publish();
       try {
         ev.prompt();
         const ch = await ev.userChoice;
-        if (ch && ch.outcome === 'accepted') toastFn('홈 화면에 포트리스관을 추가하는 중이에요');
+        if (ch && ch.outcome === 'accepted') toastFn('홈 화면에 포트리스관을 추가했어요');
         else toastFn('나중에 메뉴의 「홈 화면에 추가」로 다시 할 수 있어요');
       } catch (e) {
         // prompt 실패: 브라우저 메뉴로 설치하는 안내 시트
@@ -201,9 +206,9 @@
       }
       return;
     }
-    if (KAKAO_INAPP) { openSheet('kakao'); return; }
-    if (IOS) { openSheet('ios'); return; }
-    openSheet('menu');
+    const kind = KAKAO_INAPP ? 'kakao' : IOS ? 'ios' : 'menu';
+    dbg().lastInstall = 'sheet:' + kind;
+    openSheet(kind);
   }
 
   // ---------------------------------------------------------------- 초대

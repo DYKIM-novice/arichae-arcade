@@ -278,10 +278,16 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
 .inst-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .inst-btn svg { flex: none; }
 .corner-btn.right2 { right: 72px; gap: 6px; }
-/* v3.3.1 대기실 「홈 화면에 추가」는 위 줄 아이콘 버튼(넓은 화면 ≥900px만 글자도) — 오른쪽 칸이 넘치지 않게 */
-#lb-install { flex: none; min-height: 44px; padding: 0 10px; }
-#lb-install .lg { display: none; }
-@media (min-width: 900px) { #lb-install .lg { display: inline; } }
+/* v3.5.1 대기실 「홈 화면에 추가」: 「카카오로 초대」 바로 오른쪽, 글자와 함께 늘 보임 (폭이 좁으면 아래 미디어 쿼리로 간격·여백을 줄여 맞춤) */
+#lb-install { flex: none; min-height: 44px; padding: 0 10px; gap: 5px; }
+@media (max-width: 700px) {
+  .lb-top { gap: 6px; padding-left: max(6px, env(safe-area-inset-left)); padding-right: max(6px, env(safe-area-inset-right)); }
+  .lb-top .sbtn { padding: 0 8px; }
+  .lb-top .sbtn.mute-btn { padding: 0; }
+  .lb-code { font-size: 15px; } .lb-code b { font-size: 22px; margin-left: 3px; letter-spacing: 1px; }
+  #lb-install { gap: 4px; }
+  #lb-install svg, #lb-invite svg { width: 20px; height: 20px; }
+}
 .menu-body .inst-btn { justify-content: flex-start; }
 /* 초대받은 방: 입장 버튼 강조 (은은한 빛 고리) */
 #j-enter.hl { box-shadow: 0 4px 0 rgba(0,0,0,.28), 0 0 0 3px #FFE27A; animation: tkhl 1.4s ease-in-out infinite; }
