@@ -397,3 +397,10 @@ input { font-family: inherit; font-size: 18px; -webkit-user-select: text; user-s
   .aibtn { min-width: 40px; padding: 0 4px; }
   .lb-more { padding: 0 5px; }
 }
+
+/* ---------- v3.5.2c 허브(.btn-install.ready)와 같은 「설치 준비됨」 표시 ----------
+   크롬 설치 창 이벤트가 오면 모든 .inst-btn 에 .ready (share.js) · 노란 바탕·진한 글자·2초 깜빡임 · 크기·위치는 그대로 */
+.inst-btn.ready { background: var(--yellow); border-color: var(--yellow); color: var(--ink); animation: installPulse 2s ease-in-out infinite; }
+.inst-btn.ready svg rect, .inst-btn.ready svg path { stroke: var(--ink); }
+@keyframes installPulse { 50% { transform: scale(1.06); } }
+@media (prefers-reduced-motion: reduce) { .inst-btn.ready { animation: none; } }

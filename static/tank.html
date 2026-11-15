@@ -8,8 +8,20 @@
 <meta name="theme-color" content="#3a2350">
 <title>포트리스관 · 아리채 오락실</title>
 <meta name="description" content="각도와 파워로 쏘는 실시간 팀 포격전 · 1대1~8대8, AI 연습도 돼요">
-<!-- 홈 화면 바로가기(PWA): 이 페이지만 덮는 manifest (허브 manifest.webmanifest 와 따로) -->
-<link rel="manifest" href="tank.webmanifest">
+<!-- 홈 화면 바로가기(PWA): v3.5.2c 허브와 같은 manifest(아리채 오락실 · 범위 /) — 허브 앱이 이미 있으면 tank.webmanifest 로는 설치 창이 안 와서(1F 실험) 같은 앱으로 설치·열기 -->
+<link rel="manifest" href="/manifest.webmanifest">
+<!-- v3.5.2(c 에서도 유지): 크롬 설치 창 이벤트(beforeinstallprompt)는 다른 스크립트보다 먼저 여기서 잡아 둠 → share.js 가 window.__bip 를 씀
+     __bipWait: 콜백 목록(나중에 붙는 share.js 가 push) · 콜백은 ('bip', e) / ('installed') 로 불림 -->
+<script>
+(function () {
+  var w = window;
+  if (!Array.isArray(w.__bipWait)) w.__bipWait = [];
+  w.__bip = null; w.__bipAt = 0; w.__bipInstalled = false;
+  function call(k, e) { var a = w.__bipWait.slice(); for (var i = 0; i < a.length; i++) { try { a[i](k, e); } catch (x) { /* 무시 */ } } }
+  w.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); w.__bip = e; w.__bipAt = performance.now(); call('bip', e); });
+  w.addEventListener('appinstalled', function () { w.__bip = null; w.__bipInstalled = true; call('installed'); });
+})();
+</script>
 <link rel="apple-touch-icon" sizes="180x180" href="img/tank/apple_touch_180_v33.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">

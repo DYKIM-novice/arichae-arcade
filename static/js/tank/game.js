@@ -134,9 +134,9 @@
     };
     const fxLog = [];
     fxLog.labels = [];
-    const dbgKeep = window.__tankDbg || {};   // share.js 의 install · lastInvite · extNav(다른 브라우저로 열기) 는 판이 바뀌어도 유지
+    const dbgKeep = window.__tankDbg || {};   // share.js 의 install · promptCalls · lastInvite · extNav(다른 브라우저로 열기) 는 판이 바뀌어도 유지
     window.__tankDbg = {
-      install: dbgKeep.install, lastInvite: dbgKeep.lastInvite, extNav: dbgKeep.extNav, blockNav: dbgKeep.blockNav,
+      install: dbgKeep.install, promptCalls: dbgKeep.promptCalls, lastInvite: dbgKeep.lastInvite, extNav: dbgKeep.extNav, blockNav: dbgKeep.blockNav,
       wind: m.wind, windNextAt: wn ? wn.at : null, windChanges: [], blinkStarts: [], tags: [],
       fx: fxLog, booms: [], me: null, tanks: [],
       cam: { x: 0, y: 0, scale: 1, cw, ch }, map: { W: WW, H: WH },

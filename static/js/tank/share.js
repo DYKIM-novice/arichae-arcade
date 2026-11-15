@@ -9,11 +9,16 @@
    - 서비스 워커: 허브와 같은 /sw.js(범위 /)를 이 페이지에서도 등록(초대 링크로 바로 온 사람도 설치 조건 충족) · 실패는 조용히
    - v3.5: 앱으로 연 게 아니면 버튼은 늘 보임. 크롬 설치 창이 아직 없으면(안드로이드·컴퓨터) 메뉴로 설치하는 안내 시트
    - v3.5 카카오톡 안: 안드로이드는 intent:// 로 크롬 열기 → 안 열리면 kakaotalk://web/openExternal, 아이폰은 바로 kakaotalk:// (?room= 유지)
+   - v3.5.2c: 허브(static/js/app.js setupInstall)와 같은 방식 · manifest 도 허브와 같은 /manifest.webmanifest(아리채 오락실 앱)
+     이벤트(beforeinstallprompt)는 tank.html <head> 인라인 스크립트가 맨 먼저 잡아 window.__bip 에 저장만 함(허브의 deferred 와 같음)
+     이벤트가 오면 모든 .inst-btn 에 'ready'(노란 깜빡임) · 누르면 있으면 바로 prompt() → userChoice → 비움·'ready' 제거
+     없으면 기다리지 않고 바로 안내 시트(카카오 / iOS / 그 밖은 메뉴 ⋮ → 앱 설치·홈 화면에 추가)
+     appinstalled: 이벤트 비움 · 허브 문구 토스트 (버튼은 숨기지 않음 — v3.5.1 결정)
    초대
    - (a) KAKAO_JS_KEY 가 있고 SDK 로드·init 이 되면 Kakao.Share.sendDefault 피드 카드
    - (b) 아니면 navigator.share (폰 공유 시트에 카카오톡이 뜸) · 사용자가 취소(AbortError)하면 조용히
    - (c) 둘 다 안 되면 「문구 + 링크」를 클립보드에 복사(안 되면 임시 textarea 방식) + 안내 토스트
-   QA: window.__tankDbg.install = {standalone, canPrompt, ios, kakao, android} · __tankDbg.extNav = [{via, url}] (다른 브라우저로 열기 주소 · __tankDbg.blockNav=true 면 이동 안 함) · window.__tankDbg.lastInvite = {url, text, via} (읽기 전용 스냅숏) */
+   QA: window.__tankDbg.install = {standalone, canPrompt, bipAt, lastInstall('prompt'|'sheet:menu'|'sheet:ios'|'sheet:kakao'|'standalone'), ios, kakao, android} · __tankDbg.promptCalls(실제 prompt() 호출 수) · __tankDbg.extNav = [{via, url}] (다른 브라우저로 열기 주소 · __tankDbg.blockNav=true 면 이동 안 함) · window.__tankDbg.lastInvite = {url, text, via} (읽기 전용 스냅숏) */
 (function () {
   'use strict';
   // Kakao Developers 앱의 JavaScript 키를 넣으면 카카오 피드 카드로 공유해요.
@@ -35,7 +40,17 @@
   const fromPwa = /[?&]source=pwa\b/.test(location.search);
   const isApp = () => mq('(display-mode: standalone)') || navigator.standalone === true;
   let standalone = isApp();
-  let deferred = null;   // beforeinstallprompt 이벤트
+  // beforeinstallprompt 이벤트: 원천은 window.__bip (tank.html <head> 가 다른 스크립트보다 먼저 잡음)
+  // head 스크립트가 없을 때(다른 페이지에서 재사용 등)만 여기서 같은 일을 함 → 리스너가 하나뿐이라 preventDefault·저장이 겹치지 않음
+  if (!Array.isArray(window.__bipWait)) {
+    window.__bipWait = [];
+    window.__bip = window.__bip || null; window.__bipAt = window.__bipAt || 0; window.__bipInstalled = !!window.__bipInstalled;
+    const call = (k, e) => window.__bipWait.slice().forEach((f) => { try { f(k, e); } catch (x) { /* 무시 */ } });
+    window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); window.__bip = e; window.__bipAt = performance.now(); call('bip', e); });
+    window.addEventListener('appinstalled', () => { window.__bip = null; window.__bipInstalled = true; call('installed'); });
+  }
+  const bip = () => window.__bip || null;
+  let lastInstall = null;
   let toastFn = (m) => { try { console.log(m); } catch (e) { /* 무시 */ } };
   const listeners = [];
 
@@ -44,7 +59,12 @@
     return window.__tankDbg;
   }
   function publish() {
-    dbg().install = Object.freeze({ standalone, canPrompt: !!deferred, ios: IOS, kakao: KAKAO_INAPP, android: ANDROID, fromPwa: standalone && fromPwa });
+    const at = window.__bipAt ? Math.round(window.__bipAt) : null;
+    dbg().lastInstall = lastInstall;   // 옛 QA 호환(v3.5.1 은 __tankDbg.lastInstall)
+    dbg().install = Object.freeze({ standalone, canPrompt: !!bip(), bipAt: at, lastInstall, ios: IOS, kakao: KAKAO_INAPP, android: ANDROID, fromPwa: standalone && fromPwa });
+    // 허브 .btn-install.ready 와 같음: 설치 창을 띄울 수 있으면 모든 「홈 화면에 추가」 버튼을 노랗게 (앱 창이면 안 함)
+    const ready = !!bip() && !standalone && !KAKAO_INAPP && !IOS;
+    try { document.querySelectorAll('.inst-btn').forEach((b) => b.classList.toggle('ready', ready)); } catch (e) { /* 무시 */ }
     listeners.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
   }
   // 버튼을 보일지: 늘 보임 (v3.5.1 · 앱 창이면 누를 때 안내만) — 옛 호출 호환용
@@ -101,17 +121,14 @@
     }
   } catch (e) { /* 무시 */ }
 
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();   // 크롬 자체 작은 띠 대신 우리 버튼으로
-    deferred = e;
-    publish();
-  });
-  window.addEventListener('appinstalled', () => {
-    // 설치는 끝났지만 지금 이 탭은 아직 브라우저 창 → standalone 은 그대로(버튼도 그대로)
-    deferred = null;
-    closeSheet();
-    publish();
-    toastFn('홈 화면에 포트리스관을 추가했어요');
+  window.__bipWait.push((k) => {
+    if (k === 'bip') { publish(); return; }   // 허브처럼 저장만 · 버튼에 'ready'
+    if (k === 'installed') {
+      // 설치는 끝났지만 지금 이 탭은 아직 브라우저 창 → standalone 은 그대로(버튼도 그대로)
+      closeSheet();
+      publish();
+      toastFn('설치됐어요! 이제 홈 화면의 아리채 오락실 아이콘으로 열어요');
+    }
   });
 
   // ---------------------------------------------------------------- 안내 시트 (iOS · 카카오톡 안)
@@ -187,28 +204,38 @@
   }
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && sheetEl) closeSheet(); });
 
-  async function install() {
+  // 허브와 같음: 이벤트 있으면 그 자리(탭 안)에서 prompt() → userChoice → 비움 · 'ready' 제거
+  async function doPrompt(ev) {
+    const d = dbg();
+    d.promptCalls = (d.promptCalls | 0) + 1;
+    lastInstall = 'prompt';
+    closeSheet();
+    try { ev.prompt(); } catch (e) { /* 무시 (허브와 같음) */ }
+    let ch = null;
+    try { ch = await ev.userChoice; } catch (e) { /* 무시 */ }
+    if (window.__bip === ev) window.__bip = null;   // prompt() 는 한 번만 쓸 수 있음
+    dbg().userChoice = ch ? ch.outcome : null;
+    publish();                                      // canPrompt=false · 'ready' 제거
+    if (ch && ch.outcome === 'accepted') toastFn('홈 화면에 아리채 오락실을 추가했어요');
+  }
+
+  function install() {
     standalone = isApp();
-    if (standalone) { closeSheet(); publish(); toastFn('이미 앱으로 열려 있어요'); dbg().lastInstall = 'standalone'; return; }
-    if (deferred) {
-      dbg().lastInstall = 'prompt';
-      const ev = deferred;
-      deferred = null;   // prompt() 는 한 번만 쓸 수 있음
+    if (standalone) { closeSheet(); lastInstall = 'standalone'; publish(); toastFn('이미 앱으로 열려 있어요'); return; }
+    // 카카오톡 안·iOS: 지금 그대로 바로 안내 시트 (이 둘은 설치 창을 쓸 수 없음 · 크롬이 UA 만 바꾼 경우에도 시트)
+    const ev = (KAKAO_INAPP || IOS) ? null : bip();
+    if (ev) {
+      // prompt 는 탭 안에서 바로(await 전에) · 다시 못 쓰게 먼저 비움 → 버튼 'ready' 도 바로 꺼짐
+      window.__bip = null;
+      doPrompt(ev);
       publish();
-      try {
-        ev.prompt();
-        const ch = await ev.userChoice;
-        if (ch && ch.outcome === 'accepted') toastFn('홈 화면에 포트리스관을 추가했어요');
-        else toastFn('나중에 메뉴의 「홈 화면에 추가」로 다시 할 수 있어요');
-      } catch (e) {
-        // prompt 실패: 브라우저 메뉴로 설치하는 안내 시트
-        openSheet('menu');
-      }
       return;
     }
+    // 없으면 기다리지 않고 바로 안내 (허브와 같음)
     const kind = KAKAO_INAPP ? 'kakao' : IOS ? 'ios' : 'menu';
-    dbg().lastInstall = 'sheet:' + kind;
+    lastInstall = 'sheet:' + kind;
     openSheet(kind);
+    publish();
   }
 
   // ---------------------------------------------------------------- 초대
